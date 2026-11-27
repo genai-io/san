@@ -37,7 +37,7 @@ func TestCompletedTaskDetailShowsLogFailure(t *testing.T) {
 	worker := task.NewAgentTask("review", "Reviewer", "Review", context.Background(), nil, t.TempDir()) // Directory, not a writable log file.
 	worker.AppendOutput([]byte("REPORT"))
 	worker.Complete(nil)
-	m.services.Task.RegisterTask(worker)
+	m.features.Task.RegisterTask(worker)
 	v := &m.userInput.Tasks
 	v.Show(m.taskSnapshots(), 80, 36)
 	v.HandleKeypress(tea.KeyPressMsg{Code: 'h', Text: "h"})
@@ -55,7 +55,7 @@ func TestCompletedTaskDetailShowsLogFailure(t *testing.T) {
 
 func TestTaskRootSnapshotsReadEachWorkerOnce(t *testing.T) {
 	m := userPromptModel()
-	m.services.sessionID = "current"
+	m.features.sessionID = "current"
 	agent := task.NewAgentTask("agent", "Reviewer", "Review", context.Background(), nil, "")
 	agent.AppendOutput([]byte("agent output"))
 	agent.Complete(nil)
@@ -67,7 +67,7 @@ func TestTaskRootSnapshotsReadEachWorkerOnce(t *testing.T) {
 	var workers []*countedSnapshotTask
 	for _, worker := range []task.BackgroundTask{agent, bash, fallback, foreign} {
 		counted := &countedSnapshotTask{BackgroundTask: worker}
-		m.services.Task.RegisterTask(counted)
+		m.features.Task.RegisterTask(counted)
 		counted.statusReads = 0 // Registration also reads status.
 		workers = append(workers, counted)
 	}
@@ -97,10 +97,10 @@ func TestTaskRootSnapshotsReadEachWorkerOnce(t *testing.T) {
 
 func TestTaskViewerSnapshotsOnlyOnRefreshBoundaries(t *testing.T) {
 	m := userPromptModel()
-	m.services.sessionID = "current"
+	m.features.sessionID = "current"
 	worker := viewerWorker(m, "counted", "current", time.Now())
 	counted := &countedSnapshotTask{BackgroundTask: worker}
-	m.services.Task.RegisterTask(counted)
+	m.features.Task.RegisterTask(counted)
 	m.openTasks()
 	counted.statusReads, counted.outputReads = 0, 0
 
@@ -145,7 +145,7 @@ func TestTaskViewerSnapshotsOnlyOnRefreshBoundaries(t *testing.T) {
 	if view := ansi.Strip(m.userInput.Tasks.Render()); !strings.Contains(view, "[completed]") {
 		t.Fatalf("expanded history lost the completion: %s", view)
 	}
-	m.services.sessionID = "other"
+	m.features.sessionID = "other"
 	m.Update(struct{}{})
 	if m.userInput.Tasks.IsActive() {
 		t.Fatal("session switch left the old task viewer visible")
@@ -154,10 +154,10 @@ func TestTaskViewerSnapshotsOnlyOnRefreshBoundaries(t *testing.T) {
 
 func TestTaskViewerOrdinaryMailDoesNotRefreshSnapshots(t *testing.T) {
 	m := userPromptModel()
-	m.services.sessionID = "current"
+	m.features.sessionID = "current"
 	worker := viewerWorker(m, "counted", "current", time.Now())
 	counted := &countedSnapshotTask{BackgroundTask: worker}
-	m.services.Task.RegisterTask(counted)
+	m.features.Task.RegisterTask(counted)
 	m.openTasks()
 	counted.statusReads, counted.outputReads = 0, 0
 	worker.info.Description = "not-yet-polled"
@@ -179,7 +179,7 @@ func BenchmarkTaskSnapshotsCompletedOutput(b *testing.B) {
 				worker := task.NewAgentTask(fmt.Sprint(i), "Reviewer", "Review", context.Background(), nil, "")
 				worker.AppendOutput(data)
 				worker.Complete(nil)
-				m.services.Task.RegisterTask(worker)
+				m.features.Task.RegisterTask(worker)
 			}
 			b.ReportAllocs()
 			b.ResetTimer()

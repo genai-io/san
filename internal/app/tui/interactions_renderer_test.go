@@ -54,8 +54,8 @@ func TestWorkerInteractionsThroughMainTUI(t *testing.T) {
 					t.Fatal(err)
 				}
 				t.Cleanup(func() { _ = parent.Close() })
-				m.services.SessionStore, m.services.Session = store, parent
-				m.services.Setting = setting.New(setting.NewData())
+				m.features.SessionStore, m.features.Session = store, parent
+				m.features.Setting = setting.New(setting.NewData())
 				m.env.CWD = cwd
 				if mode == subagent.PermissionBypass {
 					m.env.SessionPermissions.SetMode(setting.ModeBypassPermissions)
@@ -97,8 +97,8 @@ func TestWorkerInteractionsThroughMainTUI(t *testing.T) {
 				if err := executor.SetSessions(store, parent); err != nil {
 					t.Fatal(err)
 				}
-				settings, grants := m.services.Setting, m.env.SessionPermissions
-				executor.ConfigureOwner(m.services.Task, subagent.NewRegistry(), func(child *session.Session, _ bool, source tool.AgentInteractionSource) tool.Resolver {
+				settings, grants := m.features.Setting, m.env.SessionPermissions
+				executor.ConfigureOwner(m.features.Task, subagent.NewRegistry(), func(child *session.Session, _ bool, source tool.AgentInteractionSource) tool.Resolver {
 					return newWorkerResolver(settings, grants, bridge, child, source)
 				}, nil)
 				executor.SetParentPermissionMode(func() subagent.PermissionMode { return mode })

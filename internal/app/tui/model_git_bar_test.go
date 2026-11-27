@@ -109,7 +109,7 @@ func TestGitBarSettingsFollowWorkspaceChange(t *testing.T) {
 	}
 	m := fixedComposerModel(80, 24)
 	m.env.CWD, m.env.ShowGitBar = oldCwd, true
-	m.services.Setting = settings
+	m.features.Setting = settings
 	m.learnedStores = newLearnedStoreContext(oldCwd, settings)
 	m.userInput.Settings = input.NewSettingsSelector(settings)
 	m.userInput.Settings.Enter(80, 24)
@@ -193,7 +193,7 @@ func TestGitBarSavedAppliesEffectivePreference(t *testing.T) {
 		if (m.gitBar.cwd != "") != on || (m.gitBar.cancel != nil) != on {
 			t.Fatalf("saved on=%v did not start/stop polling", on)
 		}
-		if m.env.ShowGitBar != on || m.services.Setting.Snapshot().ShowGitBar() != on {
+		if m.env.ShowGitBar != on || m.features.Setting.Snapshot().ShowGitBar() != on {
 			t.Fatalf("saved on=%v did not update live and reloaded preferences", on)
 		}
 	}

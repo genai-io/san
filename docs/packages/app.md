@@ -29,10 +29,10 @@ type model struct {
     // Source 3: the root handles cron, async hooks and file watcher events directly.
     conv            chat.Model         // agent outbox → conversation view
     env             env                // app-local TUI state
-    services        services           // feature-layer handles
+    features        appFeatures           // feature-layer handles
 }
 
-// services stores the concrete feature handles in internal/app/tui/services.go.
+// appFeatures holds the concrete feature handles in internal/app/tui/app_features.go.
 ```
 
 The chat and input sub-models each define their
@@ -177,17 +177,17 @@ acceptance.
 
 ### Known Violations
 
-- **`services` snapshots 16 singletons via `Default()` at construction.**
+- **`appFeatures` snapshots 16 singletons via `Default()` at construction.**
   The whole codebase's singleton problem manifests here. The right shape
   is for `cmd/san` to construct each service explicitly and pass it in,
   inverting the current pull-from-`Default()` model.
 - **Two `Default()` shapes coexist:** most services panic if not
   initialized; `Hook` uses `DefaultIfInit()` (nil-tolerant). Two contracts
   for one job — converge once construction moves to `cmd/`.
-- **`refreshAfterReload` re-snapshots 6 of the 16 services.** Implies
+- **`reloadProjectFeatures` re-snapshots 6 of the 16 services.** Implies
   those services are *replaced* on plugin reload (their `Initialize`
   builds a new instance and stores it in their singleton). Construction
-  injection would let reload edit the `services` struct in place
+  injection would let reload edit the `appFeatures` struct in place
   instead.
 
 ### Queued input
@@ -265,7 +265,7 @@ Files under `internal/app/tui`:
 | `update_input_effects.go` | Stream cancel, tool-call cancel, image paste, quit. |
 | `view.go` | `View()` — composes sub-model `View()` strings into terminal layout. |
 | `agent.go` | Agent session lifecycle helpers (`sendToAgent`, `ListenForAgentEvents`, `ReconfigureAgentTool`). |
-| `services.go` | The `services` struct + `newServices()` + `refreshAfterReload()`. |
+| `app_features.go` | Feature handles and their initial wiring. |
 | `env.go` | `env` — app-local TUI state (provider snapshot, permissions, plan, cache). Pure state holder. |
 | `hooks.go` | Hook integration glue (LLM completer wiring). |
 | `init.go` | Global infrastructure init, plugin/mcp adapter wiring. |
@@ -448,7 +448,7 @@ pending, and completed plan items; rendering leaves task records intact.
 
 - For print mode, `cmd/san` calls `cli.Print`. For interactive runs it calls
   `tui.Run` to build the `tea.Program`:
-  `newServices()` snapshots all `Default()` references, the root model is
+  `newAppFeatures()` snapshots all `Default()` references, the root model is
   constructed, and `tea.Program.Run()` enters the MVU loop.
 - Per turn: user submits → input subpackage → `sendToAgent()` →
   `core.Agent.Append` → agent processes → outbox events → `conv` updates → re-render.
@@ -457,7 +457,7 @@ pending, and completed plan items; rendering leaves task records intact.
   rather than the UI rendering model; `/clear` and loading another persisted
   session explicitly discard it.
 - On `/plugin install`, `/models`, etc.: `ReloadPluginBackedState()`
-  re-initializes the affected services and calls `refreshAfterReload`.
+  re-initializes the affected services and calls `reloadProjectFeatures`.
 
 ## Copilot quota status
 

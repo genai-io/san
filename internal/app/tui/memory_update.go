@@ -36,7 +36,7 @@ type memoryUpdateFinished struct {
 }
 
 func (m *model) autoMemoryUpdateEnabled() bool {
-	return m.services.Setting != nil && m.services.Setting.MemoryUpdate()
+	return m.features.Setting != nil && m.features.Setting.MemoryUpdate()
 }
 
 func (m *model) updateMemory() (string, tea.Cmd) {
@@ -61,8 +61,8 @@ func (m *model) updateMemoryAfterTurn(result core.Result) tea.Cmd {
 }
 
 func (m *model) startMemoryUpdate(manual bool) tea.Cmd {
-	owner, provider := m.services.Session, m.env.LLMProvider
-	if m.memoryUpdate != nil || m.services.Setting == nil || owner == nil || provider == nil {
+	owner, provider := m.features.Session, m.env.LLMProvider
+	if m.memoryUpdate != nil || m.features.Setting == nil || owner == nil || provider == nil {
 		return nil
 	}
 	store := m.autoMemoryStore()
@@ -78,7 +78,7 @@ func (m *model) startMemoryUpdate(manual bool) tea.Cmd {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	r := &memoryUpdate{owner: owner, store: store, manual: manual, ctx: ctx, cancel: cancel}
 	m.memoryUpdate = r
-	updater := memory.Updater{Provider: provider, Model: model, Recording: owner, IndexLimits: m.services.Setting.MemoryPreview()}
+	updater := memory.Updater{Provider: provider, Model: model, Recording: owner, IndexLimits: m.features.Setting.MemoryPreview()}
 	return func() tea.Msg {
 		req, err := prefix.Request(ctx, owner)
 		if err != nil {
@@ -95,7 +95,7 @@ func (m *model) startMemoryUpdate(manual bool) tea.Cmd {
 
 func (m *model) applyMemoryUpdate(msg memoryUpdateProposed) tea.Cmd {
 	r := msg.update
-	if r != m.memoryUpdate || r.owner != m.services.Session || r.ctx.Err() != nil ||
+	if r != m.memoryUpdate || r.owner != m.features.Session || r.ctx.Err() != nil ||
 		r.store != m.autoMemoryStore() || (!r.manual && !m.autoMemoryUpdateEnabled()) {
 		if err := msg.change.Discard(); err != nil {
 			log.Logger().Warn("discard memory update proposal", zap.Error(err))

@@ -146,8 +146,8 @@ func TestHandoffFrameFitsAfterNarrowing(t *testing.T) {
 func TestClearDiscardsRecentSettledRows(t *testing.T) {
 	m := fixedComposerModel(80, 24)
 	initClearSessionTest(t, m)
-	m.services.Agent = &runtime.Runtime{}
-	m.services.Reminder = reminder.NewQueue()
+	m.features.Agent = &runtime.Runtime{}
+	m.features.Reminder = reminder.NewQueue()
 	m.queueScrollbackPrint("OLD-REPLY", 0)
 	if _, _, handled := m.executeCommand(context.Background(), "/clear"); !handled {
 		t.Fatal("clear command was not handled")
@@ -160,8 +160,8 @@ func TestClearDiscardsRecentSettledRows(t *testing.T) {
 func TestClearCancelsQueuedHistoryAndIgnoresStaleMessages(t *testing.T) {
 	m := fixedComposerModel(80, 24)
 	initClearSessionTest(t, m)
-	m.services.Agent = &runtime.Runtime{}
-	m.services.Reminder = reminder.NewQueue()
+	m.features.Agent = &runtime.Runtime{}
+	m.features.Reminder = reminder.NewQueue()
 	var rows []string
 	for i := 0; i < 19; i++ {
 		rows = append(rows, fmt.Sprintf("OLD-%02d", i))
@@ -546,7 +546,7 @@ func TestScrollbackPrintWaitsForApprovalModalToClose(t *testing.T) {
 // prompt until the final Println completes, then open it on the clean live frame.
 func TestDeferredApprovalWaitsForScrollbackHandoff(t *testing.T) {
 	m := dockedModalModel(t, "about to inspect the repository")
-	m.services.Session = nil
+	m.features.Session = nil
 	m.userInput.Approval.Hide()
 	view := &perm.PermissionRequest{
 		ToolName: "Bash",
@@ -669,8 +669,8 @@ func TestConsecutiveToolCommitsStayOutOfManagedFrameAndPrintOnceInOrder(t *testi
 	m := &model{
 		env:       env{Width: 100, Height: 24},
 		conv:      chat.NewModel(100),
-		userInput: input.New("", 100, nil, input.SelectorServices{}),
-		services: services{
+		userInput: input.New("", 100, nil, input.SelectorBindings{}),
+		features: appFeatures{
 			Subagent: subagent.NewRegistry(),
 			Tracker:  todo.NewStore(),
 		},

@@ -28,7 +28,7 @@ func TestRecapRecordingCancelledOnRetirement(t *testing.T) {
 	}
 	defer owner.Close()
 	m := newRecapModel(t)
-	m.services.Session, m.services.sessionID = owner, owner.ID()
+	m.features.Session, m.features.sessionID = owner, owner.ID()
 	entered := make(chan struct{})
 	driver := aitest.New(func(ctx context.Context, r *ai.Request) iter.Seq2[ai.Delta, error] {
 		close(entered)
@@ -81,7 +81,7 @@ func TestRecapRecordingAcceptance(t *testing.T) {
 			}
 			defer owner.Close()
 			m := newRecapModel(t)
-			m.services.Session, m.services.sessionID = owner, owner.ID()
+			m.features.Session, m.features.sessionID = owner, owner.ID()
 			m.env.LLMProvider = &compactHTTPProvider{client: ai.NewClientWithDriver(aitest.New(aitest.Replies(ai.Response{
 				Content: ai.TextContent("Ready for review."), Usage: ai.Usage{Input: 17, Output: 4},
 			})), ai.Model{ID: "m"})}
@@ -104,7 +104,7 @@ func TestRecapRecordingAcceptance(t *testing.T) {
 				// A repeated delivery of the same cached message must not publish twice.
 				m.showRecap(ready)
 			case "advance":
-				m.services.Agent.SetMessages([]core.Message{core.UserMessage("later", nil)})
+				m.features.Agent.SetMessages([]core.Message{core.UserMessage("later", nil)})
 				m.deliverRecap() // discards the old cache before preparing another request
 				m.resetRecap()
 			case "overwrite":
@@ -112,7 +112,7 @@ func TestRecapRecordingAcceptance(t *testing.T) {
 				m.resetRecap()
 			case "switch":
 				m.resetRecap()
-				m.services.Session = nil
+				m.features.Session = nil
 				m.showRecap(ready)
 			case "closed":
 				if err := owner.Close(); err != nil {
@@ -198,12 +198,12 @@ func TestBtwAsideOwnership(t *testing.T) {
 				}
 			}
 			m := newRecapModel(t)
-			m.services.sessionID = "same"
-			m.services.Session = recording
+			m.features.sessionID = "same"
+			m.features.Session = recording
 			askSessionID := m.sessionID()
 			before := len(m.conv.Messages)
 			if mode == "stale" {
-				m.services.Session = nil
+				m.features.Session = nil
 			}
 			m.onBtwAnswer(btwAnswerMsg{ask: btwAsk{question: "why?", sessionID: askSessionID}, answer: answer, owner: recording, recording: request.Recording()})
 			accepted := mode == "current" || mode == "default"

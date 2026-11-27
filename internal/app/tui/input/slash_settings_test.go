@@ -8,7 +8,7 @@ import (
 
 // /config still opens the settings popup but says it is deprecated.
 func TestConfigCommandIsDeprecatedAliasOfSettings(t *testing.T) {
-	m := New("", 80, nil, SelectorServices{})
+	m := New("", 80, nil, SelectorBindings{})
 	c := NewSlashCommandController(SlashCommandEnv{Input: &m, Width: 100, Height: 30})
 
 	notice, _, err := c.handleConfigCommand(context.Background(), "")

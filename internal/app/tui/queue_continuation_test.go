@@ -16,7 +16,7 @@ func TestQueueEnterWithHeldHookAfterCancellation(t *testing.T) {
 	for _, mode := range []string{"head", "nonhead", "no-enter", "queued-during", "direct", "background-only"} {
 		t.Run(mode, func(t *testing.T) {
 			m, provider := compactQueueModel(t)
-			if err := m.services.Agent.Send(core.UserMessage("initial work", nil)); err != nil {
+			if err := m.features.Agent.Send(core.UserMessage("initial work", nil)); err != nil {
 				t.Fatal(err)
 			}
 			select {
@@ -68,7 +68,7 @@ func TestQueueEnterWithHeldHookAfterCancellation(t *testing.T) {
 				t.Fatal("queue crossed finalization fence")
 			}
 			m.userInput.Textarea.SetValue("unrelated draft")
-			outbox := m.services.Agent.Outbox()
+			outbox := m.features.Agent.Outbox()
 			events := outbox
 			deadline := time.After(2 * time.Second)
 			var completion turnFinalizedMsg
@@ -89,7 +89,7 @@ func TestQueueEnterWithHeldHookAfterCancellation(t *testing.T) {
 						t.Fatal("a different turn or runtime settled cancellation")
 					}
 					if completion.err != nil && completion.err != core.ErrTurnCompleted {
-						snapshot := m.services.Session.Snapshot()
+						snapshot := m.features.Session.Snapshot()
 						var start *session.Event
 						for _, event := range snapshot.Events() {
 							if payload, ok := event.Payload.(*session.InferenceStartPayload); ok && payload.Purpose == session.PurposeTurn {
@@ -108,9 +108,9 @@ func TestQueueEnterWithHeldHookAfterCancellation(t *testing.T) {
 							Finishes   []session.Event
 							Unfinished session.Unfinished
 						}{start, finishes, snapshot.Unfinished()})
-						t.Fatalf("native finalization failed: %v; writer=%v evidence=%s", completion.err, m.services.Session.Err(), evidence)
+						t.Fatalf("native finalization failed: %v; writer=%v evidence=%s", completion.err, m.features.Session.Err(), evidence)
 					}
-					if err := m.services.Session.Err(); err != nil {
+					if err := m.features.Session.Err(); err != nil {
 						t.Fatalf("native writer failed during cancellation: %v", err)
 					}
 					break drain
@@ -205,7 +205,7 @@ func TestQueueEnterContinuesCancelledTurn(t *testing.T) {
 				if mode == "stale" {
 					m.pendingMessages.Hold(&core.TurnFinalization{})
 				}
-				m.dispatch(turnFinalizedMsg{receipt: receipt, outbox: m.services.Agent.Outbox()})
+				m.dispatch(turnFinalizedMsg{receipt: receipt, outbox: m.features.Agent.Outbox()})
 			}
 			wantSend := mode == "after" || mode == "during" || mode == "escape" || mode == "reenter"
 			if wantSend {
@@ -220,7 +220,7 @@ func TestQueueEnterContinuesCancelledTurn(t *testing.T) {
 				if m.userInput.Queue.Len() != 1 || m.userInput.Textarea.Value() != "draft" {
 					t.Fatal("duplicate submission or lost draft")
 				}
-				m.dispatch(turnFinalizedMsg{receipt: receipt, outbox: m.services.Agent.Outbox()})
+				m.dispatch(turnFinalizedMsg{receipt: receipt, outbox: m.features.Agent.Outbox()})
 				if m.userInput.Queue.Len() != 1 {
 					t.Fatal("receipt replay released successor")
 				}

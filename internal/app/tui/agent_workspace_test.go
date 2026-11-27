@@ -17,15 +17,15 @@ import (
 func TestBuildAgentParamsLiveReviewWorkspace(t *testing.T) {
 	m, _ := resumedModel(t, nil)
 	m.userInput = fixedComposerModel(80, 24).userInput
-	m.services.Tool = tool.NewRegistry()
-	m.services.MCP = mcp.NewServerSetForTest(nil)
+	m.features.Tool = tool.NewRegistry()
+	m.features.MCP = mcp.NewServerSetForTest(nil)
 	m.judgeApprovals, m.judgeEscalations = new(atomic.Int64), new(atomic.Int64)
 	gitCwd, plainCwd := t.TempDir(), t.TempDir()
 	if out, err := exec.Command("git", "init", "--quiet", gitCwd).CombinedOutput(); err != nil {
 		t.Fatalf("git init: %s: %v", out, err)
 	}
 	m.env.CWD, m.env.IsGit = gitCwd, true
-	m.learnedStores = newLearnedStoreContext(gitCwd, m.services.Setting)
+	m.learnedStores = newLearnedStoreContext(gitCwd, m.features.Setting)
 	m.env.SessionPermissions.SetMode(setting.ModeAutoPilot)
 	provider := &autopilotStubProvider{content: `{"decision":"escalate","reason":"test"}`}
 	m.env.LLMProvider = provider
@@ -33,12 +33,12 @@ func TestBuildAgentParamsLiveReviewWorkspace(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := m.services.Agent.Start(params, nil); err != nil {
+	if err := m.features.Agent.Start(params, nil); err != nil {
 		t.Fatal(err)
 	}
-	sys := m.services.Agent.System()
+	sys := m.features.Agent.System()
 	stable, _, _ := strings.Cut(sys.Prompt(), "<environment>")
-	owner := m.services.Session
+	owner := m.features.Session
 	before := m.autopilot.Load().judge
 	check := func(cwd string, underGit bool) {
 		t.Helper()
@@ -85,14 +85,14 @@ func TestBuildAgentParamsLiveReviewWorkspace(t *testing.T) {
 	check(plainCwd, false)
 	m.changeCwd(gitCwd)
 	check(gitCwd, true)
-	if m.services.Session != owner || params.SessionID != owner.ID() || m.autopilot.Load().judge != before {
+	if m.features.Session != owner || params.SessionID != owner.ID() || m.autopilot.Load().judge != before {
 		t.Fatal("workspace switch replaced session or judge")
 	}
 }
 
 func TestAutopilotWorkspaceSnapshotConcurrent(t *testing.T) {
 	m, _ := resumedModel(t, nil)
-	m.services.MCP = mcp.NewServerSetForTest(nil)
+	m.features.MCP = mcp.NewServerSetForTest(nil)
 	m.judgeApprovals, m.judgeEscalations = new(atomic.Int64), new(atomic.Int64)
 	m.env.SessionPermissions.SetMode(setting.ModeAutoPilot)
 	provider := &autopilotStubProvider{content: `{"decision":"escalate","reason":"test"}`}

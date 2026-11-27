@@ -13,10 +13,10 @@ import (
 func TestRebindSelectorsSearchWritesReplacementSettings(t *testing.T) {
 	tempHome(t)
 	old, fresh := setting.New(setting.NewData()), setting.New(setting.NewData())
-	m := New(t.TempDir(), 80, nil, SelectorServices{Setting: old})
+	m := New(t.TempDir(), 80, nil, SelectorBindings{Setting: old})
 	m.Search.active = true
 	m.Search.items = []searchItem{{Name: "replacement", Available: true}}
-	m.RebindSelectors(SelectorServices{Setting: fresh})
+	m.RebindSelectors(SelectorBindings{Setting: fresh})
 	m.Search.Select()
 	if fresh.SearchProvider() != "replacement" || old.SearchProvider() == "replacement" {
 		t.Fatal("search wrote stale settings")
@@ -47,8 +47,8 @@ func TestMCPConnectResultIgnoresReplacedManager(t *testing.T) {
 func TestRebindSelectorsPreservesInputAndSamePlugin(t *testing.T) {
 	tempHome(t)
 	reg := coreplugin.NewRegistry()
-	deps := SelectorServices{PluginRegistry: reg}
-	m := New(t.TempDir(), 80, nil, deps)
+	bindings := SelectorBindings{PluginRegistry: reg}
+	m := New(t.TempDir(), 80, nil, bindings)
 	m.Textarea.SetValue("draft")
 	m.Queue.Enqueue("queued", nil)
 	m.History.Stashed = "history draft"
@@ -60,7 +60,7 @@ func TestRebindSelectorsPreservesInputAndSamePlugin(t *testing.T) {
 	m.Plugin.loadingMsg = "installing"
 	m.Plugin.activeTab = pluginTab(1)
 	reflection := m.Reflection.panels[0]
-	m.RebindSelectors(deps)
+	m.RebindSelectors(bindings)
 	if m.Textarea.Value() != "draft" || m.Queue.Len() != 1 || m.History.Stashed != "history draft" || m.Skill.PendingFullName != "pending" {
 		t.Fatal("reload destroyed input state")
 	}
@@ -80,21 +80,21 @@ func TestRebindSelectorsToolUsesReplacementCallbacks(t *testing.T) {
 	for _, open := range []bool{false, true} {
 		t.Run(map[bool]string{false: "inactive", true: "open"}[open], func(t *testing.T) {
 			oldSaves, newSaves := 0, 0
-			deps := SelectorServices{LoadDisabled: func(setting.Scope) map[string]bool { return map[string]bool{"demo": true} }, UpdateDisabled: func(string, *bool, setting.Scope) error { oldSaves++; return nil }}
-			m := New(t.TempDir(), 80, nil, deps)
+			bindings := SelectorBindings{LoadDisabled: func(setting.Scope) map[string]bool { return map[string]bool{"demo": true} }, UpdateDisabled: func(string, *bool, setting.Scope) error { oldSaves++; return nil }}
+			m := New(t.TempDir(), 80, nil, bindings)
 			if open {
 				_ = m.Tool.EnterSelect(100, 40, nil)
 			}
-			deps.LoadDisabled = func(setting.Scope) map[string]bool { return map[string]bool{"demo": false} }
-			deps.UpdateDisabled = func(name string, disabled *bool, _ setting.Scope) error {
+			bindings.LoadDisabled = func(setting.Scope) map[string]bool { return map[string]bool{"demo": false} }
+			bindings.UpdateDisabled = func(name string, disabled *bool, _ setting.Scope) error {
 				newSaves++
 				if name != "demo" || disabled == nil || !*disabled {
 					t.Error("toggle used stale disabled cache")
 				}
 				return nil
 			}
-			deps.HeldOn = func() map[string]string { return map[string]string{"demo": "current"} }
-			m.RebindSelectors(deps)
+			bindings.HeldOn = func() map[string]string { return map[string]string{"demo": "current"} }
+			m.RebindSelectors(bindings)
 			if !open {
 				_ = m.Tool.EnterSelect(100, 40, nil)
 			}
@@ -119,12 +119,12 @@ func TestRebindSelectorsSkillReplacementClosesCacheAndReopensFresh(t *testing.T)
 	}
 	old := coreskill.NewRegistryForTest(map[string]*coreskill.Skill{"old": {Name: "old"}}, userStore, projectStore)
 	fresh := coreskill.NewRegistryForTest(map[string]*coreskill.Skill{"fresh": {Name: "fresh"}}, userStore, projectStore)
-	m := New(t.TempDir(), 80, nil, SelectorServices{SkillRegistry: old})
+	m := New(t.TempDir(), 80, nil, SelectorBindings{SkillRegistry: old})
 	if err := m.Skill.Selector.EnterSelect(100, 40); err != nil {
 		t.Fatal(err)
 	}
 	m.Skill.SetPending("old", "pending")
-	m.RebindSelectors(SelectorServices{SkillRegistry: fresh})
+	m.RebindSelectors(SelectorBindings{SkillRegistry: fresh})
 	if m.Skill.Selector.IsActive() {
 		t.Fatal("stale skill selector remains open")
 	}

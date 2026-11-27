@@ -30,7 +30,7 @@ func TestGroupControlRecording(t *testing.T) {
 			}
 			defer owner.Close()
 			m := commitTestModel()
-			m.services.Session, m.services.sessionID = owner, owner.ID()
+			m.features.Session, m.features.sessionID = owner, owner.ID()
 			content := `{"action":"kick","arguments":{"name":"api"}}`
 			if mode == "invalid" {
 				content = "invalid"
@@ -55,7 +55,7 @@ func TestGroupControlRecording(t *testing.T) {
 			case "stale":
 				m.grp.control = nil
 			case "owner":
-				m.services.Session = nil
+				m.features.Session = nil
 			case "closed":
 				owner.Close()
 			}
@@ -116,8 +116,8 @@ func TestGroupControlRecordingPostEffectFailure(t *testing.T) {
 	}
 	defer owner.Close()
 	m := commitTestModel()
-	m.services.Session, m.services.sessionID = owner, owner.ID()
-	m.services.Reminder = reminder.NewQueue()
+	m.features.Session, m.features.sessionID = owner, owner.ID()
+	m.features.Reminder = reminder.NewQueue()
 	m.env.LLMProvider = &compactHTTPProvider{client: ai.NewClientWithDriver(aitest.New(aitest.Replies(ai.Response{Content: ai.TextContent(`{"action":"join","arguments":{"group":"team","name":"api"}}`)})), ai.Model{ID: "m"})}
 	_, cmd := m.resolveGroupControl("join team as api")
 	msg := cmd().(groupControlMsg)
@@ -149,7 +149,7 @@ func TestGroupControlRecordingSupersededOwner(t *testing.T) {
 	m.env.LLMProvider = &compactHTTPProvider{client: ai.NewClientWithDriver(aitest.New(aitest.Says(`{"action":"list","arguments":{}}`)), ai.Model{ID: "m"})}
 	_, cmd := m.resolveGroupControl("show collaborators")
 	msg := cmd().(groupControlMsg)
-	m.services.Session = nil
+	m.features.Session = nil
 	if text := m.handleGroupControl(msg); !strings.Contains(text, "discarded") {
 		t.Fatalf("superseded owner accepted: %q", text)
 	}
@@ -178,7 +178,7 @@ func TestGroupControlRecordingCancelledInFlight(t *testing.T) {
 	}
 	defer owner.Close()
 	m := commitTestModel()
-	m.services.Session = owner
+	m.features.Session = owner
 	entered := make(chan struct{})
 	driver := aitest.New(func(ctx context.Context, request *ai.Request) iter.Seq2[ai.Delta, error] {
 		close(entered)
@@ -222,7 +222,7 @@ func TestGroupControlRecordingCancelledBeforeDispatch(t *testing.T) {
 	}
 	defer owner.Close()
 	m := commitTestModel()
-	m.services.Session = owner
+	m.features.Session = owner
 	m.env.LLMProvider = &compactHTTPProvider{client: ai.NewClientWithDriver(aitest.New(aitest.Replies(ai.Response{Content: ai.TextContent("unused")})), ai.Model{ID: "m"})}
 	_, cmd := m.resolveGroupControl("show collaborators")
 	m.cancelGroupControl()

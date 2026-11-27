@@ -47,7 +47,7 @@ func TestRecallNoticePinsToReceivingResultWhenWriterRunsAhead(t *testing.T) {
 	}
 	m := fixedComposerModel(80, 40)
 	m.conv.AutoMemoryStore = system.MemoryStore(mem)
-	m.services.Agent, m.services.Session, m.services.SessionStore = &runtime.Runtime{}, rec, store
+	m.features.Agent, m.features.Session, m.features.SessionStore = &runtime.Runtime{}, rec, store
 	m.conv.OnNotice = m.recordNotice
 	m.conv.Messages = session.ChatRows(messages[:3])
 	chat.Update(m, &m.conv, chat.AgentOutboxMsg{Event: sdkagent.MessageAdded{Message: result}})
@@ -92,8 +92,8 @@ func TestMemoryReadsCommitBeforeAnswerWithoutTurnEndFooter(t *testing.T) {
 			m := fixedComposerModel(80, 40)
 			m.conv.AutoMemoryStore = system.MemoryStore(mem)
 			attachTurnSession(t, m)
-			m.services.Agent = &runtime.Runtime{}
-			m.services.Tool = tool.NewRegistry()
+			m.features.Agent = &runtime.Runtime{}
+			m.features.Tool = tool.NewRegistry()
 			m.pendingDecisions = &sync.Map{}
 			var notices []core.ChatMessage
 			m.conv.OnNotice = func(msg core.ChatMessage) { notices = append(notices, msg) }

@@ -110,8 +110,8 @@ func TestShiftTabCyclesModeDuringStream(t *testing.T) {
 	m := &model{}
 	m.env.CWD = cwd
 	m.env.SessionPermissions = setting.NewSessionPermissions()
-	m.services.Setting = setting.New(setting.NewData())
-	m.services.Hook = hook.NewEngine(setting.NewData(), "", cwd, "")
+	m.features.Setting = setting.New(setting.NewData())
+	m.features.Hook = hook.NewEngine(setting.NewData(), "", cwd, "")
 	m.conv.Stream.Active = true
 
 	shiftTab := tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift}

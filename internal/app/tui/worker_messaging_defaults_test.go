@@ -16,7 +16,7 @@ func TestOrdinaryMainRuntimeOffersWorkerMessaging(t *testing.T) {
 		if explicitlyDisabled {
 			data.DisabledTools = map[string]bool{tool.ToolSendMessage: true}
 		}
-		m := &model{services: services{Setting: setting.New(data)}}
+		m := &model{features: appFeatures{Setting: setting.New(data)}}
 		params := runtime.BuildParams{DisabledTools: m.disabledTools()}
 		offered := false
 		for _, schema := range params.ToolSchemas() {

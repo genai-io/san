@@ -23,10 +23,9 @@ import (
 	"github.com/genai-io/san/internal/tool"
 )
 
-// services holds references to domain service singletons, injected into
-// model at construction time. Model methods access services through this
-// struct instead of calling Default() package-level accessors directly.
-type services struct {
+// appFeatures holds the feature handles used by the root model. Project reload
+// and session changes replace the affected handles in place.
+type appFeatures struct {
 	Setting      *setting.Settings
 	LLM          *llm.Conn
 	Tool         *tool.Registry
@@ -60,9 +59,9 @@ type autoSkillSession struct {
 	cancel   context.CancelFunc
 }
 
-func newServices() services {
+func newAppFeatures() appFeatures {
 	tasks := task.Default()
-	return services{
+	return appFeatures{
 		Setting:      setting.Default(),
 		LLM:          llm.Default(),
 		Tool:         tool.Default(),

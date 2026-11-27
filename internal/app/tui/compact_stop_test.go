@@ -15,7 +15,7 @@ func TestManualCompactionInvalidatesPendingStop(t *testing.T) {
 		for _, outcome := range []string{"pending", "failed", "completed"} {
 			t.Run(fmt.Sprintf("%s/blocked=%v", outcome, blocked), func(t *testing.T) {
 				m, provider := compactQueueModel(t)
-				m.services.LLM.SetProvider(provider)
+				m.features.LLM.SetProvider(provider)
 				finish := pendingStopOutcome(t, m, blocked)
 				_, cmd, _ := m.executeCommand(t.Context(), "/compact")
 				if cmd == nil || !m.conv.Compact.Active || m.pendingStopHook != nil {

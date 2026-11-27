@@ -33,8 +33,8 @@ func (m *model) handleStreamCancel() tea.Cmd {
 	}
 	// The truncated reply and the cancelled tool results already tell the
 	// model the turn was cut short; no extra reminder is needed.
-	receipt := m.services.Agent.Cancel()
-	outbox := m.services.Agent.Outbox()
+	receipt := m.features.Agent.Cancel()
+	outbox := m.features.Agent.Outbox()
 	m.pruneUserPrompts()
 	m.cancelPendingToolCalls()
 	m.conv.MarkStreamInterrupted()

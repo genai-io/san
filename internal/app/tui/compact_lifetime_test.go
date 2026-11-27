@@ -47,7 +47,7 @@ func TestManualCompactionCancelsHTTP(t *testing.T) {
 	for _, action := range []string{"escape", "ctrl-c", "reset", "stop", "replace", "quit"} {
 		t.Run(action, func(t *testing.T) {
 			m, store := resumedModel(t, parallelResultChain())
-			m.userInput = input.New(m.env.CWD, 80, nil, input.SelectorServices{Setting: m.services.Setting})
+			m.userInput = input.New(m.env.CWD, 80, nil, input.SelectorBindings{Setting: m.features.Setting})
 			entered, aborted := make(chan struct{}), make(chan struct{})
 			server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 				_, _ = io.Copy(io.Discard, r.Body)
@@ -93,7 +93,7 @@ func TestManualCompactionCancelsHTTP(t *testing.T) {
 			if !errors.Is(request.Ctx.Err(), context.Canceled) || m.pendingCompaction != nil || m.conv.Compact.Active {
 				t.Fatal("request lifetime survived cancellation")
 			}
-			before := m.services.Agent.Messages()
+			before := m.features.Agent.Messages()
 			select {
 			case msg := <-result:
 				if msg.Err == nil {
@@ -105,7 +105,7 @@ func TestManualCompactionCancelsHTTP(t *testing.T) {
 			case <-time.After(5 * time.Second):
 				t.Fatal("summary call did not unwind")
 			}
-			if !reflect.DeepEqual(before, m.services.Agent.Messages()) {
+			if !reflect.DeepEqual(before, m.features.Agent.Messages()) {
 				t.Fatal("cancelled summary changed history")
 			}
 		})
@@ -142,7 +142,7 @@ func TestManualCompactionFencesLateResults(t *testing.T) {
 					if err := m.cancelManualCompaction(); err != nil {
 						t.Fatal(err)
 					}
-					if err := m.services.Session.Close(); err != nil {
+					if err := m.features.Session.Close(); err != nil {
 						t.Fatal(err)
 					}
 					opened, err := store.Open(t.Context(), "s")
@@ -152,7 +152,7 @@ func TestManualCompactionFencesLateResults(t *testing.T) {
 					m.replaceSession(opened)
 				case "runtime":
 					provider := &restartStubProvider{requests: make(chan []core.Message, 1)}
-					if err := m.services.Agent.Start(agentruntime.BuildParams{Provider: provider, ModelID: "m"}, m.services.Agent.Messages()); err != nil {
+					if err := m.features.Agent.Start(agentruntime.BuildParams{Provider: provider, ModelID: "m"}, m.features.Agent.Messages()); err != nil {
 						t.Fatal(err)
 					}
 				case "successor":
@@ -162,7 +162,7 @@ func TestManualCompactionFencesLateResults(t *testing.T) {
 				}
 				m.OnCompactStart(99)
 				pending := m.pendingCompaction
-				before := m.services.Agent.Messages()
+				before := m.features.Agent.Messages()
 				history, err := store.Read(t.Context(), m.sessionID())
 				if err != nil {
 					t.Fatal(err)
@@ -176,7 +176,7 @@ func TestManualCompactionFencesLateResults(t *testing.T) {
 					t.Fatal(err)
 				}
 				afterRows := store.ChatRows(afterHistory)
-				if m.pendingCompaction != pending || !m.conv.Compact.Active || m.conv.Compact.LastResult != "" || m.env.Compressions != 0 || !reflect.DeepEqual(before, m.services.Agent.Messages()) || !reflect.DeepEqual(rows, afterRows) {
+				if m.pendingCompaction != pending || !m.conv.Compact.Active || m.conv.Compact.LastResult != "" || m.env.Compressions != 0 || !reflect.DeepEqual(before, m.features.Agent.Messages()) || !reflect.DeepEqual(rows, afterRows) {
 					t.Fatal("stale result altered current state or recording")
 				}
 			})
@@ -201,7 +201,7 @@ func TestManualCompactionCancelPreservesInputPrecedence(t *testing.T) {
 	m.userInput.Textarea.SetValue("queued continuation")
 	m.handleSubmit()
 	m.routeKeypress(tea.KeyPressMsg{Code: tea.KeyEscape})
-	if request.Ctx.Err() == nil || !m.pendingMessages.Held() || m.userInput.Queue.Len() != 1 || !m.services.Agent.Active() {
+	if request.Ctx.Err() == nil || !m.pendingMessages.Held() || m.userInput.Queue.Len() != 1 || !m.features.Agent.Active() {
 		t.Fatal("cancel did not hold input independently of runtime")
 	}
 	if cmd := m.sendNextQueuedInputIfIdle(); cmd != nil {
@@ -256,10 +256,10 @@ func TestManualCompactionCompletedResultOwnership(t *testing.T) {
 				t.Fatal(err)
 			}
 			if replace {
-				if len(m.services.Agent.Messages()) != 0 || len(loaded.ActiveMessages()) != len(request.Messages) {
+				if len(m.features.Agent.Messages()) != 0 || len(loaded.ActiveMessages()) != len(request.Messages) {
 					t.Fatal("late successful result changed history")
 				}
-			} else if len(loaded.ActiveMessages()) != 1 || !reflect.DeepEqual(loaded.ActiveMessages(), m.services.Agent.Messages()) || m.conv.Compact.Active {
+			} else if len(loaded.ActiveMessages()) != 1 || !reflect.DeepEqual(loaded.ActiveMessages(), m.features.Agent.Messages()) || m.conv.Compact.Active {
 				t.Fatal("successful result did not record and replace the native chain")
 			}
 		})
@@ -279,7 +279,7 @@ func TestManualCompactionRequestFailureReleasesOwnership(t *testing.T) {
 	if m.pendingCompaction != nil || request.Ctx.Err() == nil || m.conv.Compact.Active || !m.conv.Compact.LastError {
 		t.Fatal("failure retained ownership or progress UI")
 	}
-	m.services.Agent.SetMessages(nil)
+	m.features.Agent.SetMessages(nil)
 	m.BuildCompactRequest("", "manual")
 	if m.pendingCompaction != nil {
 		t.Fatal("rejected short request acquired a lifetime")
@@ -290,11 +290,11 @@ func TestManualCompactionOpensWriterBeforeReplacingHistory(t *testing.T) {
 	for _, fail := range []bool{false, true} {
 		t.Run(map[bool]string{false: "open", true: "open-fails"}[fail], func(t *testing.T) {
 			m, store := resumedModel(t, parallelResultChain())
-			if err := m.services.Session.Close(); err != nil {
+			if err := m.features.Session.Close(); err != nil {
 				t.Fatal(err)
 			}
-			m.services.Session = nil
-			m.services.sessionID = "unopened"
+			m.features.Session = nil
+			m.features.sessionID = "unopened"
 			if fail {
 				// An already leased writer cannot be replaced by a new Create.
 				opened, err := store.Create(t.Context(), session.CreateOptions{ID: "unopened"})
@@ -311,12 +311,12 @@ func TestManualCompactionOpensWriterBeforeReplacingHistory(t *testing.T) {
 				t.Fatal("result retained request/progress")
 			}
 			if fail {
-				if !m.conv.Compact.LastError || !reflect.DeepEqual(m.services.Agent.Messages(), request.Messages) {
+				if !m.conv.Compact.LastError || !reflect.DeepEqual(m.features.Agent.Messages(), request.Messages) {
 					t.Fatal("failed recording replaced history")
 				}
 			} else {
 				loaded, err := store.Read(t.Context(), "unopened")
-				if err != nil || len(loaded.ActiveMessages()) != 1 || !reflect.DeepEqual(loaded.ActiveMessages(), m.services.Agent.Messages()) {
+				if err != nil || len(loaded.ActiveMessages()) != 1 || !reflect.DeepEqual(loaded.ActiveMessages(), m.features.Agent.Messages()) {
 					t.Fatalf("unopened summary was not recorded: %v", err)
 				}
 			}
@@ -327,7 +327,7 @@ func TestManualCompactionOpensWriterBeforeReplacingHistory(t *testing.T) {
 func TestManualCompactionCancelsPreCompactHook(t *testing.T) {
 	m, _ := resumedModel(t, parallelResultChain())
 	entered, cancelled := make(chan struct{}), make(chan struct{})
-	m.services.Hook.AddSessionFunctionHook(hook.PreCompact, "", hook.FunctionHook{Callback: func(ctx context.Context, _ hook.HookInput) (hook.HookOutput, error) {
+	m.features.Hook.AddSessionFunctionHook(hook.PreCompact, "", hook.FunctionHook{Callback: func(ctx context.Context, _ hook.HookInput) (hook.HookOutput, error) {
 		close(entered)
 		<-ctx.Done()
 		close(cancelled)

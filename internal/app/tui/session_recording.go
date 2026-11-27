@@ -9,15 +9,15 @@ import (
 func (m *model) closeSessionRecording() error {
 	m.retireFlowMain()
 	m.cancelMemoryUpdate()
-	if m.services.Hook != nil {
-		m.services.Hook.Shutdown()
+	if m.features.Hook != nil {
+		m.features.Hook.Shutdown()
 	}
 	var err error
-	if m.services.Session != nil {
-		err = m.services.Session.Close()
+	if m.features.Session != nil {
+		err = m.features.Session.Close()
 	}
-	if m.services.SessionStore != nil {
-		err = errors.Join(err, m.services.SessionStore.Close())
+	if m.features.SessionStore != nil {
+		err = errors.Join(err, m.features.SessionStore.Close())
 	}
 	return err
 }

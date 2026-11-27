@@ -24,7 +24,7 @@ func modelWithPromptHook(t *testing.T, command string) *model {
 		}},
 	}
 	return &model{
-		services: services{
+		features: appFeatures{
 			Hook:     hook.NewEngine(data, "test-session", t.TempDir(), ""),
 			Reminder: reminder.NewQueue(),
 			Setting:  setting.New(data),
@@ -93,7 +93,7 @@ func TestUIHookBudgetHonorsSetting(t *testing.T) {
 	for _, tc := range cases {
 		data := setting.NewData()
 		data.HookUITimeout = tc.raw
-		m := &model{services: services{Setting: setting.New(data)}}
+		m := &model{features: appFeatures{Setting: setting.New(data)}}
 		if got := m.uiHookBudget(); got != tc.want {
 			t.Errorf("hookUITimeout=%q: budget=%v, want %v", tc.raw, got, tc.want)
 		}

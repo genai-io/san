@@ -35,22 +35,22 @@ type memoryInputMsg struct {
 }
 
 func (m *model) currentAutoMemory() runtime.AutoMemoryConfig {
-	if svc := m.services.Setting; svc != nil {
+	if svc := m.features.Setting; svc != nil {
 		return runtime.AutoMemoryConfig{Store: m.autoMemoryStore(), Recall: svc.MemoryRecall(), IndexLimits: svc.MemoryPreview()}
 	}
 	return runtime.AutoMemoryConfig{}
 }
 
 func (m *model) memoryRecallConfig() setting.MemoryRecallConfig {
-	if m.services.Setting == nil {
+	if m.features.Setting == nil {
 		return setting.MemoryRecallConfig{}
 	}
-	return m.services.Setting.MemoryRecall()
+	return m.features.Setting.MemoryRecall()
 }
 
 func (m *model) needsMemoryInput(head pendingMessage) bool {
 	if !head.FromUser || head.MemoryReady || head.Completion != nil || head.Source != nil || head.Destination != nil ||
-		m.services.Session == nil || strings.TrimSpace(head.Text()) == "" || chat.IsAgentEnvelope(head.Text()) {
+		m.features.Session == nil || strings.TrimSpace(head.Text()) == "" || chat.IsAgentEnvelope(head.Text()) {
 		return false
 	}
 	return m.memoryRecallConfig().Mode == setting.MemoryRecallWait && m.autoMemory.Store.HasNotes()
@@ -63,20 +63,20 @@ func (m *model) prepareMemoryInput(head pendingMessage) tea.Cmd {
 func (m *model) startMemoryInput(parent context.Context, head pendingMessage, accept func(memoryInputMsg) tea.Cmd) tea.Cmd {
 	ctx, cancel := context.WithCancel(parent)
 	r := &memoryInput{
-		owner: m.services.Session, outbox: m.AgentOutbox(), store: m.autoMemory.Store,
+		owner: m.features.Session, outbox: m.AgentOutbox(), store: m.autoMemory.Store,
 		head: head, parent: parent, cancel: cancel, accept: accept,
 		startedAt: time.Now(),
 	}
 	startSpinner := !m.needsSpinner()
 	m.memoryInput = r
 	provider, info := m.resolveJudge("")
-	effort := runtime.LowestEffort(provider, m.services.LLM.Store(), info)
+	effort := runtime.LowestEffort(provider, m.features.LLM.Store(), info)
 	selector := runtime.Recaller{Provider: provider, Model: info.ModelID, Effort: effort, Recording: r.owner}
-	if svc := m.services.Setting; svc != nil {
+	if svc := m.features.Setting; svc != nil {
 		selector.Timeout = svc.MemoryRecall().Timeout
 		selector.IndexLimits = svc.MemoryPreview()
 	}
-	history := m.services.Agent.Messages()
+	history := m.features.Agent.Messages()
 	prepare := func() tea.Msg {
 		result, err := selector.PrepareForAdmission(ctx, r.store, head.Message, history)
 		if ctx.Err() != nil {
@@ -139,7 +139,7 @@ func (m *model) onMemoryInput(msg memoryInputMsg) tea.Cmd {
 		return nil
 	}
 	m.cancelMemoryInput()
-	if r.owner != m.services.Session || r.owner.Err() != nil || r.outbox != m.AgentOutbox() ||
+	if r.owner != m.features.Session || r.owner.Err() != nil || r.outbox != m.AgentOutbox() ||
 		r.parent.Err() != nil || !m.pendingMessages.CanDeliver(false) {
 		closeMemoryInput(msg.result.Completion)
 		return nil

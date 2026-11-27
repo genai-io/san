@@ -20,9 +20,9 @@ import (
 
 func flowInputModel(manager *task.RunSet) *model {
 	m := &model{
-		services:  services{Task: manager, Flow: flow.NewScheduler(manager), Subagent: subagent.NewRegistry(), Tracker: todo.NewStore()},
+		features:  appFeatures{Task: manager, Flow: flow.NewScheduler(manager), Subagent: subagent.NewRegistry(), Tracker: todo.NewStore()},
 		conv:      chat.NewModel(80),
-		userInput: input.New("", 80, nil, input.SelectorServices{}),
+		userInput: input.New("", 80, nil, input.SelectorBindings{}),
 	}
 	m.env.Width = 80
 	return m
@@ -179,7 +179,7 @@ func TestCtrlCStopsForegroundBeforeBackgroundFlow(t *testing.T) {
 	defer cancel()
 	wf := manager.CreateSchedulerTask("flow-in-background", "flow", "audit", ctx, cancel)
 	m := flowInputModel(manager)
-	m.services.Agent = &runtime.Runtime{}
+	m.features.Agent = &runtime.Runtime{}
 	m.conv.Stream.Active = true
 
 	m.handleTextareaShortcut(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})

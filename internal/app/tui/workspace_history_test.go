@@ -16,7 +16,7 @@ func TestWorkspaceChangeKeepsSubmissionHistoryLocal(t *testing.T) {
 	m := fixedComposerModel(80, 24)
 	m.env.CWD = a
 	m.userInput.History.Items = history.Load(a)
-	m.learnedStores = newLearnedStoreContext(a, m.services.Setting)
+	m.learnedStores = newLearnedStoreContext(a, m.features.Setting)
 	m.userInput.Textarea.SetValue("/help")
 	m.changeCwd(b)
 	m.userInput.HistoryUp()

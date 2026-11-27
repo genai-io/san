@@ -25,7 +25,7 @@ func (s flowRunStub) GetRun(string) (*flow.RunRecord, error) {
 
 func TestFlowMainStepOpensNativeHistoryAndReturns(t *testing.T) {
 	m := flowInputModel(nil)
-	m.services.sessionID = "main-session"
+	m.features.sessionID = "main-session"
 	m.env.Height = 30
 	m.conv.Append(core.ChatMessage{ID: "writer-input", Role: core.ChatUser, Content: "WRITER_NATIVE_INPUT"})
 	m.conv.Append(core.ChatMessage{ID: "writer-answer", Role: core.ChatAssistant, Content: "WRITER_NATIVE_ANSWER"})
@@ -211,7 +211,7 @@ func TestFlowOpenTaskUnavailable(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			manager := task.NewRunSet()
 			m := flowInputModel(manager)
-			m.services.sessionID = "main-session"
+			m.features.sessionID = "main-session"
 			if tc.live {
 				ctx, cancel := context.WithCancel(context.Background())
 				defer cancel()

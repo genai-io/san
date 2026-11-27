@@ -58,7 +58,7 @@ func (m *model) flowMainWriterInput(prompt string) (core.Message, tea.Cmd, func(
 		prompt += "\n\nUser amendments for this revision:\n\n" + strings.Join(amendments, "\n\n")
 	}
 	var start tea.Cmd
-	if !m.services.Agent.Active() {
+	if !m.features.Agent.Active() {
 		if m.env.LLMProvider == nil {
 			return core.Message{}, nil, nil, fmt.Errorf("main writer has no provider configured")
 		}
@@ -148,7 +148,7 @@ func (m *model) releaseFlowMainStepInput() (tea.Cmd, bool) {
 		m.conv.AddNotice("Queued Flow input was blocked: " + reason)
 		return tea.Batch(m.CommitMessages()...), false
 	}
-	if !m.services.Agent.Active() || r.msg.lease.owner.Err() != nil {
+	if !m.features.Agent.Active() || r.msg.lease.owner.Err() != nil {
 		m.pendingMessages.Hold(nil)
 		return nil, false
 	}
@@ -197,7 +197,7 @@ func (m *model) sendFlowMainStepInput(r *flowMainRequest, head input.QueueItem, 
 	p.RecallQuery = p.Message.Text()
 	p.Message = m.attachPendingReminders(p.Message)
 	canSend := r == m.flowMainRequest && m.flowMainWriterActive() && r.msg.ctx.Err() == nil
-	if !canSend || m.services.Agent.SendInput(p) != nil {
+	if !canSend || m.features.Agent.SendInput(p) != nil {
 		closeMemoryInput(p.Completion)
 		m.pendingMessages.Hold(nil)
 		return nil, false

@@ -39,7 +39,7 @@ func (m *model) loadSessionByID(id string) error {
 		m.workerMu.Lock()
 		defer m.workerMu.Unlock()
 	}
-	history, err := m.services.SessionStore.Read(context.Background(), id)
+	history, err := m.features.SessionStore.Read(context.Background(), id)
 	if err != nil {
 		return err
 	}
@@ -47,24 +47,24 @@ func (m *model) loadSessionByID(id string) error {
 		return err
 	}
 	// Validate presentation metadata before changing the selected owner too.
-	if _, err := m.services.SessionStore.Attrs(context.Background(), id); err != nil {
+	if _, err := m.features.SessionStore.Attrs(context.Background(), id); err != nil {
 		return err
 	}
 	if _, _, err := m.resolveSessionModel(history); err != nil {
 		return err
 	}
-	opened := m.services.Session
+	opened := m.features.Session
 	reuse := opened != nil && opened.ID() == id && opened.Err() == nil
 	if !reuse {
 		if opened != nil && opened.ID() == id {
-			if m.services.Hook != nil {
-				m.services.Hook.Shutdown()
+			if m.features.Hook != nil {
+				m.features.Hook.Shutdown()
 			}
 			if err := opened.Close(); err != nil {
 				return err
 			}
 		}
-		opened, err = m.services.SessionStore.Open(context.Background(), id)
+		opened, err = m.features.SessionStore.Open(context.Background(), id)
 		if err != nil {
 			return err
 		}
@@ -84,11 +84,11 @@ func (m *model) loadSessionByID(id string) error {
 		}
 		return err
 	}
-	if reuse && m.services.Hook != nil {
-		oldHooks := m.services.Hook
+	if reuse && m.features.Hook != nil {
+		oldHooks := m.features.Hook
 		next := oldHooks.ForSession(opened.ID(), m.env.CWD, opened.Path())
 		oldHooks.Shutdown()
-		m.services.Hook = next
+		m.features.Hook = next
 		apphook.Bind(next, m.env.LLMProvider, opened, m.env.GetModelID())
 		m.configureAsyncHookCallback()
 		m.wireTaskLifecycle(next)
@@ -143,16 +143,16 @@ func (m *model) resolveSessionModel(history session.Projection) (llm.Provider, *
 	}
 	if saved := config.Provider; saved != nil && *saved != "" {
 		if provider == nil || provider.Name() != *saved {
-			if m.services.LLM == nil {
+			if m.features.LLM == nil {
 				return nil, nil, fmt.Errorf("cannot resume provider %q without connection settings", *saved)
 			}
-			resolved, err := llm.NewProviderPool(m.services.LLM.Store()).Resolve(context.Background(), llm.ProviderID(*saved))
+			resolved, err := llm.NewProviderPool(m.features.LLM.Store()).Resolve(context.Background(), llm.ProviderID(*saved))
 			if err != nil {
 				return nil, nil, fmt.Errorf("cannot resume provider %q: %w", *saved, err)
 			}
 			provider = resolved
 			info.Provider = llm.ProviderID(*saved)
-			if connection, ok := m.services.LLM.Store().Connection(info.Provider); ok {
+			if connection, ok := m.features.LLM.Store().Connection(info.Provider); ok {
 				info.AuthMethod = connection.AuthMethod
 			}
 		}
@@ -171,22 +171,22 @@ func (m *model) restoreHistory(history session.Projection) error {
 	if err != nil {
 		return err
 	}
-	attrs, err := m.services.SessionStore.Attrs(context.Background(), history.SessionID())
+	attrs, err := m.features.SessionStore.Attrs(context.Background(), history.SessionID())
 	if err != nil {
 		return err
 	}
 	m.env.LLMProvider, m.env.CurrentModel = provider, info
-	if m.services.LLM != nil {
-		m.services.LLM.SetProvider(provider)
-		m.services.LLM.SetCurrentModel(info)
+	if m.features.LLM != nil {
+		m.features.LLM.SetProvider(provider)
+		m.features.LLM.SetCurrentModel(info)
 	}
-	apphook.Bind(m.services.Hook, provider, m.services.Session, info.ModelID)
+	apphook.Bind(m.features.Hook, provider, m.features.Session, info.ModelID)
 	m.resetRecap()
-	m.conv.Messages = m.services.SessionStore.ChatRows(history)
+	m.conv.Messages = m.features.SessionStore.ChatRows(history)
 	m.earlyNotices = nil
 	active := history.ActiveMessages()
-	m.services.Agent.SetMessages(active)
-	m.services.Reminder.RestoreHistory(active)
+	m.features.Agent.SetMessages(active)
+	m.features.Reminder.RestoreHistory(active)
 	m.conv.CommittedCount = 0
 	m.env.SessionName = attrs.Title
 	state, config := history.State(), history.Config()
@@ -195,12 +195,12 @@ func (m *model) restoreHistory(history session.Projection) error {
 	}
 	m.setTrackerStorageDir("")
 	m.initTaskStorage(history.SessionID())
-	m.services.Tracker.Reset()
+	m.features.Tracker.Reset()
 	if state.Todos != nil {
-		m.services.Tracker.Import(*state.Todos)
+		m.features.Tracker.Import(*state.Todos)
 	}
 	m.beforeGoal = nil
-	m.env.AutoPilot = autopilotWithoutSessionFields(m.services.Setting.Snapshot().AutoPilot)
+	m.env.AutoPilot = autopilotWithoutSessionFields(m.features.Setting.Snapshot().AutoPilot)
 	if config.AutopilotPolicy != nil {
 		m.env.AutoPilot = config.AutopilotPolicy.Settings.Clone()
 	}

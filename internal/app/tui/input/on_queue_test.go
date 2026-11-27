@@ -12,7 +12,7 @@ import (
 func TestQueueEraseThenEdit(t *testing.T) {
 	for _, action := range []string{"delete", "replace"} {
 		t.Run(action, func(t *testing.T) {
-			m := New("", 80, nil, SelectorServices{})
+			m := New("", 80, nil, SelectorBindings{})
 			a := m.Queue.Enqueue("A", nil)
 			b := m.Queue.Enqueue("B", nil)
 			m.EnterQueueSelection()
@@ -43,7 +43,7 @@ func TestQueueEraseThenEdit(t *testing.T) {
 func TestLastQueueRemovalRestoresComposer(t *testing.T) {
 	for _, key := range []tea.KeyPressMsg{{Code: 'c', Mod: tea.ModCtrl}, {Code: tea.KeyEscape}} {
 		t.Run(key.String(), func(t *testing.T) {
-			m := New("", 80, nil, SelectorServices{})
+			m := New("", 80, nil, SelectorBindings{})
 			m.Textarea.SetValue("unfinished composer")
 			m.Queue.Enqueue("only item", nil)
 			m.EnterQueueSelection()
@@ -149,7 +149,7 @@ func TestQueueAdjustSelectionAfterRemove(t *testing.T) {
 }
 
 func TestDeleteCurrentQueueItemRemovesSelected(t *testing.T) {
-	m := New("", 10, nil, SelectorServices{})
+	m := New("", 10, nil, SelectorBindings{})
 	m.Queue.Enqueue("first", nil)
 	m.Queue.Enqueue("second", nil)
 	m.Queue.SelectIdx = 0
@@ -166,7 +166,7 @@ func TestDeleteCurrentQueueItemRemovesSelected(t *testing.T) {
 }
 
 func TestEditingQueuedTurnDropsRemovedImage(t *testing.T) {
-	m := New("", 80, nil, SelectorServices{})
+	m := New("", 80, nil, SelectorBindings{})
 	first := core.Attachment{Image: ai.Image{FileName: "first.png"}}
 	second := core.Attachment{Image: ai.Image{FileName: "second.png"}}
 	m.Queue.Enqueue("a [Image #1] and [Image #2]", []core.Attachment{first, second})
@@ -187,7 +187,7 @@ func TestEditingQueuedTurnDropsRemovedImage(t *testing.T) {
 }
 
 func TestSaveCurrentQueueEditWritesBack(t *testing.T) {
-	m := New("", 10, nil, SelectorServices{})
+	m := New("", 10, nil, SelectorBindings{})
 	m.Queue.Enqueue("original", nil)
 	m.Queue.SelectIdx = 0
 	m.Textarea.SetValue("edited")

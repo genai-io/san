@@ -33,7 +33,7 @@ func draftTestModel(t *testing.T) *model {
 	}
 	t.Cleanup(func() { owner.Close() })
 	m := newRecapModel(t)
-	m.services.Session, m.services.sessionID = owner, owner.ID()
+	m.features.Session, m.features.sessionID = owner, owner.ID()
 	return m
 }
 
@@ -64,7 +64,7 @@ func TestFlowDraftOneShotReviewAndRecording(t *testing.T) {
 		t.Run(source[:5], func(t *testing.T) {
 			m := draftTestModel(t)
 			goal := "Inspect \"quotes\" and 'apostrophes'\nexactly"
-			m.services.Agent.SetMessages([]core.Message{core.UserMessage("existing context", nil)})
+			m.features.Agent.SetMessages([]core.Message{core.UserMessage("existing context", nil)})
 			calls := 0
 			driver := aitest.New(func(ctx context.Context, req *ai.Request) iter.Seq2[ai.Delta, error] {
 				calls++
@@ -107,10 +107,10 @@ func TestFlowDraftOneShotReviewAndRecording(t *testing.T) {
 					t.Fatalf("malformed source lost: %s", edited)
 				}
 			}
-			if messages := m.services.Agent.Messages(); len(messages) != 1 || messages[0].Content.Text() != "existing context" {
+			if messages := m.features.Agent.Messages(); len(messages) != 1 || messages[0].Content.Text() != "existing context" {
 				t.Fatal("authoring leaked into main chain")
 			}
-			p := m.services.Session.Snapshot()
+			p := m.features.Session.Snapshot()
 			if len(p.Messages()) != 0 || len(p.Unfinished().Inferences) != 0 {
 				t.Fatal("ordinary messages or unfinished recording")
 			}
@@ -166,7 +166,7 @@ func TestFlowDraftFailures(t *testing.T) {
 			if m.flowDraft != nil || m.userInput.Flow.IsGenerating(request.Generation) {
 				t.Fatal("failed request still spinning")
 			}
-			p := m.services.Session.Snapshot()
+			p := m.features.Session.Snapshot()
 			if len(p.Unfinished().Inferences) != 0 {
 				t.Fatal("failed recording left open")
 			}
@@ -197,7 +197,7 @@ func TestFlowDraftRejectsAbnormalStops(t *testing.T) {
 			if !strings.Contains(rendered, string(reason)) || !strings.Contains(rendered, "No draft was created") || !strings.Contains(rendered, "Enter retry") {
 				t.Fatalf("abnormal stop not visibly reported: %s", rendered)
 			}
-			p := m.services.Session.Snapshot()
+			p := m.features.Session.Snapshot()
 			events := p.Events()
 			if len(p.Unfinished().Inferences) != 0 || len(p.Messages()) != 0 || len(events) != 3 {
 				t.Fatal("failed recording was not closed without publishing messages")
@@ -229,12 +229,12 @@ func TestFlowDraftMissingProvider(t *testing.T) {
 	m := draftTestModel(t)
 	m.env.LLMProvider = nil
 	request := draftRequest(t, m, "draft")
-	p := m.services.Session.Snapshot()
+	p := m.features.Session.Snapshot()
 	before := len(p.Events())
 	if m.generateFlow(request) != nil || m.flowDraft != nil || m.userInput.Flow.IsGenerating(request.Generation) {
 		t.Fatal("missing provider started request")
 	}
-	p = m.services.Session.Snapshot()
+	p = m.features.Session.Snapshot()
 	if len(p.Events()) != before {
 		t.Fatal("missing provider created recording")
 	}
@@ -244,7 +244,7 @@ func TestFlowDraftCancellationFences(t *testing.T) {
 	for _, fence := range []string{"close", "session", "replacement"} {
 		t.Run(fence, func(t *testing.T) {
 			m := draftTestModel(t)
-			owner := m.services.Session
+			owner := m.features.Session
 			entered := make(chan struct{})
 			driver := aitest.New(func(ctx context.Context, req *ai.Request) iter.Seq2[ai.Delta, error] {
 				close(entered)
@@ -265,7 +265,7 @@ func TestFlowDraftCancellationFences(t *testing.T) {
 			case "close":
 				m.userInput.Flow.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyEscape})
 			case "session":
-				m.services.Session = nil
+				m.features.Session = nil
 			case "replacement":
 				next = draftRequest(t, m, "new")
 			}
@@ -314,7 +314,7 @@ func TestFlowDraftQueuedResultCannotReplaceNewRequest(t *testing.T) {
 	}
 	final := draftResult(t, replacementCmd)
 	m.onFlowDrafted(final)
-	p := m.services.Session.Snapshot()
+	p := m.features.Session.Snapshot()
 	if len(p.Unfinished().Inferences) != 0 {
 		t.Fatal("recording remained open")
 	}

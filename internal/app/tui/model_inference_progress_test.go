@@ -18,8 +18,8 @@ import (
 
 func modelWithInferenceProgress(height int) *model {
 	m := fixedComposerModel(80, height)
-	m.services.Agent = &runtime.Runtime{}
-	m.services.Tool = tool.NewRegistry()
+	m.features.Agent = &runtime.Runtime{}
+	m.features.Tool = tool.NewRegistry()
 	m.env.SessionPermissions = setting.NewSessionPermissions()
 	m.pendingDecisions = &sync.Map{}
 	chat.Update(m, &m.conv, chat.AgentOutboxMsg{Event: sdkagent.InferenceStart{Attempt: 1}})

@@ -30,7 +30,7 @@ func TestWorkerItemSurvivesImmediateCompletion(t *testing.T) {
 	t.Cleanup(func() { task.SetLifecycleHandler(nil) })
 
 	tracker := todo.NewStore()
-	m := &model{services: services{Tracker: tracker}}
+	m := &model{features: appFeatures{Tracker: tracker}}
 	m.wireTaskLifecycle(nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -56,14 +56,14 @@ func TestCompletedWorkerWaitsForVisibleNotice(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			m, _ := noticeDeliveryModel(t)
 			m.env.Width = 80
-			m.services.Task = task.NewRunSet()
+			m.features.Task = task.NewRunSet()
 			m.mainNotices = make(chan mainNotice, 1)
 			m.wireTaskLifecycle(nil)
 			mail.Register(mail.Main, func(msg mail.Message) bool { return m.notifyMain(fromBrokerMessage(msg)) })
 			t.Cleanup(func() { task.SetLifecycleHandler(nil); mail.Unregister(mail.Main) })
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
-			worker := m.services.Task.CreateAgentTask("t1", "Backend", "research", ctx, cancel)
+			worker := m.features.Task.CreateAgentTask("t1", "Backend", "research", ctx, cancel)
 			worker.Complete(nil)
 
 			assertRetained := func() {
@@ -94,7 +94,7 @@ func TestCompletedWorkerWaitsForVisibleNotice(t *testing.T) {
 			if view, _ := m.renderTrackerList(); view != "" {
 				t.Fatalf("worker remained after its completion notice was shown:\n%s", view)
 			}
-			if items := m.services.Tracker.List(); len(items) != 1 || items[0].Status != todo.StatusCompleted {
+			if items := m.features.Tracker.List(); len(items) != 1 || items[0].Status != todo.StatusCompleted {
 				t.Fatal("hiding a worker must preserve its completed record")
 			}
 		})
@@ -104,18 +104,18 @@ func TestCompletedWorkerWaitsForVisibleNotice(t *testing.T) {
 func TestTurnEndKeepsWorkerAwaitingCompletionNotice(t *testing.T) {
 	m, _ := noticeDeliveryModel(t)
 	attachTurnSession(t, m)
-	m.services.Hook = hook.NewEngine(setting.NewData(), "", t.TempDir(), "")
+	m.features.Hook = hook.NewEngine(setting.NewData(), "", t.TempDir(), "")
 	m.env.Width = 80
-	m.services.Task = task.NewRunSet()
+	m.features.Task = task.NewRunSet()
 	m.wireTaskLifecycle(nil)
 	t.Cleanup(func() { task.SetLifecycleHandler(nil) })
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	worker := m.services.Task.CreateAgentTask("pending-notice", "Backend", "research", ctx, cancel)
+	worker := m.features.Task.CreateAgentTask("pending-notice", "Backend", "research", ctx, cancel)
 	worker.Complete(nil)
 
 	m.OnTurnEnd(core.Result{StopReason: core.StopEndTurn})
-	if items := m.services.Tracker.List(); len(items) != 1 {
+	if items := m.features.Tracker.List(); len(items) != 1 {
 		t.Fatal("turn end discarded a worker before its completion notice arrived")
 	}
 	if view, _ := m.renderTrackerList(); !strings.Contains(view, "Backend: research") {
@@ -128,15 +128,15 @@ func TestTurnEndKeepsWorkerAwaitingCompletionNotice(t *testing.T) {
 	m.deliverNotice(fromBrokerMessage(msg))
 	m.OnTurnEnd(core.Result{StopReason: core.StopEndTurn})
 	assertNoticeShown(t, m)
-	if len(m.services.Tracker.List()) != 0 {
+	if len(m.features.Tracker.List()) != 0 {
 		t.Fatal("announced completions should allow the normal turn-end reset")
 	}
 }
 
 func TestResumedCompletedWorkerDoesNotWaitForLiveNotice(t *testing.T) {
 	m := flowInputModel(task.NewRunSet())
-	worker := m.services.Tracker.Create("Already finished", "", "", map[string]any{"background_task_id": "previous-process"})
-	if err := m.services.Tracker.Update(worker.ID, todo.WithStatus(todo.StatusCompleted)); err != nil {
+	worker := m.features.Tracker.Create("Already finished", "", "", map[string]any{"background_task_id": "previous-process"})
+	if err := m.features.Tracker.Update(worker.ID, todo.WithStatus(todo.StatusCompleted)); err != nil {
 		t.Fatal(err)
 	}
 	if view, _ := m.renderTrackerList(); view != "" {

@@ -13,7 +13,7 @@ import (
 
 // autoMemoryStore returns the repository's Auto Memory store when enabled.
 func (m *model) autoMemoryStore() system.MemoryStore {
-	if !m.services.Setting.AutoMemory() {
+	if !m.features.Setting.AutoMemory() {
 		return ""
 	}
 	return setting.MemoryStoreFor(m.env.CWD)

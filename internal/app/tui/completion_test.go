@@ -23,8 +23,8 @@ func attachTurnSession(t *testing.T, m *model) {
 	}
 	store := testutil.OpenSessionStore(t, m.env.CWD)
 	opened := mustCreateSession(t, store, session.CreateOptions{ID: "turn", AgentID: "main"})
-	m.services.SessionStore = store
-	m.services.Session = opened
+	m.features.SessionStore = store
+	m.features.Session = opened
 	m.env.SessionPermissions = setting.NewSessionPermissions()
 	t.Cleanup(func() { _ = opened.Close() })
 }
@@ -33,7 +33,7 @@ func attachTurnSession(t *testing.T, m *model) {
 // must remain a no-op while still surfacing a retired writer.
 func turnStateRecordCount(t *testing.T, m *model) int {
 	t.Helper()
-	p := m.services.Session.Snapshot()
+	p := m.features.Session.Snapshot()
 	count := 0
 	for _, event := range p.Events() {
 		if event.Type == session.EventSessionUpdate {
@@ -47,11 +47,11 @@ func TestNormalIdleTurnStateRecordCount(t *testing.T) {
 	for _, scenario := range []string{"no-hooks", "allow", "block", "changed-while-pending", "closed-while-pending"} {
 		t.Run(scenario, func(t *testing.T) {
 			m, _ := compactQueueModel(t)
-			m.services.Tracker.Create("Verify state persistence", "", "", map[string]any{"priority": 1})
+			m.features.Tracker.Create("Verify state persistence", "", "", map[string]any{"priority": 1})
 			m.env.AutoPilot.Mission = "completed state"
 			called := false
 			if scenario != "no-hooks" {
-				m.services.Hook.AddSessionFunctionHook(hook.Stop, "", hook.FunctionHook{
+				m.features.Hook.AddSessionFunctionHook(hook.Stop, "", hook.FunctionHook{
 					Callback: func(context.Context, hook.HookInput) (hook.HookOutput, error) {
 						called = true
 						return hook.HookOutput{Continue: new(scenario != "block"), StopReason: "more work"}, nil
@@ -63,12 +63,12 @@ func TestNormalIdleTurnStateRecordCount(t *testing.T) {
 			if m.pendingStopHook == nil || turnStateRecordCount(t, m) != before+1 {
 				t.Fatal("completion did not record state before scheduling the Stop check")
 			}
-			check := runtime.NewStopCheck(m.services.Hook, core.LastAssistantChatContent(m.conv.Messages))
+			check := runtime.NewStopCheck(m.features.Hook, core.LastAssistantChatContent(m.conv.Messages))
 			if scenario == "changed-while-pending" {
 				m.env.AutoPilot.Mission = "changed state"
 			}
 			if scenario == "closed-while-pending" {
-				if err := m.services.Session.Close(); err != nil {
+				if err := m.features.Session.Close(); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -139,7 +139,7 @@ func TestNormalTurnRecordsBeforeQueuedSuccessor(t *testing.T) {
 			m.userInput.Queue.Enqueue("successor", nil)
 			m.env.AutoPilot.Mission = "completed state"
 			if failed {
-				if err := m.services.Session.Close(); err != nil {
+				if err := m.features.Session.Close(); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -172,7 +172,7 @@ func TestNormalTurnRecordsBeforeQueuedSuccessor(t *testing.T) {
 					t.Fatal("successor end missing")
 				}
 			}
-			data, err := os.ReadFile(m.services.Session.Path())
+			data, err := os.ReadFile(m.features.Session.Path())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -195,7 +195,7 @@ func TestStopContinuationRequiresRecording(t *testing.T) {
 			finish := pendingStopOutcome(t, m, true)
 			m.env.AutoPilot.Mission = "post-hook state"
 			if failed {
-				if err := m.services.Session.Close(); err != nil {
+				if err := m.features.Session.Close(); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -224,7 +224,7 @@ func TestStopContinuationRequiresRecording(t *testing.T) {
 					if _, ok := ev.(core.TurnEnded); !ok {
 						continue
 					}
-					data, err := os.ReadFile(m.services.Session.Path())
+					data, err := os.ReadFile(m.features.Session.Path())
 					if err != nil {
 						t.Fatal(err)
 					}

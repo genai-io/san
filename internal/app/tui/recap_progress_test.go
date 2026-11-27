@@ -16,9 +16,9 @@ func TestRecapLiveUsesOnlyBreathingMark(t *testing.T) {
 		m.recap.busy, m.recap.show = true, true
 		facts := ""
 		if withFacts {
-			item := m.services.Tracker.Create("first", "", "", nil)
-			m.services.Tracker.Create("second", "", "", nil)
-			if err := m.services.Tracker.Update(item.ID, todo.WithStatus(todo.StatusCompleted)); err != nil {
+			item := m.features.Tracker.Create("first", "", "", nil)
+			m.features.Tracker.Create("second", "", "", nil)
+			if err := m.features.Tracker.Update(item.ID, todo.WithStatus(todo.StatusCompleted)); err != nil {
 				t.Fatal(err)
 			}
 			facts = "  plan 1/2\n"

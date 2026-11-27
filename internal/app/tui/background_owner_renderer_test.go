@@ -43,7 +43,7 @@ func TestBackgroundOwnerRenderer(t *testing.T) {
 			manager.SetSessionID("")
 			t.Cleanup(func() { task.SetLifecycleHandler(nil); mail.Reset(); manager.SetSessionID(previous) })
 			m := &ownerRendererModel{&fixedComposerRendererModel{model: fixedComposerModel(width, height), settled: make(chan struct{}, 16)}}
-			m.services.Task = manager
+			m.features.Task = manager
 			m.env.AgentPreviewLines = 1
 			m.wireTaskLifecycle(nil)
 			m.userInput.Textarea.SetValue("COMPOSER-LIVE")
@@ -119,7 +119,7 @@ func TestBackgroundOwnerRenderer(t *testing.T) {
 				case <-time.After(5 * time.Second):
 					t.Fatal("child completion timeout")
 				}
-				if len(main) != 0 || len(m.services.Tracker.List()) != 0 {
+				if len(main) != 0 || len(m.features.Tracker.List()) != 0 {
 					t.Fatal("child completion reached main route or tracker")
 				}
 				all := waitFrame("live-worker")

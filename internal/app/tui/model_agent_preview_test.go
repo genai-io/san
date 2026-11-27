@@ -33,7 +33,7 @@ func TestAgentPreviewSavedUpdatesLivePreference(t *testing.T) {
 			t.Fatal(err)
 		}
 		m.Update(input.AgentPreviewSavedMsg{Lines: n})
-		if m.env.AgentPreviewLines != n || m.services.Setting.Snapshot().AgentPreviewLineCount() != n {
+		if m.env.AgentPreviewLines != n || m.features.Setting.Snapshot().AgentPreviewLineCount() != n {
 			t.Fatalf("saved %d did not update live and reloaded preferences", n)
 		}
 		if m.env.BashPreviewLines != 7 {

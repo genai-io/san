@@ -92,7 +92,7 @@ func noticeDeliveryModel(t *testing.T) (*model, *restartStubProvider) {
 	t.Cleanup(func() { stopRuntime(t, sess) })
 
 	return &model{
-		services: services{
+		features: appFeatures{
 			Agent:    sess,
 			Tracker:  todo.NewStore(),
 			Subagent: subagent.NewRegistry(),

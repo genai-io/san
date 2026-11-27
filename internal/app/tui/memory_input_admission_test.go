@@ -28,7 +28,7 @@ func TestFlowMemoryLanguageReachesMain(t *testing.T) {
 		t.Run(text, func(t *testing.T) {
 			m, provider := compactQueueModel(t)
 			m.flowMain = newFlowMainBridge()
-			owner := m.services.Session
+			owner := m.features.Session
 			executor, err := m.flowMain.bind(owner).Open(t.Context(), flow.MainRunInfo{SessionID: owner.ID()})
 			if err != nil {
 				t.Fatal(err)

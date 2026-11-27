@@ -13,7 +13,7 @@ func (m *model) bindMCPTools() {
 		m.mcpToolsChanged = make(chan struct{}, 1)
 	}
 	changes := m.mcpToolsChanged
-	m.services.MCP.SetOnToolsChanged(func() {
+	m.features.MCP.SetOnToolsChanged(func() {
 		select {
 		case changes <- struct{}{}:
 		default:
@@ -34,12 +34,12 @@ func awaitMCPToolsChanged(changes <-chan struct{}) tea.Cmd {
 
 // Reconcile current services on the UI loop, even for pre-reload signals.
 func (m *model) syncMCPTools() {
-	if m.services.Agent == nil {
+	if m.features.Agent == nil {
 		return
 	}
-	tools := m.services.Agent.Tools()
+	tools := m.features.Agent.Tools()
 	if tools == nil {
 		return
 	}
-	mcp.ReconcileTools(tools, mcp.AsCoreTools(m.services.MCP.ToolSchemas(), m.services.MCP), m.services.Setting.DisabledTools())
+	mcp.ReconcileTools(tools, mcp.AsCoreTools(m.features.MCP.ToolSchemas(), m.features.MCP), m.features.Setting.DisabledTools())
 }

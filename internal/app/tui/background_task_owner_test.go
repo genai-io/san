@@ -30,7 +30,7 @@ func TestBackgroundBashCompletionStaysWithLaunchingAgent(t *testing.T) {
 			previous := manager.SessionID()
 			manager.SetSessionID(tc.selected)
 			t.Cleanup(func() { task.SetLifecycleHandler(nil); mail.Reset(); manager.SetSessionID(previous) })
-			m := &model{services: services{Task: manager, Tracker: todo.NewStore()}, mainNotices: make(chan mainNotice, 4)}
+			m := &model{features: appFeatures{Task: manager, Tracker: todo.NewStore()}, mainNotices: make(chan mainNotice, 4)}
 			m.wireTaskLifecycle(nil)
 			child := make(chan mail.Message, 4)
 			other := make(chan mail.Message, 4)
@@ -53,7 +53,7 @@ func TestBackgroundBashCompletionStaysWithLaunchingAgent(t *testing.T) {
 				case <-time.After(5 * time.Second):
 					t.Fatal("main lost its completion")
 				}
-				if len(m.services.Tracker.List()) != 1 || len(child) != 0 {
+				if len(m.features.Tracker.List()) != 1 || len(child) != 0 {
 					t.Fatal("main work was not retained in main")
 				}
 			} else {
@@ -65,7 +65,7 @@ func TestBackgroundBashCompletionStaysWithLaunchingAgent(t *testing.T) {
 				case <-time.After(5 * time.Second):
 					t.Fatal("child lost its completion")
 				}
-				if len(m.mainNotices) != 0 || len(m.services.Tracker.List()) != 0 || len(m.conv.Messages) != 0 {
+				if len(m.mainNotices) != 0 || len(m.features.Tracker.List()) != 0 || len(m.conv.Messages) != 0 {
 					t.Fatal("child work polluted main context or display")
 				}
 			}
@@ -83,7 +83,7 @@ func TestBackgroundBashDoesNotPolluteMainInference(t *testing.T) {
 	manager.SetSessionID("")
 	t.Cleanup(func() { task.SetLifecycleHandler(nil); mail.Reset(); manager.SetSessionID(previous) })
 	m, provider := noticeDeliveryModel(t)
-	m.services.Task = manager
+	m.features.Task = manager
 	m.mainNotices = make(chan mainNotice, 4)
 	m.conv.Stream.Active = true
 	m.wireTaskLifecycle(nil)
@@ -100,7 +100,7 @@ func TestBackgroundBashDoesNotPolluteMainInference(t *testing.T) {
 			return nil
 		}
 	}
-	if err := m.services.Agent.Send(core.UserMessage("MAIN_INITIAL_CONTEXT", nil)); err != nil {
+	if err := m.features.Agent.Send(core.UserMessage("MAIN_INITIAL_CONTEXT", nil)); err != nil {
 		t.Fatal(err)
 	}
 	initial := request()

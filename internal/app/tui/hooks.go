@@ -1,5 +1,5 @@
 // Hook-forwarding model methods and related helpers.
-// These methods use m.services.Hook to fire lifecycle events,
+// These methods use m.features.Hook to fire lifecycle events,
 // replacing the former env hook methods that used singletons directly.
 package tui
 
@@ -20,15 +20,15 @@ import (
 )
 
 func (m *model) fireStopFailureHook(lastAssistantContent string, err error) {
-	m.services.Hook.ExecuteAsync(hook.StopFailure, hook.HookInput{
+	m.features.Hook.ExecuteAsync(hook.StopFailure, hook.HookInput{
 		LastAssistantMessage: lastAssistantContent,
 		Error:                err.Error(),
-		StopHookActive:       m.services.Hook.StopHookActive(),
+		StopHookActive:       m.features.Hook.StopHookActive(),
 	})
 }
 
 func (m *model) executeStartupHooks(ctx context.Context) hook.HookOutcome {
-	m.services.Hook.ExecuteAsync(hook.Setup, hook.HookInput{
+	m.features.Hook.ExecuteAsync(hook.Setup, hook.HookInput{
 		Trigger: "init",
 	})
 	// A session ID exists even for a new session; restored messages are what
@@ -37,7 +37,7 @@ func (m *model) executeStartupHooks(ctx context.Context) hook.HookOutcome {
 	if len(m.conv.Messages) > 0 {
 		source = "resume"
 	}
-	return m.services.Hook.Execute(ctx, hook.SessionStart, hook.HookInput{
+	return m.features.Hook.Execute(ctx, hook.SessionStart, hook.HookInput{
 		Source: source,
 		Model:  m.env.GetModelID(),
 	})
@@ -58,9 +58,9 @@ type stopHookResultMsg struct {
 }
 
 func (m *model) fireIdleHooksCmd(result core.Result) tea.Cmd {
-	pending := &pendingStopHook{session: m.services.Session, outbox: m.AgentOutbox()}
+	pending := &pendingStopHook{session: m.features.Session, outbox: m.AgentOutbox()}
 	m.pendingStopHook = pending
-	check := runtime.NewStopCheck(m.services.Hook, core.LastAssistantChatContent(m.conv.Messages))
+	check := runtime.NewStopCheck(m.features.Hook, core.LastAssistantChatContent(m.conv.Messages))
 	return func() tea.Msg {
 		decision := check.Run(context.Background())
 		return stopHookResultMsg{pending: pending, Blocked: decision.Blocked, Reason: decision.Reason, Err: decision.Err, Result: result}
@@ -88,7 +88,7 @@ const defaultUIHookBudget = 5 * time.Second
 // raise it, falling back to defaultUIHookBudget for an empty, unparseable, or
 // non-positive value.
 func (m *model) uiHookBudget() time.Duration {
-	if raw := m.services.Setting.HookUITimeout(); raw != "" {
+	if raw := m.features.Setting.HookUITimeout(); raw != "" {
 		if d, err := time.ParseDuration(raw); err == nil && d > 0 {
 			return d
 		}
@@ -100,19 +100,19 @@ func (m *model) runPromptSubmitHook(ctx context.Context, prompt string) (bool, s
 	ctx, cancel := context.WithTimeout(ctx, m.uiHookBudget())
 	defer cancel()
 
-	return runtime.RunPromptSubmitHook(ctx, prompt, m.services.Hook, m.services.Reminder)
+	return runtime.RunPromptSubmitHook(ctx, prompt, m.features.Hook, m.features.Reminder)
 }
 
 func (m *model) switchProvider(p llm.Provider) {
 	m.env.LLMProvider = p
-	m.services.LLM.SetProvider(p)
-	apphook.Bind(m.services.Hook, p, m.services.Session, m.env.GetModelID())
+	m.features.LLM.SetProvider(p)
+	apphook.Bind(m.features.Hook, p, m.features.Session, m.env.GetModelID())
 }
 
 func (m *model) refreshMemoryContext(cwd, loadReason string) {
 	files := system.LoadMemoryFiles(cwd)
 	for _, f := range files {
-		m.services.Hook.ExecuteAsync(hook.InstructionsLoaded, hook.HookInput{
+		m.features.Hook.ExecuteAsync(hook.InstructionsLoaded, hook.HookInput{
 			FilePath:   f.Path,
 			MemoryType: memoryTypeForLevel(f.Level),
 			LoadReason: loadReason,
@@ -132,9 +132,9 @@ func (m *model) refreshMemoryContext(cwd, loadReason string) {
 // install, silently. init.go gets this right by binding the snapshot first;
 // doing the merge here means a caller cannot get it wrong.
 func (m *model) syncSettingsToHookEngine() {
-	settings := m.services.Setting.Snapshot()
+	settings := m.features.Setting.Snapshot()
 	plugin.MergePluginHooksIntoSettings(settings)
-	m.services.Hook.SetSettings(settings)
+	m.features.Hook.SetSettings(settings)
 }
 
 func memoryTypeForLevel(level string) string {

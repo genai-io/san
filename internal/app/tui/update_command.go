@@ -13,8 +13,8 @@ import (
 
 func (m *model) slashCommandEnv() input.SlashCommandEnv {
 	var flows input.FlowWorkspace
-	if m.services.Flow != nil {
-		flows = m.services.Flow
+	if m.features.Flow != nil {
+		flows = m.features.Flow
 	}
 	return input.SlashCommandEnv{
 		// UI state
@@ -26,19 +26,19 @@ func (m *model) slashCommandEnv() input.SlashCommandEnv {
 		Cwd:          m.env.CWD,
 
 		// Services
-		Setting:      m.services.Setting,
-		LLM:          m.services.LLM,
-		SessionStore: m.services.SessionStore,
-		Session:      m.services.Session,
+		Setting:      m.features.Setting,
+		LLM:          m.features.LLM,
+		SessionStore: m.features.SessionStore,
+		Session:      m.features.Session,
 		SessionID:    m.sessionID,
-		Command:      m.services.Command,
-		Skill:        m.services.Skill,
-		Plugin:       m.services.Plugin,
-		MCP:          m.services.MCP,
-		Tracker:      m.services.Tracker,
-		Cron:         m.services.Cron,
-		ToolSvc:      m.services.Tool,
-		TaskSvc:      m.services.Task,
+		Command:      m.features.Command,
+		Skill:        m.features.Skill,
+		Plugin:       m.features.Plugin,
+		MCP:          m.features.MCP,
+		Tracker:      m.features.Tracker,
+		Cron:         m.features.Cron,
+		ToolSvc:      m.features.Tool,
+		TaskSvc:      m.features.Task,
 		Flow:         flows,
 
 		// Env callbacks

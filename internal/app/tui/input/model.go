@@ -114,7 +114,7 @@ func (img *ImageState) RemoveAt(idx int) {
 	}
 }
 
-type SelectorServices struct {
+type SelectorBindings struct {
 	AgentRegistry   *subagent.Registry
 	PersonaRegistry *corepersona.Registry
 	SkillRegistry   *coreskill.Registry
@@ -128,7 +128,7 @@ type SelectorServices struct {
 	Reflection ReflectionSources
 }
 
-func New(cwd string, width int, matchFunc suggest.Matcher, services SelectorServices) Model {
+func New(cwd string, width int, matchFunc suggest.Matcher, bindings SelectorBindings) Model {
 	suggestions := suggest.NewState(matchFunc)
 	suggestions.SetCwd(cwd)
 	return Model{
@@ -139,19 +139,19 @@ func New(cwd string, width int, matchFunc suggest.Matcher, services SelectorServ
 
 		Approval:   NewApproval(),
 		Secret:     NewSecretPrompt(),
-		Agent:      NewAgentSelector(services.AgentRegistry),
-		Persona:    NewPersonaSelector(services.PersonaRegistry, services.Setting),
-		Search:     NewSearchSelector(services.Setting),
-		Skill:      SkillState{Selector: NewSkillSelector(services.SkillRegistry)},
+		Agent:      NewAgentSelector(bindings.AgentRegistry),
+		Persona:    NewPersonaSelector(bindings.PersonaRegistry, bindings.Setting),
+		Search:     NewSearchSelector(bindings.Setting),
+		Skill:      SkillState{Selector: NewSkillSelector(bindings.SkillRegistry)},
 		Session:    SessionState{Selector: NewSessionSelector()},
 		Memory:     MemoryState{Selector: NewMemorySelector()},
-		MCP:        MCPState{Selector: NewMCPSelector(services.MCPServers)},
-		Plugin:     NewPluginSelector(services.PluginRegistry),
+		MCP:        MCPState{Selector: NewMCPSelector(bindings.MCPServers)},
+		Plugin:     NewPluginSelector(bindings.PluginRegistry),
 		Provider:   ProviderState{Selector: NewProviderSelector()},
-		Tool:       NewToolSelector(services.LoadDisabled, services.UpdateDisabled, services.HeldOn),
-		Settings:   NewSettingsSelector(services.Setting),
+		Tool:       NewToolSelector(bindings.LoadDisabled, bindings.UpdateDisabled, bindings.HeldOn),
+		Settings:   NewSettingsSelector(bindings.Setting),
 		Autopilot:  NewAutopilotSelector(),
-		Reflection: NewReflectionSelector(services.Reflection),
+		Reflection: NewReflectionSelector(bindings.Reflection),
 	}
 }
 

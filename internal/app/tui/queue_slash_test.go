@@ -31,7 +31,7 @@ func TestQueuedSlashCommandsWaitForTurnBoundary(t *testing.T) {
 	} {
 		t.Run(tc.raw, func(t *testing.T) {
 			m, provider := compactQueueModel(t)
-			m.services.Command = command.NewRegistry(command.Options{CWD: m.env.CWD})
+			m.features.Command = command.NewRegistry(command.Options{CWD: m.env.CWD})
 			m.conv.Stream.Active = true
 			m.userInput.Textarea.SetValue(tc.raw)
 			m.handleSubmit()
@@ -81,7 +81,7 @@ func TestQueuedLocalCommandsDoNotStrandSuccessor(t *testing.T) {
 	for _, boundary := range []string{"turn", "idle", "overlay"} {
 		t.Run(boundary, func(t *testing.T) {
 			m, provider := compactQueueModel(t)
-			m.services.Command = command.NewRegistry(command.Options{CWD: m.env.CWD})
+			m.features.Command = command.NewRegistry(command.Options{CWD: m.env.CWD})
 			if boundary == "overlay" {
 				m.userInput.Queue.Enqueue("/settings", nil)
 			} else {
@@ -128,7 +128,7 @@ func TestQueuedLocalCommandsDoNotStrandSuccessor(t *testing.T) {
 
 func TestQueuedLocalCommandAllowsIdleCompletion(t *testing.T) {
 	m, _ := compactQueueModel(t)
-	m.services.Command = command.NewRegistry(command.Options{CWD: m.env.CWD})
+	m.features.Command = command.NewRegistry(command.Options{CWD: m.env.CWD})
 	m.userInput.Queue.Enqueue("/help", nil)
 	m.OnTurnEnd(core.Result{StopReason: core.StopEndTurn})
 	if m.pendingStopHook == nil || m.userInput.Queue.Len() != 0 {
@@ -197,8 +197,8 @@ func TestQueuedSlashInvocationExpandsInstructions(t *testing.T) {
 			if err := os.WriteFile(path, []byte("---\nname: review\ndescription: Review queued input\n---\nCheck pending command routing carefully.\n"), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			m.services.Command = command.NewRegistry(command.Options{CWD: m.env.CWD})
-			m.services.Skill = skill.Load(skill.Options{CWD: m.env.CWD})
+			m.features.Command = command.NewRegistry(command.Options{CWD: m.env.CWD})
+			m.features.Skill = skill.Load(skill.Options{CWD: m.env.CWD})
 			m.userInput.Queue.Enqueue("/review inspect pending", nil)
 
 			if _, released := m.drainTurnQueues(); !released {

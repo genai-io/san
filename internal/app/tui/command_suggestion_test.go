@@ -14,12 +14,12 @@ import (
 
 func TestFlowSchedulerIsWiredDirectlyToSlashCommands(t *testing.T) {
 	manager := task.NewRunSet()
-	svc := services{Task: manager, Flow: flow.NewScheduler(manager)}
-	if svc.Flow == nil {
-		t.Fatal("app services must construct a direct Flow service")
+	features := appFeatures{Task: manager, Flow: flow.NewScheduler(manager)}
+	if features.Flow == nil {
+		t.Fatal("app features must include a flow scheduler")
 	}
-	m := &model{services: svc}
-	if got := m.slashCommandEnv().Flow; got != svc.Flow {
+	m := &model{features: features}
+	if got := m.slashCommandEnv().Flow; got != features.Flow {
 		t.Fatal("slash commands did not receive the app-owned Flow service")
 	}
 }
@@ -27,17 +27,17 @@ func TestFlowSchedulerIsWiredDirectlyToSlashCommands(t *testing.T) {
 func TestFlowStorageDoesNotRequireAProviderOrToolRegistry(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	manager := task.NewRunSet()
-	m := &model{services: services{Task: manager, Flow: flow.NewScheduler(manager)}}
+	m := &model{features: appFeatures{Task: manager, Flow: flow.NewScheduler(manager)}}
 	m.env.CWD = t.TempDir()
 	m.ReconfigureAgentTool()
 	source := "---\nname: offline\n---\n```mermaid\nflowchart LR\n work\n```\n## work\nInspect {{input}}\n"
-	if err := m.services.Flow.SaveDefinition("offline", source, ""); err != nil {
+	if err := m.features.Flow.SaveDefinition("offline", source, ""); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := m.services.Flow.Definition("offline"); err != nil || got != source {
+	if got, err := m.features.Flow.Definition("offline"); err != nil || got != source {
 		t.Fatalf("offline definition=%q error=%v", got, err)
 	}
-	match := commandSuggestionMatcher(&command.Registry{}, m.services.Flow)
+	match := commandSuggestionMatcher(&command.Registry{}, m.features.Flow)
 	if got := match("/flow run offline "); len(got) != 1 || got[0].Name != "flow run offline input=" || got[0].Description != "Value for run input: input" {
 		t.Fatalf("bare run input suggestion: %+v", got)
 	}

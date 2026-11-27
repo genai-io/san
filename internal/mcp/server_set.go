@@ -64,7 +64,7 @@ type mcpState struct {
 // defaultServers is the package-level server set; defaultMu guards the pointer
 // itself. The ServerSet it points at locks its own contents — what needed
 // guarding is the swap, which Initialize performs on the bubbletea goroutine
-// (reloadProjectServices) while Default() is read elsewhere.
+// (reloadProjectFeatures) while Default() is read elsewhere.
 var (
 	defaultMu sync.RWMutex
 	// Serializes adoption lock ordering; never held during transport I/O.

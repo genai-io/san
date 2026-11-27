@@ -42,10 +42,10 @@ func TestBuildAgentParamsNativeAuditsAndPaging(t *testing.T) {
 			} else {
 				data.Permissions.Deny = []string{name}
 			}
-			m.services.Setting = setting.New(data)
-			m.services.MCP = mcp.NewServerSetForTest(nil)
-			m.services.Hook = hook.NewEngine(data, "wrong-owner", m.env.CWD, "")
-			m.services.Hook.AddSessionFunctionHook(hook.PreToolUse, name, hook.FunctionHook{
+			m.features.Setting = setting.New(data)
+			m.features.MCP = mcp.NewServerSetForTest(nil)
+			m.features.Hook = hook.NewEngine(data, "wrong-owner", m.env.CWD, "")
+			m.features.Hook.AddSessionFunctionHook(hook.PreToolUse, name, hook.FunctionHook{
 				Callback: func(_ context.Context, input hook.HookInput) (hook.HookOutput, error) {
 					return hook.HookOutput{}, nil
 				},
@@ -54,7 +54,7 @@ func TestBuildAgentParamsNativeAuditsAndPaging(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			m.services.Skill = skill.NewRegistryForTest(map[string]*skill.Skill{"fixture": {Name: "fixture", State: skill.StateEnable}}, states, states)
+			m.features.Skill = skill.NewRegistryForTest(map[string]*skill.Skill{"fixture": {Name: "fixture", State: skill.StateEnable}}, states, states)
 			m.env.LLMProvider = &mainSessionProvider{client: aitest.New(
 				aitest.Replies(ai.Response{Content: ai.Content{ai.ToolCallBlock(ai.ToolCall{ID: "native-call", Name: name, Input: `{}`})}, StopReason: ai.StopToolUse}),
 				aitest.Says("finished"),
@@ -63,10 +63,10 @@ func TestBuildAgentParamsNativeAuditsAndPaging(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if params.SessionID != m.services.Session.ID() || params.HookEngine != m.services.Hook {
+			if params.SessionID != m.features.Session.ID() || params.HookEngine != m.features.Hook {
 				t.Fatal("composition lost native owner or hook")
 			}
-			if err := m.services.Skill.SetState("fixture", skill.StateActive, setting.ScopeUser); err != nil {
+			if err := m.features.Skill.SetState("fixture", skill.StateActive, setting.ScopeUser); err != nil {
 				t.Fatal(err)
 			}
 			var calls atomic.Int32
@@ -75,21 +75,21 @@ func TestBuildAgentParamsNativeAuditsAndPaging(t *testing.T) {
 				calls.Add(1)
 				return sdkagent.TextResult(full), nil
 			})}
-			if err := m.services.Agent.Start(params, nil); err != nil {
+			if err := m.features.Agent.Start(params, nil); err != nil {
 				t.Fatal(err)
 			}
-			if err := m.services.Agent.Send(core.UserMessage("run", nil)); err != nil {
+			if err := m.features.Agent.Send(core.UserMessage("run", nil)); err != nil {
 				t.Fatal(err)
 			}
 			deadline := time.NewTimer(5 * time.Second)
 			defer deadline.Stop()
 			for {
 				select {
-				case ev := <-m.services.Agent.Outbox():
+				case ev := <-m.features.Agent.Outbox():
 					if _, ok := ev.(core.TurnEnded); !ok {
 						continue
 					}
-					rec := m.services.Session
+					rec := m.features.Session
 					if err := rec.Err(); err != nil {
 						t.Fatal(err)
 					}
@@ -132,7 +132,7 @@ func TestBuildAgentParamsNativeAuditsAndPaging(t *testing.T) {
 }
 
 func TestBuildAgentParamsRequiresPermissionOwner(t *testing.T) {
-	for _, m := range []*model{{}, {services: services{Setting: setting.New(setting.NewData())}}} {
+	for _, m := range []*model{{}, {features: appFeatures{Setting: setting.New(setting.NewData())}}} {
 		if _, err := m.buildAgentParams(); err == nil {
 			t.Fatal("accepted unavailable policy")
 		}
@@ -143,7 +143,7 @@ func TestBuildAgentParamsRequiresPermissionOwner(t *testing.T) {
 // Runtime construction must likewise preserve the hook audit chosen by the host.
 func TestRuntimeConstructionPreservesHostHookAudit(t *testing.T) {
 	m, store := resumedModel(t, nil)
-	owner := agentruntime.MainSession{Session: m.services.Session, Store: store}
+	owner := agentruntime.MainSession{Session: m.features.Session, Store: store}
 	var audits atomic.Int32
 	hooks := hook.NewEngine(nil, owner.Session.ID(), m.env.CWD, owner.Session.Path())
 	hooks.SetAuditCallback(func(hook.HookFiredAudit) { audits.Add(1) })
@@ -152,17 +152,17 @@ func TestRuntimeConstructionPreservesHostHookAudit(t *testing.T) {
 		t.Fatal(err)
 	}
 	provider := &mainSessionProvider{client: aitest.New(aitest.Replies(ai.Response{Content: ai.Content{ai.ToolCallBlock(ai.ToolCall{ID: "audit-call", Name: "mcp__fixture__output", Input: `{}`})}, StopReason: ai.StopToolUse}), aitest.Says("done")).Client()}
-	if err := m.services.Agent.Start(agentruntime.BuildParams{Provider: provider, ModelID: "fake", PermissionRules: (agentruntime.PermissionPolicy{}).Decide, HookEngine: hooks, MCPTools: []core.Tool{sdkagent.ToolFunc("mcp__fixture__output", "output", func(context.Context, struct{}) (sdkagent.Result, error) { return sdkagent.TextResult("unused"), nil })}}, nil); err != nil {
+	if err := m.features.Agent.Start(agentruntime.BuildParams{Provider: provider, ModelID: "fake", PermissionRules: (agentruntime.PermissionPolicy{}).Decide, HookEngine: hooks, MCPTools: []core.Tool{sdkagent.ToolFunc("mcp__fixture__output", "output", func(context.Context, struct{}) (sdkagent.Result, error) { return sdkagent.TextResult("unused"), nil })}}, nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := m.services.Agent.Send(core.UserMessage("run", nil)); err != nil {
+	if err := m.features.Agent.Send(core.UserMessage("run", nil)); err != nil {
 		t.Fatal(err)
 	}
 	deadline := time.NewTimer(5 * time.Second)
 	defer deadline.Stop()
 	for {
 		select {
-		case ev := <-m.services.Agent.Outbox():
+		case ev := <-m.features.Agent.Outbox():
 			if _, ok := ev.(core.TurnEnded); ok {
 				if audits.Load() != 1 {
 					t.Fatalf("host audit count = %d", audits.Load())

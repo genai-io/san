@@ -14,10 +14,10 @@ import (
 
 func installBlockingPromptHook(t *testing.T, m *model) *int {
 	t.Helper()
-	m.services.Setting = setting.New(setting.NewData())
-	m.services.Hook = hook.NewEngine(setting.NewData(), "session", t.TempDir(), "")
+	m.features.Setting = setting.New(setting.NewData())
+	m.features.Hook = hook.NewEngine(setting.NewData(), "session", t.TempDir(), "")
 	calls := new(int)
-	m.services.Hook.AddSessionFunctionHook(hook.UserPromptSubmit, "", hook.FunctionHook{
+	m.features.Hook.AddSessionFunctionHook(hook.UserPromptSubmit, "", hook.FunctionHook{
 		Callback: func(_ context.Context, in hook.HookInput) (hook.HookOutput, error) {
 			*calls++
 			allow := false
@@ -31,7 +31,7 @@ func TestPromptAdmissionBlocksDirectAndIdleQueuedBeforeSlash(t *testing.T) {
 	for _, queued := range []bool{false, true} {
 		t.Run(map[bool]string{false: "direct", true: "idle queue"}[queued], func(t *testing.T) {
 			m, _ := textOnlyModel(t)
-			m.userInput = input.New("", 80, nil, input.SelectorServices{})
+			m.userInput = input.New("", 80, nil, input.SelectorBindings{})
 			calls := installBlockingPromptHook(t, m)
 			if queued {
 				m.userInput.Textarea.SetValue("unrelated draft")
@@ -53,7 +53,7 @@ func TestPromptAdmissionBlocksDirectAndIdleQueuedBeforeSlash(t *testing.T) {
 			if len(m.conv.Messages) != 1 || !strings.Contains(m.conv.Messages[0].Content, "Prompt blocked: test policy") {
 				t.Fatalf("block notice = %+v", m.conv.Messages)
 			}
-			if m.services.Reminder.Prepared() || !strings.Contains(strings.Join(m.services.Reminder.Pending(), ""), "context from /clear") {
+			if m.features.Reminder.Prepared() || !strings.Contains(strings.Join(m.features.Reminder.Pending(), ""), "context from /clear") {
 				t.Fatal("blocked context was drained or lost")
 			}
 		})
@@ -65,7 +65,7 @@ func TestPromptAdmissionAcceptedOnceThroughDispatch(t *testing.T) {
 		t.Run(map[bool]string{false: "direct", true: "idle queue"}[queued], func(t *testing.T) {
 			m, provider := compactQueueModel(t)
 			calls := 0
-			m.services.Hook.AddSessionFunctionHook(hook.UserPromptSubmit, "", hook.FunctionHook{
+			m.features.Hook.AddSessionFunctionHook(hook.UserPromptSubmit, "", hook.FunctionHook{
 				Callback: func(_ context.Context, in hook.HookInput) (hook.HookOutput, error) {
 					calls++
 					if in.Prompt != "accepted prompt" {

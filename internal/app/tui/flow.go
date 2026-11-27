@@ -31,7 +31,7 @@ type flowDraftedMsg struct {
 }
 
 func (m *model) syncFlowDraft() {
-	if r := m.flowDraft; r != nil && (r.owner != m.services.Session || !m.userInput.Flow.IsGenerating(r.generation)) {
+	if r := m.flowDraft; r != nil && (r.owner != m.features.Session || !m.userInput.Flow.IsGenerating(r.generation)) {
 		r.cancel()
 		m.flowDraft = nil
 	}
@@ -43,7 +43,7 @@ func (m *model) generateFlow(msg input.FlowDraftRequestMsg) tea.Cmd {
 		return nil
 	}
 	if m.flowDraft != nil {
-		if m.flowDraft.generation == msg.Generation && m.flowDraft.owner == m.services.Session {
+		if m.flowDraft.generation == msg.Generation && m.flowDraft.owner == m.features.Session {
 			return nil
 		}
 		m.flowDraft.cancel()
@@ -54,11 +54,11 @@ func (m *model) generateFlow(msg input.FlowDraftRequestMsg) tea.Cmd {
 		return nil
 	}
 	catalog := ""
-	if m.services.Subagent != nil {
-		catalog = m.services.Subagent.AgentCatalog()
+	if m.features.Subagent != nil {
+		catalog = m.features.Subagent.AgentCatalog()
 	}
-	if m.services.Skill != nil {
-		for _, sk := range m.services.Skill.ListEnabled() {
+	if m.features.Skill != nil {
+		for _, sk := range m.features.Skill.ListEnabled() {
 			catalog += "\nAvailable Skill: " + sk.FullName()
 		}
 	}
@@ -95,7 +95,7 @@ func (m *model) generateFlow(msg input.FlowDraftRequestMsg) tea.Cmd {
 
 func (m *model) onFlowDrafted(msg flowDraftedMsg) tea.Cmd {
 	r := msg.request
-	if r == nil || m.flowDraft != r || r.owner != m.services.Session || !m.userInput.Flow.IsGenerating(r.generation) {
+	if r == nil || m.flowDraft != r || r.owner != m.features.Session || !m.userInput.Flow.IsGenerating(r.generation) {
 		closeAside(msg.recording)
 		return nil
 	}

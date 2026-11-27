@@ -92,27 +92,27 @@ func (m *model) cancelManualCompaction() error {
 
 func (m *model) BuildCompactRequest(focus, trigger string) runtime.CompactRequest {
 	client := m.buildLLMClient()
-	native := m.services.Agent.Messages()
+	native := m.features.Agent.Messages()
 	messages := client.RequestMessages(native)
 	ctx := context.Background()
 	var recording *session.Completion
 	var preCompact func(context.Context) hook.HookOutcome
 	var requestErr error
-	owner := m.services.Session
+	owner := m.features.Session
 	// Rejected short requests never acquire a lifetime or disturb the UI.
 	if len(messages) >= core.MinMessagesToCompact {
 		if err := m.cancelManualCompaction(); err != nil {
 			return runtime.CompactRequest{Ctx: ctx, Err: err}
 		}
 		owner, requestErr = m.openCurrentSession()
-		if requestErr == nil && !owner.OwnedBy(m.services.SessionStore) {
+		if requestErr == nil && !owner.OwnedBy(m.features.SessionStore) {
 			requestErr = fmt.Errorf("compaction session and store have different owners")
 		}
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithCancel(ctx)
 		recording = owner.Completion(session.PurposeCompaction)
-		if requestErr == nil && m.services.Hook != nil {
-			preCompact = m.services.Hook.Prepare(hook.PreCompact, hook.HookInput{Trigger: trigger, CustomInstructions: focus})
+		if requestErr == nil && m.features.Hook != nil {
+			preCompact = m.features.Hook.Prepare(hook.PreCompact, hook.HookInput{Trigger: trigger, CustomInstructions: focus})
 		}
 		for i := range native {
 			native[i].Content = native[i].Content.Clone()
@@ -193,7 +193,7 @@ func (m *model) OnCompacted(info core.Compacted) tea.Cmd {
 	} else {
 		m.conv.Compact.Clear()
 	}
-	if restored := runtime.PostCompact(info, m.services.Hook, m.services.Reminder, m.env.FileCache, func() {
+	if restored := runtime.PostCompact(info, m.features.Hook, m.features.Reminder, m.env.FileCache, func() {
 		m.refreshMemoryContext(m.env.CWD, "post_compact")
 	}); restored > 0 {
 		m.conv.AddNotice(fmt.Sprintf("Restored %d recently accessed file(s) for context.", restored))
@@ -212,11 +212,11 @@ func (m *model) OnCompacted(info core.Compacted) tea.Cmd {
 func (m *model) HandleCompactResult(msg chat.CompactResultMsg) tea.Cmd {
 	p := m.pendingCompaction
 	if p == nil || msg.Context != p.ctx || msg.Completion != p.completion || p.ctx.Err() != nil ||
-		p.session != m.services.Session || p.sessionID != m.sessionID() || p.outbox != m.AgentOutbox() {
+		p.session != m.features.Session || p.sessionID != m.sessionID() || p.outbox != m.AgentOutbox() {
 		discardCompaction(msg.Completion)
 		return nil
 	}
-	if p.completion != nil && !reflect.DeepEqual(p.messages, m.services.Agent.Messages()) {
+	if p.completion != nil && !reflect.DeepEqual(p.messages, m.features.Agent.Messages()) {
 		if err := m.cancelManualCompaction(); err != nil {
 			m.conv.AddNotice("Compaction cleanup failed: " + err.Error())
 			return tea.Batch(m.CommitMessages()...)
@@ -246,7 +246,7 @@ func (m *model) HandleCompactResult(msg chat.CompactResultMsg) tea.Cmd {
 	// OnCompacted from the agent's authoritative message count, so the box and
 	// the boundary line never disagree. The spinner stays until the agent's
 	// CompactEvent arrives.
-	accepted, err := m.services.Agent.Compact(msg.Completion.Compaction(msg.Summary))
+	accepted, err := m.features.Agent.Compact(msg.Completion.Compaction(msg.Summary))
 	if err != nil {
 		discardCompaction(msg.Completion)
 		m.conv.Compact.Complete(fmt.Sprintf("Compaction could not be queued: %v", err), true)
@@ -260,6 +260,6 @@ func (m *model) HandleCompactResult(msg chat.CompactResultMsg) tea.Cmd {
 		m.conv.Compact.Complete(fmt.Sprintf("Compaction could not be saved: %v", err), true)
 		return tea.Batch(m.CommitMessages()...)
 	}
-	m.services.Agent.SetMessages([]core.Message{summary})
+	m.features.Agent.SetMessages([]core.Message{summary})
 	return m.OnCompacted(info)
 }

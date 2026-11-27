@@ -222,10 +222,10 @@ func (m *model) handleTextareaShortcut(msg tea.KeyMsg) (tea.Cmd, bool) {
 }
 
 func (m *model) hasRunningFlow() bool {
-	if m.services.Task == nil {
+	if m.features.Task == nil {
 		return false
 	}
-	for _, bg := range m.services.Task.ListRunning() {
+	for _, bg := range m.features.Task.ListRunning() {
 		if bg.GetStatus().Scheduler {
 			return true
 		}

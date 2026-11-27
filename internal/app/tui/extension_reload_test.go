@@ -46,17 +46,17 @@ func extensionReloadModel(t *testing.T, cwd string) *model {
 	})
 	setting.Initialize(setting.Options{CWD: cwd})
 	initExtensions(cwd)
-	svc := services{
+	features := appFeatures{
 		Setting: setting.Default(), Skill: skill.Default(), Command: command.Default(),
 		Subagent: subagent.Default(), MCP: mcp.Default(), Plugin: plugin.Default(), Persona: persona.Default(),
 		Agent: &agentruntime.Runtime{}, Tool: tool.NewRegistry(), Reminder: reminder.NewQueue(),
 		Hook: hook.NewEngine(setting.NewData(), "", cwd, ""),
 	}
-	m := &model{env: env{CWD: cwd}, services: svc, learnedStores: newLearnedStoreContext(cwd, svc.Setting)}
-	m.userInput = input.New(cwd, 80, commandSuggestionMatcher(svc.Command, svc.Flow), input.SelectorServices{
-		AgentRegistry: svc.Subagent, PersonaRegistry: svc.Persona, SkillRegistry: svc.Skill,
-		MCPServers: svc.MCP, PluginRegistry: svc.Plugin, Setting: svc.Setting,
-		LoadDisabled: svc.Setting.DisabledToolsAt, UpdateDisabled: svc.Setting.UpdateDisabledToolAt,
+	m := &model{env: env{CWD: cwd}, features: features, learnedStores: newLearnedStoreContext(cwd, features.Setting)}
+	m.userInput = input.New(cwd, 80, commandSuggestionMatcher(features.Command, features.Flow), input.SelectorBindings{
+		AgentRegistry: features.Subagent, PersonaRegistry: features.Persona, SkillRegistry: features.Skill,
+		MCPServers: features.MCP, PluginRegistry: features.Plugin, Setting: features.Setting,
+		LoadDisabled: features.Setting.DisabledToolsAt, UpdateDisabled: features.Setting.UpdateDisabledToolAt,
 	})
 	return m
 }
@@ -78,14 +78,14 @@ func TestExtensionReloadPluginContributions(t *testing.T) {
 	commandPath := filepath.Join(root, "commands", "probe.md")
 	writeReloadFile(t, filepath.Join(skillDir, "SKILL.md"), "---\nname: probe\ndescription: Reload probe\n---\nProbe instructions\n")
 	writeReloadFile(t, commandPath, "---\ndescription: Reload command\n---\nProbe prompt\n")
-	m.services.Plugin.Register(&plugin.Plugin{
+	m.features.Plugin.Register(&plugin.Plugin{
 		Manifest: plugin.Manifest{Name: "reload"}, Path: root, Enabled: true, Scope: plugin.ScopeProject,
 		Components: plugin.Components{Skills: []string{skillDir}, Commands: []string{commandPath},
 			Hooks: &plugin.HooksConfig{Hooks: map[string][]plugin.HookMatcher{"PreToolUse": {{Matcher: "Bash"}}}}},
 	})
 	for _, enabled := range []bool{true, false} {
 		if !enabled {
-			m.services.Plugin.Unregister("reload")
+			m.features.Plugin.Unregister("reload")
 		}
 		if err := m.ReloadAfterPluginChange(); err != nil {
 			t.Fatal(err)
@@ -96,11 +96,11 @@ func TestExtensionReloadPluginContributions(t *testing.T) {
 		if got := strings.Contains(m.userInput.Skill.Selector.Render(), "probe"); got != enabled {
 			t.Errorf("plugin enabled=%v, skill selector contains probe=%v", enabled, got)
 		}
-		_, found := m.services.Command.Get("reload:probe")
+		_, found := m.features.Command.Get("reload:probe")
 		if found != enabled {
 			t.Errorf("plugin enabled=%v, command present=%v", enabled, found)
 		}
-		if got := m.services.Hook.HasHooks(hook.PreToolUse); got != enabled {
+		if got := m.features.Hook.HasHooks(hook.PreToolUse); got != enabled {
 			t.Errorf("plugin enabled=%v, hook present=%v", enabled, got)
 		}
 	}
@@ -120,10 +120,10 @@ func TestExtensionReloadProjectSuggestions(t *testing.T) {
 	if m.userInput.Suggestions.Selected() != "/old-project" {
 		t.Fatal("old-project fixture was not loaded")
 	}
-	before := m.services.Setting
+	before := m.features.Setting
 	m.env.CWD = next
 	m.ReloadProjectContext(next)
-	if m.services.Setting == before {
+	if m.features.Setting == before {
 		t.Fatal("settings handle was not replaced")
 	}
 	m.userInput.Suggestions.UpdateSuggestions("/new-project")
@@ -135,10 +135,10 @@ func TestExtensionReloadProjectSuggestions(t *testing.T) {
 		t.Errorf("old project suggestion survived reload: %q", got)
 	}
 	cwd, settings := m.learnedStores.Snapshot()
-	if cwd != next || settings != m.services.Setting {
+	if cwd != next || settings != m.features.Setting {
 		t.Fatal("learned stores retained the old workspace")
 	}
-	if skills := m.services.Skill.List(); !slices.ContainsFunc(skills, func(s *skill.Skill) bool { return s.Name == "new-helper" }) || slices.ContainsFunc(skills, func(s *skill.Skill) bool { return s.Name == "old-helper" }) {
+	if skills := m.features.Skill.List(); !slices.ContainsFunc(skills, func(s *skill.Skill) bool { return s.Name == "new-helper" }) || slices.ContainsFunc(skills, func(s *skill.Skill) bool { return s.Name == "old-helper" }) {
 		t.Fatal("persona skills were not reapplied for the new workspace")
 	}
 }
@@ -147,11 +147,11 @@ func TestExtensionReloadReconcilesRunningMCPTools(t *testing.T) {
 	for _, path := range []string{"plugin", "project"} {
 		t.Run(path, func(t *testing.T) {
 			m := extensionReloadModel(t, t.TempDir())
-			if err := m.services.Agent.Start(agentruntime.BuildParams{Provider: &testutil.FakeProvider{}, ModelID: "m"}, nil); err != nil {
+			if err := m.features.Agent.Start(agentruntime.BuildParams{Provider: &testutil.FakeProvider{}, ModelID: "m"}, nil); err != nil {
 				t.Fatal(err)
 			}
-			defer stopRuntime(t, m.services.Agent)
-			tools := m.services.Agent.Tools()
+			defer stopRuntime(t, m.features.Agent)
+			tools := m.features.Agent.Tools()
 			tools.Add(namedTool("mcp__removed__read"), "test")
 			tools.Add(namedTool("Read"), "test")
 			if path == "plugin" {
@@ -175,33 +175,33 @@ func TestExtensionReloadReconcilesRunningMCPTools(t *testing.T) {
 func TestExtensionReloadRebuildsTheNextRuntime(t *testing.T) {
 	m, _ := resumedModel(t, nil)
 	extensions := extensionReloadModel(t, m.env.CWD)
-	m.services.Skill = extensions.services.Skill
-	m.services.Command = extensions.services.Command
-	m.services.Subagent = extensions.services.Subagent
-	m.services.MCP = extensions.services.MCP
-	m.services.Plugin = extensions.services.Plugin
-	m.services.Persona = extensions.services.Persona
-	m.services.Tool = tool.Default()
+	m.features.Skill = extensions.features.Skill
+	m.features.Command = extensions.features.Command
+	m.features.Subagent = extensions.features.Subagent
+	m.features.MCP = extensions.features.MCP
+	m.features.Plugin = extensions.features.Plugin
+	m.features.Persona = extensions.features.Persona
+	m.features.Tool = tool.Default()
 	m.learnedStores = extensions.learnedStores
 	m.userInput = extensions.userInput
 	m.env.LLMProvider = staticTestProvider{aitest.Always(aitest.Says("unused")).Client()}
 	if _, err := m.ensureAgentRuntime(); err != nil {
 		t.Fatal(err)
 	}
-	owner, tools := m.services.Session, m.services.Agent.Tools()
+	owner, tools := m.features.Session, m.features.Agent.Tools()
 	if err := m.ReloadAfterPluginChange(); err != nil {
 		t.Fatal(err)
 	}
-	if !m.services.Agent.Active() || m.services.Agent.Tools() != tools {
+	if !m.features.Agent.Active() || m.features.Agent.Tools() != tools {
 		t.Fatal("reload interrupted the current runtime")
 	}
 	if _, err := m.ensureAgentRuntime(); err != nil {
 		t.Fatal(err)
 	}
-	if m.services.Agent.Tools() == tools || m.agentReloadPending {
+	if m.features.Agent.Tools() == tools || m.agentReloadPending {
 		t.Fatal("next turn reused captured extension and permission dependencies")
 	}
-	if m.services.Session != owner {
+	if m.features.Session != owner {
 		t.Fatal("extension reload replaced the recording owner")
 	}
 }

@@ -32,7 +32,7 @@ func memoryUpdateFixture(t *testing.T, turns ...aitest.Turn) (*model, *aitest.Dr
 	driver := aitest.New(turns...)
 	m.env.LLMProvider = &finalizationProvider{client: driver.Client()}
 	m.env.CurrentModel = &llm.CurrentModelInfo{ModelID: "test"}
-	owner := m.services.Session
+	owner := m.features.Session
 	h, err := owner.StartInference(t.Context(), session.InferenceOptions{
 		Purpose: session.PurposeTurn, TurnID: "test-turn", Provider: m.env.LLMProvider.Name(), Model: ai.Model{ID: "test"},
 		Request: &ai.Request{
@@ -76,7 +76,7 @@ func testMemoryUpdateWrite(t *testing.T, automatic bool) {
 	if automatic {
 		data := setting.NewData()
 		data.MemoryUpdate = new(true)
-		m.services.Setting = setting.New(data)
+		m.features.Setting = setting.New(data)
 		propose := m.updateMemoryAfterTurn(core.Result{StopReason: core.StopEndTurn, Steps: 1, Messages: messages})
 		if propose == nil || m.memoryUpdate == nil || m.memoryUpdate.manual {
 			t.Fatal("completed turn did not schedule an automatic update")
@@ -148,9 +148,9 @@ func testMemoryUpdateWrite(t *testing.T, automatic bool) {
 	if contents, err := os.ReadFile(path); err != nil || !strings.Contains(string(contents), "Use make for project builds.") {
 		t.Fatalf("note not saved: %q, %v", contents, err)
 	}
-	snapshot := m.services.Session.Snapshot()
+	snapshot := m.features.Session.Snapshot()
 	live := m.conv.Messages[len(m.conv.Messages)-1]
-	rows := m.services.SessionStore.ChatRows(snapshot)
+	rows := m.features.SessionStore.ChatRows(snapshot)
 	replayed := rows[len(rows)-1]
 	if len(snapshot.Messages()) != 2 || !strings.Contains(live.Content, "updated fixture-build.md") ||
 		!live.AutoMemoryUpdated || !replayed.AutoMemoryUpdated || replayed.Content != live.Content {
@@ -192,7 +192,7 @@ func TestMemoryUpdateDisplaysPartialFailure(t *testing.T) {
 			m, _, messages, _ := memoryUpdateFixture(t)
 			m.conv.OnNotice = m.recordNotice
 			ctx, cancel := context.WithCancel(t.Context())
-			update := &memoryUpdate{owner: m.services.Session, manual: tc.manual, ctx: ctx, cancel: cancel}
+			update := &memoryUpdate{owner: m.features.Session, manual: tc.manual, ctx: ctx, cancel: cancel}
 			m.memoryUpdate = update
 			start := len(m.conv.Messages)
 			const notice = "Memory · saved fixture-build.md without indexing it (update incomplete)"
@@ -209,12 +209,12 @@ func TestMemoryUpdateDisplaysPartialFailure(t *testing.T) {
 			if tc.manual && added[1].Content != "Auto Memory could not finish: index write failed" {
 				t.Fatalf("missing manual error notice: %+v", added)
 			}
-			snapshot := m.services.Session.Snapshot()
+			snapshot := m.features.Session.Snapshot()
 			if len(snapshot.Messages()) != len(messages) {
 				t.Fatal("partial failure leaked notices into model history")
 			}
 			count := 0
-			for _, row := range m.services.SessionStore.ChatRows(snapshot) {
+			for _, row := range m.features.SessionStore.ChatRows(snapshot) {
 				if row.Role == core.ChatNotice && row.Content == notice {
 					count++
 				}
@@ -234,7 +234,7 @@ func TestAutomaticMemoryUpdateRespectsLivePolicy(t *testing.T) {
 	}
 	data := setting.NewData()
 	data.MemoryUpdate = new(true)
-	m.services.Setting = setting.New(data)
+	m.features.Setting = setting.New(data)
 	cmd := m.updateMemoryAfterTurn(result)
 	if cmd == nil {
 		t.Fatal("enabled completed turn did not start a memory update")
@@ -247,7 +247,7 @@ func TestAutomaticMemoryUpdateRespectsLivePolicy(t *testing.T) {
 	if len(blocks) != 4 || !strings.Contains(blocks[2].Text, "# Note format example") {
 		t.Fatal("Update did not include the note format")
 	}
-	m.services.Setting = setting.New(setting.NewData())
+	m.features.Setting = setting.New(setting.NewData())
 	if cmd := m.applyMemoryUpdate(proposed); cmd != nil {
 		t.Fatal("disabled setting did not discard in-flight proposal")
 	}

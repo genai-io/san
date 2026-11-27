@@ -48,7 +48,7 @@ type autopilotRequestKey struct{}
 func (m *model) newAutopilotRequest() *autopilotRequest {
 	m.cancelAutopilot()
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	r := &autopilotRequest{owner: m.services.Session, id: m.sessionID(), outbox: m.AgentOutbox(), ctx: ctx, cancel: cancel}
+	r := &autopilotRequest{owner: m.features.Session, id: m.sessionID(), outbox: m.AgentOutbox(), ctx: ctx, cancel: cancel}
 	r.ctx = context.WithValue(ctx, autopilotRequestKey{}, r)
 	m.autopilotRequest = r
 	return r
@@ -104,7 +104,7 @@ func (m *model) currentAutopilot(r *autopilotRequest) bool {
 	r.mu.Lock()
 	closed := r.closed
 	r.mu.Unlock()
-	return !closed && m.autopilotRequest == r && r.owner == m.services.Session && r.id == m.sessionID() && r.outbox == m.AgentOutbox()
+	return !closed && m.autopilotRequest == r && r.owner == m.features.Session && r.id == m.sessionID() && r.outbox == m.AgentOutbox()
 }
 
 func (m *model) cancelAutopilot() {
@@ -137,7 +137,7 @@ func (m *model) rebuildAutopilotJudge() {
 	provider, info := m.resolveJudge(ar.Model)
 	rev := judge.New(provider, info.ModelID)
 	if ar.ThinkingEffort != "" {
-		rev.SetThinkingEffort(llm.ResolveThinkingEffortForModel(provider, m.services.LLM.Store(), info, ar.ThinkingEffort))
+		rev.SetThinkingEffort(llm.ResolveThinkingEffortForModel(provider, m.features.LLM.Store(), info, ar.ThinkingEffort))
 	}
 	rev.SetSteeringInstructions(m.autopilotSteeringInstructions())
 	// Publish the judge and the config it resolved from as one snapshot so the
@@ -353,7 +353,7 @@ func (m *model) missionRefine(draft string) (func(context.Context) (string, erro
 			return strings.TrimSpace(resp.Content.Text()), nil
 		}, func() (bool, error) {
 			// The panel fences editor generations; cancellation still needs error delivery.
-			valid := r.owner == m.services.Session && r.id == m.sessionID()
+			valid := r.owner == m.features.Session && r.id == m.sessionID()
 			err := r.ctx.Err()
 			r.close()
 			return valid, err

@@ -42,7 +42,7 @@ func (m *model) handlePermGateDecision(decision permissionDecision) tea.Cmd {
 // saveAllowRules attempts persistence and reports the outcome without revoking approval.
 func (m *model) saveAllowRules(rules []string) tea.Cmd {
 	notice := "Always allowed " + strings.Join(rules, ", ")
-	if path, err := m.services.Setting.AddLocalAllowRules(m.env.CWD, rules); err != nil {
+	if path, err := m.features.Setting.AddLocalAllowRules(m.env.CWD, rules); err != nil {
 		log.Logger().Warn("save always-allow rule failed", zap.Error(err))
 		notice = "Approved once; could not save the allow rule: " + err.Error()
 	} else {

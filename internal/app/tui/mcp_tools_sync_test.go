@@ -43,7 +43,7 @@ func TestSyncMCPToolsReachesTheRunningAgent(t *testing.T) {
 	tools.Add(namedTool("mcp__gone__read"), "mcp:test")
 	tools.Add(namedTool("Read"), "builtin:test")
 
-	m := &model{services: services{
+	m := &model{features: appFeatures{
 		Agent:   sess,
 		MCP:     mcp.NewServerSetForTest(nil),
 		Setting: setting.Default(),
@@ -65,7 +65,7 @@ func TestSyncMCPToolsReachesTheRunningAgent(t *testing.T) {
 // Discovery may precede runtime startup.
 func TestSyncMCPToolsBeforeAnAgentExists(t *testing.T) {
 	for _, runtime := range []*agentruntime.Runtime{nil, new(agentruntime.Runtime)} {
-		m := &model{services: services{
+		m := &model{features: appFeatures{
 			Agent: runtime, MCP: mcp.NewServerSetForTest(nil), Setting: setting.Default(),
 		}}
 		m.syncMCPTools()
@@ -89,7 +89,7 @@ func TestMCPNotificationsReconcileOnTheUILoop(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer stopRuntime(t, runtime)
-	m := &model{services: services{Agent: runtime, MCP: servers, Setting: setting.New(setting.NewData())}}
+	m := &model{features: appFeatures{Agent: runtime, MCP: servers, Setting: setting.New(setting.NewData())}}
 	m.bindMCPTools()
 	if err := servers.Connect(t.Context(), "reload"); err != nil {
 		t.Fatal(err)

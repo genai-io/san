@@ -60,7 +60,7 @@ func (m *model) onBtwAnswer(msg btwAnswerMsg) tea.Cmd {
 	if i := slices.Index(m.btw, msg.ask); i >= 0 {
 		m.btw = slices.Delete(m.btw, i, i+1)
 	}
-	if msg.ask.sessionID != m.sessionID() || msg.owner != m.services.Session {
+	if msg.ask.sessionID != m.sessionID() || msg.owner != m.features.Session {
 		closeAside(msg.recording)
 		return nil
 	}

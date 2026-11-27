@@ -111,7 +111,7 @@ func initProjectRegistries(cwd string) {
 
 // discoverPlugins scans the working directory for plugins. Run on a cwd change
 // so the new project's plugins (and their command / agent / MCP / hook
-// contributions) replace the previous project's before reloadProjectServices
+// contributions) replace the previous project's before reloadProjectFeatures
 // rebuilds the project's feature services.
 func discoverPlugins(cwd string) {
 	if err := plugin.Initialize(context.Background(), plugin.Options{CWD: cwd}); err != nil {
@@ -119,26 +119,26 @@ func discoverPlugins(cwd string) {
 	}
 }
 
-// reloadProjectServices rebuilds the feature singletons that depend on the
+// reloadProjectFeatures rebuilds the feature singletons that depend on the
 // current project — its config dirs plus the active plugins' contributions —
-// and re-points the services struct at the fresh instances. Both halves live
+// and re-points the appFeatures struct at the fresh instances. Both halves live
 // here so the Initialize set and the Default()-regrab set cannot drift. The
 // six: settings, skills, commands, subagents, MCP servers, personas. Plugins
 // themselves are not rebuilt here — discoverPlugins does that on a cwd change,
 // and a plugin load (--plugin-dir or /plugin install) has already done it.
-func (m *model) reloadProjectServices(cwd string) {
+func (m *model) reloadProjectFeatures(cwd string) {
 	setting.Initialize(setting.Options{CWD: cwd})
-	m.services.Setting = setting.Default()
-	m.learnedStores.Update(cwd, m.services.Setting)
+	m.features.Setting = setting.Default()
+	m.learnedStores.Update(cwd, m.features.Setting)
 
 	initProjectRegistries(cwd)
-	m.services.Skill = skill.Default()
-	m.services.Command = command.Default()
-	m.services.Subagent = subagent.Default()
-	m.services.MCP = mcp.Default()
-	m.services.Persona = persona.Default()
-	m.userInput.RebindSelectors(selectorServices(m.services, m.learnedStores))
-	m.userInput.Suggestions = suggest.NewState(commandSuggestionMatcher(m.services.Command, m.services.Flow))
+	m.features.Skill = skill.Default()
+	m.features.Command = command.Default()
+	m.features.Subagent = subagent.Default()
+	m.features.MCP = mcp.Default()
+	m.features.Persona = persona.Default()
+	m.userInput.RebindSelectors(selectorBindings(m.features, m.learnedStores))
+	m.userInput.Suggestions = suggest.NewState(commandSuggestionMatcher(m.features.Command, m.features.Flow))
 	m.userInput.Suggestions.SetCwd(cwd)
 	m.userInput.Suggestions.UpdateSuggestions(m.userInput.Textarea.Value())
 	m.agentReloadPending = true

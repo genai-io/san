@@ -17,7 +17,7 @@ import (
 
 func (m *model) panelContext() input.PanelContext {
 	reloadModelStore := func() {
-		if store := m.services.LLM.Store(); store != nil {
+		if store := m.features.LLM.Store(); store != nil {
 			if err := store.Reload(); err != nil {
 				log.Logger().Warn("reload provider store after model catalog update", zap.Error(err))
 			}
@@ -42,7 +42,7 @@ func (m *model) panelContext() input.PanelContext {
 		},
 		SetCurrentModel: func(info *llm.CurrentModelInfo) {
 			m.env.CurrentModel = info
-			m.services.LLM.SetCurrentModel(info)
+			m.features.LLM.SetCurrentModel(info)
 			// The selector cached the model's metadata (display name, token
 			// limits) through its own Store; reload the shared store so the
 			// status bar reflects the new model's name and context-window

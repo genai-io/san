@@ -14,15 +14,15 @@ import (
 // sessionMaxOutput treats a saved session cap as authoritative, not a default
 // to be silently replaced by changes to the global model catalogue.
 func (m *model) sessionMaxOutput() int {
-	if owner := m.services.Session; owner != nil {
+	if owner := m.features.Session; owner != nil {
 		snapshot := owner.Snapshot()
 		if g := snapshot.Config().GenerationOptions; g != nil && g.MaxTokens != nil {
 			return *g.MaxTokens
 		}
 	}
 	var store *llm.Store
-	if m.services.LLM != nil {
-		store = m.services.LLM.Store()
+	if m.features.LLM != nil {
+		store = m.features.LLM.Store()
 	}
 	return widgets.GetMaxOutput(store, m.env.CurrentModel, setting.DefaultMaxTokens)
 }
@@ -30,7 +30,7 @@ func (m *model) sessionMaxOutput() int {
 // applyContextLimitUpdate commits the explicit session edit before retiring the
 // old runtime. Commands delayed across a session/model switch cannot edit it.
 func (m *model) applyContextLimitUpdate(msg input.ContextLimitUpdatedMsg) error {
-	owner := m.services.Session
+	owner := m.features.Session
 	if owner == nil || owner != msg.Session || m.env.CurrentModel == nil || m.env.GetModelID() != msg.ModelID || string(m.env.CurrentModel.Provider) != msg.Provider {
 		return nil
 	}
@@ -47,7 +47,7 @@ func (m *model) applyContextLimitUpdate(msg input.ContextLimitUpdatedMsg) error 
 		return err
 	}
 	// The next turn rebuilds from this same native owner and its retained history.
-	if m.services.Agent != nil && m.services.Agent.Active() {
+	if m.features.Agent != nil && m.features.Agent.Active() {
 		return m.StopAgentRuntime()
 	}
 	return nil

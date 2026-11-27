@@ -46,7 +46,7 @@ func assertCompactionCommittedWithFinish(t *testing.T, store *session.Store, id 
 
 func TestRestoreNativeSessionStateAndUserIntent(t *testing.T) {
 	m, store := resumedModel(t, []core.Message{core.UserMessage("saved input", nil)})
-	owner := m.services.Session
+	owner := m.features.Session
 	off := false
 	policy := setting.AutoPilotSettings{Model: "judge-model", ThinkingEffort: "low", SystemPrompt: "custom steering", Mission: "finish native cutover", MaxContinuations: 11, RecapAfterMinutes: 17, Steers: setting.SteerSettings{Suggest: &off, Permission: &off, BashPrompt: true, Question: true, TurnEnd: true}}
 	now := time.Date(2026, 11, 13, 1, 2, 3, 0, time.UTC)
@@ -60,7 +60,7 @@ func TestRestoreNativeSessionStateAndUserIntent(t *testing.T) {
 	if err := store.SetAttrs(t.Context(), owner.ID(), session.AttrsPatch{Title: session.SetField("chosen title")}); err != nil {
 		t.Fatal(err)
 	}
-	m.services.Tracker.Create("stale", "", "", nil)
+	m.features.Tracker.Create("stale", "", "", nil)
 	m.env.AutoPilot = setting.AutoPilotSettings{Mission: "old mission", MissionState: setting.MissionRunning}
 	m.beforeGoal = new(m.env.AutoPilot)
 	projection := owner.Snapshot()
@@ -70,7 +70,7 @@ func TestRestoreNativeSessionStateAndUserIntent(t *testing.T) {
 	if m.env.SessionName != "chosen title" || m.env.GetModelID() != "saved-model" || m.env.ThinkingEffort != "high" {
 		t.Fatalf("native config/title not restored: title=%q model=%q effort=%q", m.env.SessionName, m.env.GetModelID(), m.env.ThinkingEffort)
 	}
-	if got := m.services.Tracker.Export(); !reflect.DeepEqual(got, tasks) {
+	if got := m.features.Tracker.Export(); !reflect.DeepEqual(got, tasks) {
 		t.Fatalf("native todo details lost: got=%+v want=%+v", got, tasks)
 	}
 	restored := m.env.AutoPilot.Clone()
@@ -86,14 +86,14 @@ func TestRestoreNativeSessionStateAndUserIntent(t *testing.T) {
 	if err := m.restoreHistory(projection); err != nil {
 		t.Fatal(err)
 	}
-	if len(m.services.Tracker.Export()) != 0 {
+	if len(m.features.Tracker.Export()) != 0 {
 		t.Fatal("empty native task snapshot retained stale task files")
 	}
 }
 
 func TestRestoreReportsUnfinishedWithoutInventingOutputOrRetry(t *testing.T) {
 	m, store := resumedModel(t, []core.Message{core.UserMessage("saved input", nil)})
-	owner := m.services.Session
+	owner := m.features.Session
 	if _, err := owner.StartInference(t.Context(), session.InferenceOptions{Purpose: session.PurposeRecall, Provider: "fixture", Model: ai.Model{ID: "fixture"}, Request: &ai.Request{System: "interrupted standalone call", Messages: []ai.Message{ai.UserMessage("private request")}}}); err != nil {
 		t.Fatal(err)
 	}
@@ -102,7 +102,7 @@ func TestRestoreReportsUnfinishedWithoutInventingOutputOrRetry(t *testing.T) {
 		if err := m.restoreHistory(before); err != nil {
 			t.Fatal(err)
 		}
-		if m.services.Agent.Active() || !reflect.DeepEqual(m.services.Agent.Messages(), before.ActiveMessages()) {
+		if m.features.Agent.Active() || !reflect.DeepEqual(m.features.Agent.Messages(), before.ActiveMessages()) {
 			t.Fatal("resume retried an interrupted inference or invented its output")
 		}
 		notices := 0

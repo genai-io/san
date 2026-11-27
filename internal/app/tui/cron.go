@@ -16,7 +16,7 @@ func startCronTicker() tea.Cmd {
 
 func (m *model) handleCronTick() tea.Cmd {
 	next := startCronTicker()
-	scheduler := m.services.Cron
+	scheduler := m.features.Cron
 	if scheduler == nil || (scheduler.Empty() && len(m.cronQueue) == 0) {
 		return next
 	}

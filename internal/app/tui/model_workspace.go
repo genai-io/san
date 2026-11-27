@@ -17,12 +17,12 @@ func (m *model) changeCwd(newCwd string) {
 	}
 	oldCwd := m.env.CWD
 	m.env.CWD = newCwd
-	m.env.IsGit = m.services.Setting.IsGitRepo(newCwd)
+	m.env.IsGit = m.features.Setting.IsGitRepo(newCwd)
 	// Publish only after both facts are resolved. The running agent's tools
 	// and reviewer must see the new workspace without waiting for a rebuild.
 	m.refreshAutopilotSnapshot()
-	if m.services.Agent != nil {
-		if sys := m.services.Agent.System(); sys != nil {
+	if m.features.Agent != nil {
+		if sys := m.features.Agent.System(); sys != nil {
 			sys.Use(system.EnvironmentSection(system.Environment{Cwd: newCwd, Shell: proc.DefaultShellName()}), "cwd_changed")
 		}
 	}
@@ -31,15 +31,15 @@ func (m *model) changeCwd(newCwd string) {
 	m.refreshMemoryContext(newCwd, "cwd_changed")
 	m.ReloadProjectContext(newCwd)
 	m.ReconfigureAgentTool()
-	m.services.Hook.SetCwd(newCwd)
-	m.services.Hook.ExecuteAsync(hook.CwdChanged, hook.HookInput{OldCwd: oldCwd, NewCwd: newCwd})
+	m.features.Hook.SetCwd(newCwd)
+	m.features.Hook.ExecuteAsync(hook.CwdChanged, hook.HookInput{OldCwd: oldCwd, NewCwd: newCwd})
 }
 
 func (m *model) fireFileChanged(filePath, source string) {
 	if filePath == "" {
 		return
 	}
-	m.services.Hook.ExecuteAsync(hook.FileChanged, hook.HookInput{FilePath: filePath, Source: source, Event: "change"})
+	m.features.Hook.ExecuteAsync(hook.FileChanged, hook.HookInput{FilePath: filePath, Source: source, Event: "change"})
 }
 
 func (m *model) ReloadProjectContext(cwd string) {
@@ -47,13 +47,13 @@ func (m *model) ReloadProjectContext(cwd string) {
 	// feature services that depend on them and re-point at them.
 	m.noteUntrustedWorkspace(cwd)
 	discoverPlugins(cwd)
-	m.reloadProjectServices(cwd)
-	m.env.ShowGitBar = m.services.Setting.Snapshot().ShowGitBar()
+	m.reloadProjectFeatures(cwd)
+	m.env.ShowGitBar = m.features.Setting.Snapshot().ShowGitBar()
 	m.syncSettingsToHookEngine()
 	m.applyPersonaSkills()
 	m.applyPersonaAgents()
-	if m.services.Reminder != nil {
-		m.services.Reminder.RequeueSystemReminders()
+	if m.features.Reminder != nil {
+		m.features.Reminder.RequeueSystemReminders()
 	}
 }
 
@@ -61,7 +61,7 @@ func (m *model) reloadPersonasIfChanged(filePath string) {
 	if !persona.IsPersonaFile(m.env.CWD, filePath) {
 		return
 	}
-	m.services.Persona.Reload()
+	m.features.Persona.Reload()
 	m.applyPersonaSkills()
 	m.applyPersonaAgents()
 	m.ReconfigureAgentTool()
@@ -75,7 +75,7 @@ func (m *model) applyStartupHookOutcome(outcome hook.HookOutcome) {
 		return
 	}
 	if m.fileWatcher == nil {
-		m.fileWatcher = newFileWatcher(m.services.Hook, func(outcome hook.HookOutcome) {
+		m.fileWatcher = newFileWatcher(m.features.Hook, func(outcome hook.HookOutcome) {
 			if outcome.InitialUserMessage != "" {
 				m.asyncHookQueue.push(asyncHookRewake{Notice: "File watcher hook triggered", Context: []string{outcome.InitialUserMessage}})
 			}

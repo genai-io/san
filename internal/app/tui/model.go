@@ -1,6 +1,6 @@
 // Root bubbletea model. Holds the four event sources (user input, system
 // triggers, agent outbox, main-loop notices), the env state, and the
-// services struct. Init batches the initial commands (MCP autoconnect, cron +
+// appFeatures struct. Init batches the initial commands (MCP autoconnect, cron +
 // async-hook tickers, optional initial prompt).
 //
 // All the model's *behavior* lives in sibling files:
@@ -81,7 +81,7 @@ type model struct {
 	fileWatcher       *fileWatcher
 	conv              chat.Model           // Agent Outbox: conversation + output rendering
 	env               env                  // Shared app state: provider, session, permission, plan, config
-	services          services             // Domain service singletons, injected at construction
+	features          appFeatures          // Feature handles used by the root model
 	learnedStores     *learnedStoreContext // live cwd/settings source for /memory inventories
 	subscriptionUsage subscriptionUsageState
 	gitBar            gitBarState // optional local repository snapshot and poll generation
@@ -218,7 +218,7 @@ func (m *model) Init() tea.Cmd {
 		awaitMainNotice(m.mainNotices),
 		awaitFlowMain(m.flowMain),
 		awaitMCPToolsChanged(m.mcpToolsChanged),
-		autoUpdate(m.env.Version, m.services.Setting.AutoUpdate()),
+		autoUpdate(m.env.Version, m.features.Setting.AutoUpdate()),
 		refreshModelData(),
 		m.syncGitBar(),
 		m.syncSubscriptionUsage(),

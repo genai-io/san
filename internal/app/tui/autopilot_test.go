@@ -314,10 +314,10 @@ func TestApplyAutopilotConfigMissionState(t *testing.T) {
 // the raw field).
 func newSuggestionModel(t *testing.T, suggest bool, mode setting.OperationMode) *model {
 	m := &model{autopilot: &atomic.Pointer[autopilotSnapshot]{}}
-	m.services.LLM = &llm.Conn{}
-	m.services.Agent = &runtime.Runtime{}
-	m.services.Setting = setting.New(setting.NewData())
-	m.services.MCP = mcp.NewServerSetForTest(nil)
+	m.features.LLM = &llm.Conn{}
+	m.features.Agent = &runtime.Runtime{}
+	m.features.Setting = setting.New(setting.NewData())
+	m.features.MCP = mcp.NewServerSetForTest(nil)
 	m.env.LLMProvider = &autopilotStubProvider{}
 	m.env.SessionPermissions = setting.NewSessionPermissions()
 	m.env.OperationMode = mode
@@ -399,7 +399,7 @@ func TestAutopilotModeSettledSkipsSuggestionMidTurn(t *testing.T) {
 // proposal; typing steps it aside and esc dismisses it.
 func TestMissionOfferInComposer(t *testing.T) {
 	m := newSuggestionModel(t, true, setting.ModeAutoPilot)
-	m.userInput = input.New("", 80, nil, input.SelectorServices{})
+	m.userInput = input.New("", 80, nil, input.SelectorBindings{})
 	m.env.AutoPilot.Mission = "ship the release"
 	m.env.AutoPilot.MissionState = "" // not started
 

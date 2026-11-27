@@ -23,10 +23,10 @@ type asideRequest struct {
 }
 
 func (m *model) newAsideRequest(label string, advertiseTools bool, prompt string, extra ...string) asideRequest {
-	client, chain := m.buildLLMClient(), m.services.Agent.Messages()
+	client, chain := m.buildLLMClient(), m.features.Agent.Messages()
 	var system string
 	var schemas []core.ToolSchema
-	if sys, tools := m.services.Agent.System(), m.services.Agent.Tools(); sys != nil && tools != nil {
+	if sys, tools := m.features.Agent.System(), m.features.Agent.Tools(); sys != nil && tools != nil {
 		system = sys.Prompt()
 		if advertiseTools {
 			schemas = tools.Schemas()
@@ -38,7 +38,7 @@ func (m *model) newAsideRequest(label string, advertiseTools bool, prompt string
 			schemas = params.ToolSchemas()
 		}
 	}
-	owner := m.services.Session
+	owner := m.features.Session
 	snapshot := aside.NewSnapshot(aside.SnapshotOptions{
 		Client: client, System: system, Tools: schemas, Messages: chain, Owner: owner, Purpose: label,
 	}, prompt, extra...)

@@ -28,7 +28,7 @@ func newGroupControlModel(t *testing.T) *model {
 	}
 	t.Cleanup(func() { _ = store.Close() })
 	owner := mustCreateSession(t, store, session.CreateOptions{ID: "control-test", InitialCWD: m.env.CWD})
-	m.services.SessionStore, m.services.Session, m.services.sessionID = store, owner, owner.ID()
+	m.features.SessionStore, m.features.Session, m.features.sessionID = store, owner, owner.ID()
 	return m
 }
 
@@ -202,9 +202,9 @@ func TestGroupControlDestructiveRequiresNativeCommand(t *testing.T) {
 func TestGroupControlAppliesOnlyOnUIThread(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	m := newGroupControlModel(t)
-	m.services.Agent = &runtime.Runtime{}
-	m.services.Reminder = reminder.NewQueue()
-	m.services.sessionID = "control-test"
+	m.features.Agent = &runtime.Runtime{}
+	m.features.Reminder = reminder.NewQueue()
+	m.features.sessionID = "control-test"
 	group.BindSession(m.sessionID)
 	t.Cleanup(func() { _ = group.Leave() })
 	m.env.LLMProvider = &autopilotStubProvider{replies: []string{

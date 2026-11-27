@@ -41,7 +41,7 @@ func newModel(opts setting.RunOptions) (*model, error) {
 	if _, err := m.openCurrentSession(); err != nil {
 		return nil, err
 	}
-	m.wireTaskLifecycle(m.services.Hook)
+	m.wireTaskLifecycle(m.features.Hook)
 	m.configureAsyncHookCallback()
 	m.ensureMemoryContextLoaded()
 	m.ReconfigureAgentTool()
@@ -56,19 +56,19 @@ func newModel(opts setting.RunOptions) (*model, error) {
 }
 
 func newBaseModel() model {
-	svc := newServices()
-	learnedStores := newLearnedStoreContext(appCwd, svc.Setting)
-	environment := newEnv(svc.LLM, appCwd, svc.Setting.IsGitRepo(appCwd))
-	applyStartupSettings(&environment, svc.Setting.Snapshot(), appCwd, svc.Setting.AllowBypass(), svc.Hook)
+	features := newAppFeatures()
+	learnedStores := newLearnedStoreContext(appCwd, features.Setting)
+	environment := newEnv(features.LLM, appCwd, features.Setting.IsGitRepo(appCwd))
+	applyStartupSettings(&environment, features.Setting.Snapshot(), appCwd, features.Setting.AllowBypass(), features.Hook)
 	m := model{
-		userInput:        input.New(appCwd, defaultWidth, commandSuggestionMatcher(svc.Command, svc.Flow), selectorServices(svc, learnedStores)),
+		userInput:        input.New(appCwd, defaultWidth, commandSuggestionMatcher(features.Command, features.Flow), selectorBindings(features, learnedStores)),
 		conv:             chat.NewModel(defaultWidth),
 		mainNotices:      make(chan mainNotice, 64),
 		flowMain:         newFlowMainBridge(),
 		mcpToolsChanged:  make(chan struct{}, 1),
 		asyncHookQueue:   &asyncHookQueue{},
 		env:              environment,
-		services:         svc,
+		features:         features,
 		learnedStores:    learnedStores,
 		judgeApprovals:   new(atomic.Int64),
 		judgeEscalations: new(atomic.Int64),
@@ -79,11 +79,11 @@ func newBaseModel() model {
 	return m
 }
 
-func selectorServices(svc services, learnedStores *learnedStoreContext) input.SelectorServices {
-	return input.SelectorServices{
-		AgentRegistry: svc.Subagent, PersonaRegistry: svc.Persona, SkillRegistry: svc.Skill,
-		MCPServers: svc.MCP, PluginRegistry: svc.Plugin, Setting: svc.Setting,
-		LoadDisabled: svc.Setting.DisabledToolsAt, UpdateDisabled: svc.Setting.UpdateDisabledToolAt,
+func selectorBindings(features appFeatures, learnedStores *learnedStoreContext) input.SelectorBindings {
+	return input.SelectorBindings{
+		AgentRegistry: features.Subagent, PersonaRegistry: features.Persona, SkillRegistry: features.Skill,
+		MCPServers: features.MCP, PluginRegistry: features.Plugin, Setting: features.Setting,
+		LoadDisabled: features.Setting.DisabledToolsAt, UpdateDisabled: features.Setting.UpdateDisabledToolAt,
 		HeldOn: toolsHeldOn,
 		Reflection: input.ReflectionSources{
 			Workspace: learnedStores.Snapshot,
@@ -109,7 +109,7 @@ func applyStartupSettings(environment *env, settings *setting.Data, cwd string, 
 func (m *model) applyRunOptions(opts setting.RunOptions) error {
 	if opts.PluginDir != "" {
 		ctx := context.Background()
-		if err := m.services.Plugin.LoadFromPath(ctx, opts.PluginDir); err != nil {
+		if err := m.features.Plugin.LoadFromPath(ctx, opts.PluginDir); err != nil {
 			return fmt.Errorf("failed to load plugins from %s: %w", opts.PluginDir, err)
 		}
 		if err := m.ReloadAfterPluginChange(); err != nil {
@@ -123,7 +123,7 @@ func (m *model) applyRunOptions(opts setting.RunOptions) error {
 	m.env.Version = opts.Version
 
 	if opts.Persona != "" {
-		if err := m.services.Persona.Validate(opts.Persona); err != nil {
+		if err := m.features.Persona.Validate(opts.Persona); err != nil {
 			return err
 		}
 		if err := m.setActivePersona(opts.Persona); err != nil {
@@ -154,7 +154,7 @@ func (m *model) applyRunOptions(opts setting.RunOptions) error {
 func (m *model) ReloadAfterPluginChange() error {
 	// Plugins were just loaded by the caller; rebuild the project's feature
 	// services (not the plugins themselves) and re-point at them.
-	m.reloadProjectServices(m.env.CWD)
+	m.reloadProjectFeatures(m.env.CWD)
 
 	m.syncSettingsToHookEngine()
 	m.ReconfigureAgentTool()
@@ -163,7 +163,7 @@ func (m *model) ReloadAfterPluginChange() error {
 
 	// Refresh skills/memory reminders so the LLM sees the updated skill set
 	// in the next user message instead of waiting for the next conversation.
-	m.services.Reminder.RequeueSystemReminders()
+	m.features.Reminder.RequeueSystemReminders()
 
 	return nil
 }
@@ -174,7 +174,7 @@ func (m *model) applyContinueOption() error {
 	}
 	query := session.ListQuery{All: true, WithMessages: true, Limit: 200}
 	for {
-		page, err := m.services.SessionStore.List(context.Background(), query)
+		page, err := m.features.SessionStore.List(context.Background(), query)
 		if err != nil {
 			return err
 		}
@@ -212,7 +212,7 @@ func (m *model) wireTaskLifecycle(hookEngine hook.Handler) {
 	if m.workerMu == nil {
 		m.workerMu = new(sync.Mutex)
 	}
-	trackerSvc := m.services.Tracker
+	trackerSvc := m.features.Tracker
 
 	fireHook := func(event hook.EventType, info task.TaskInfo) {
 		if hookEngine == nil {
@@ -229,7 +229,7 @@ func (m *model) wireTaskLifecycle(hookEngine hook.Handler) {
 		onCreated: func(info task.TaskInfo) {
 			m.workerMu.Lock()
 			defer m.workerMu.Unlock()
-			if info.ParentSessionID != "" && info.ParentSessionID != m.services.Task.SessionID() {
+			if info.ParentSessionID != "" && info.ParentSessionID != m.features.Task.SessionID() {
 				return
 			}
 			fireHook(hook.TaskCreated, info)
@@ -250,7 +250,7 @@ func (m *model) wireTaskLifecycle(hookEngine hook.Handler) {
 		},
 		onCompleted: func(info task.TaskInfo) {
 			m.workerMu.Lock()
-			selected := info.ParentSessionID == "" || info.ParentSessionID == m.services.Task.SessionID()
+			selected := info.ParentSessionID == "" || info.ParentSessionID == m.features.Task.SessionID()
 			if selected {
 				fireHook(hook.TaskCompleted, info)
 				if info.OwnerAgentID == "" {
@@ -314,10 +314,10 @@ func (m *model) FireSessionEnd(reason string) {
 	// that blocks makes the quit itself look hung.
 	ctx, cancel := context.WithTimeout(context.Background(), m.uiHookBudget())
 	defer cancel()
-	m.services.Hook.Execute(ctx, hook.SessionEnd, hook.HookInput{
+	m.features.Hook.Execute(ctx, hook.SessionEnd, hook.HookInput{
 		Reason: reason,
 	})
-	m.services.Hook.ClearSessionHooks()
+	m.features.Hook.ClearSessionHooks()
 	if m.fileWatcher != nil {
 		m.fileWatcher.stop()
 	}

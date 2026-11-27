@@ -27,7 +27,7 @@ func (t resultHandoffTool) Execute(context.Context, map[string]any, string) tool
 
 func TestNativeToolResultConsumesHandoffBeforeHook(t *testing.T) {
 	engine := hook.NewEngine(setting.NewData(), "session", t.TempDir(), "")
-	m := &model{env: env{FileCache: filecache.New()}, services: services{Tool: tool.NewRegistry(), Hook: engine}}
+	m := &model{env: env{FileCache: filecache.New()}, features: appFeatures{Tool: tool.NewRegistry(), Hook: engine}}
 	response := map[string]any{"file": map[string]any{"filePath": "read-file"}}
 	id := t.Name()
 	adapted := tool.AdaptTool(resultHandoffTool{response: response}, core.ToolSchema{Name: "Read"}, nil)

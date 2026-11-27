@@ -40,7 +40,7 @@ func textOnlyModel(t *testing.T) (*model, *textOnlyStubProvider) {
 	t.Cleanup(func() { stopRuntime(t, sess) })
 
 	m := &model{
-		services: services{
+		features: appFeatures{
 			Agent:     sess,
 			LLM:       &llm.Conn{},
 			Tracker:   todo.NewStore(),
@@ -135,7 +135,7 @@ func TestReleasedQueuedImageNeverReachesATextOnlyProvider(t *testing.T) {
 	if len(last.Images) != 1 {
 		t.Fatalf("conversation message carries %d image(s), want 1: %+v", len(last.Images), last)
 	}
-	if chain := m.services.Agent.Messages(); len(chain) == 0 || imageBlocks(chain[0]) != 1 {
+	if chain := m.features.Agent.Messages(); len(chain) == 0 || imageBlocks(chain[0]) != 1 {
 		t.Fatal("text-only request filtering erased the native attachment")
 	}
 }
@@ -191,9 +191,9 @@ func TestMixedPastedAndFileImagesKeepBothOnAgentSend(t *testing.T) {
 
 func TestCanceledStreamDrainPreservesQueuedAndDraftImages(t *testing.T) {
 	m, provider := textOnlyModel(t)
-	m.userInput = input.New("", 80, nil, input.SelectorServices{})
-	m.services.Setting = setting.New(setting.NewData())
-	m.services.Hook = hook.NewEngine(nil, "", "", "")
+	m.userInput = input.New("", 80, nil, input.SelectorBindings{})
+	m.features.Setting = setting.New(setting.NewData())
+	m.features.Hook = hook.NewEngine(nil, "", "", "")
 	m.agentReviewCaps = m.autoSkillCapabilities()
 	m.agentDisabledToolsSignature = m.disabledToolsSignature()
 	m.autoMemory = m.currentAutoMemory()
@@ -218,7 +218,7 @@ func TestCanceledStreamDrainPreservesQueuedAndDraftImages(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("queued turn did not reach inference")
 	}
-	if chain := m.services.Agent.Messages(); len(chain) == 0 || imgCount(chain[0]) != 1 {
+	if chain := m.features.Agent.Messages(); len(chain) == 0 || imgCount(chain[0]) != 1 {
 		t.Fatal("queued inline image was dropped from native history")
 	}
 	if got := m.userInput.Textarea.Value(); got != "next [Image #2]" {
@@ -268,7 +268,7 @@ func TestQueuedInlineImageKeepsItsPathForTextOnlyInference(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("queued inline image did not reach inference")
 	}
-	if chain := m.services.Agent.Messages(); len(chain) == 0 || imageBlocks(chain[0]) != 1 {
+	if chain := m.features.Agent.Messages(); len(chain) == 0 || imageBlocks(chain[0]) != 1 {
 		t.Fatal("queued inline image was removed from native history")
 	}
 }
@@ -284,7 +284,7 @@ func TestCompactRequestCarriesNoImagesForTextOnlyModel(t *testing.T) {
 		Images:  []core.Attachment{chartImage()},
 	})
 
-	m.services.Agent.SetMessages([]core.Message{core.UserMessage("what does this show", []core.Attachment{chartImage()})})
+	m.features.Agent.SetMessages([]core.Message{core.UserMessage("what does this show", []core.Attachment{chartImage()})})
 	req := m.BuildCompactRequest("", "manual")
 
 	if len(req.Messages) == 0 {
@@ -365,15 +365,15 @@ func TestPastedImageFileLivesWithTheSession(t *testing.T) {
 			if err := m.ensureSessionStore(); err != nil {
 				t.Fatal(err)
 			}
-			owner := mustCreateSession(t, m.services.SessionStore, session.CreateOptions{ID: "sess-1"})
-			m.services.Session = owner
+			owner := mustCreateSession(t, m.features.SessionStore, session.CreateOptions{ID: "sess-1"})
+			m.features.Session = owner
 			if tc.vision {
 				m.env.LLMProvider = &restartStubProvider{}
 			}
 			pasted := core.Attachment{Image: ai.Image{MediaType: "image/png", Data: "ZmFrZQ==", FileName: "clipboard_120000.png"}}
 
 			content := m.describeImages("what does this show", []core.Attachment{pasted})
-			store := m.services.SessionStore
+			store := m.features.SessionStore
 			entries, err := os.ReadDir(store.ImagesDir("sess-1"))
 			if err != nil || len(entries) != 1 {
 				t.Fatalf("session image dir holds %v, %v; want the one pasted file", entries, err)

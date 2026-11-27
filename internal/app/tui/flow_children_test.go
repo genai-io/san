@@ -22,13 +22,13 @@ import (
 func TestManagedAgentViewsFollowSessionAndCompletion(t *testing.T) {
 	m := fixedComposerModel(80, 24)
 	m.env.AgentPreviewLines = 3
-	m.services.Task = task.NewRunSet()
+	m.features.Task = task.NewRunSet()
 	task.SetLifecycleHandler(nil)
-	own := m.services.Task.CreateChildAgentTask("own", "scheduler", "reviewer", "Security review", task.WithSessionID(context.Background(), m.sessionID()), nil)
+	own := m.features.Task.CreateChildAgentTask("own", "scheduler", "reviewer", "Security review", task.WithSessionID(context.Background(), m.sessionID()), nil)
 	own.SetIdentity("reviewer", "child-session")
 	own.AppendProgress("Read(boundary.go)")
-	foreign := m.services.Task.CreateChildAgentTask("foreign", "other-scheduler", "reviewer", "Foreign review", task.WithSessionID(context.Background(), "other-session"), nil)
-	ordinary := m.services.Task.CreateAgentTask("ordinary", "reviewer", "Ordinary review", context.Background(), nil)
+	foreign := m.features.Task.CreateChildAgentTask("foreign", "other-scheduler", "reviewer", "Foreign review", task.WithSessionID(context.Background(), "other-session"), nil)
+	ordinary := m.features.Task.CreateAgentTask("ordinary", "reviewer", "Ordinary review", context.Background(), nil)
 	t.Cleanup(func() { own.Complete(nil); foreign.Complete(nil); ordinary.Complete(nil) })
 	p := m.messageRenderParams()
 	if len(p.ManagedAgents) != 1 || p.ManagedAgents[0].ID != "own" || p.ManagedAgents[0].SessionID != "child-session" {
@@ -56,8 +56,8 @@ func TestFlowSchedulerTerminalReceiptsDoNotEnterModel(t *testing.T) {
 			t.Run(fmt.Sprintf("%s/busy=%t", status, busy), func(t *testing.T) {
 				m, provider := noticeDeliveryModel(t)
 				attachTurnSession(t, m)
-				m.services.Task = task.NewRunSet()
-				m.services.Task.SetSessionID(m.sessionID())
+				m.features.Task = task.NewRunSet()
+				m.features.Task.SetSessionID(m.sessionID())
 				m.mainNotices = make(chan mainNotice, 8)
 				m.conv.OnNotice = m.recordNotice
 				m.wireTaskLifecycle(nil)
@@ -65,7 +65,7 @@ func TestFlowSchedulerTerminalReceiptsDoNotEnterModel(t *testing.T) {
 				m.conv.Stream.Active = busy
 				ctx, cancel := context.WithCancel(context.Background())
 				defer cancel()
-				parent := m.services.Task.CreateSchedulerTask("scheduler", "Security audit", "raw-launch-name", ctx, cancel)
+				parent := m.features.Task.CreateSchedulerTask("scheduler", "Security audit", "raw-launch-name", ctx, cancel)
 				select {
 				case n := <-m.mainNotices:
 					if n.Content != "" || n.FinishedTaskID != "" || !strings.Contains(n.Display, `status="running"`) {
@@ -114,7 +114,7 @@ func TestFlowSchedulerTerminalReceiptsDoNotEnterModel(t *testing.T) {
 				case <-time.After(time.Second):
 					t.Fatal("missing terminal scheduler receipt")
 				}
-				snapshot := m.services.Session.Snapshot()
+				snapshot := m.features.Session.Snapshot()
 				if len(m.conv.Messages) != 2 || len(snapshot.Messages()) != 0 {
 					t.Fatalf("scheduler receipts entered model history or were hidden: %+v", m.conv.Messages)
 				}
@@ -126,7 +126,7 @@ func TestFlowSchedulerTerminalReceiptsDoNotEnterModel(t *testing.T) {
 
 				// A late completion from a different session must not leak into
 				// either the visible transcript or the current model's queue.
-				foreign := m.services.Task.CreateSchedulerTask("foreign", "Foreign audit", "foreign", task.WithSessionID(context.Background(), "other-session"), nil)
+				foreign := m.features.Task.CreateSchedulerTask("foreign", "Foreign audit", "foreign", task.WithSessionID(context.Background(), "other-session"), nil)
 				foreign.Complete(fmt.Errorf("foreign diagnostic"))
 				select {
 				case n := <-m.mainNotices:
@@ -141,8 +141,8 @@ func TestFlowSchedulerTerminalReceiptsDoNotEnterModel(t *testing.T) {
 func TestFlowChildrenNativeVisibilityAndDisplayOnlyCompletion(t *testing.T) {
 	m, mainProvider := noticeDeliveryModel(t)
 	attachTurnSession(t, m)
-	m.services.Task = task.NewRunSet()
-	m.services.Task.SetSessionID(m.sessionID())
+	m.features.Task = task.NewRunSet()
+	m.features.Task.SetSessionID(m.sessionID())
 	m.mainNotices = make(chan mainNotice, 8)
 	m.env.Width, m.env.AgentPreviewLines = 80, 3
 	m.conv.OnNotice = m.recordNotice
@@ -195,14 +195,14 @@ func TestFlowChildrenNativeVisibilityAndDisplayOnlyCompletion(t *testing.T) {
 		return aitest.Says("fourth hidden detail\n"+strings.Repeat("supporting detail ", 40)+"\n"+name+" actual answer")(callCtx, req)
 	}).Client()}
 	executor := subagent.NewExecutor(childProvider, m.env.CWD, "m", nil)
-	if err := executor.SetSessions(m.services.SessionStore, m.services.Session); err != nil {
+	if err := executor.SetSessions(m.features.SessionStore, m.features.Session); err != nil {
 		t.Fatal(err)
 	}
-	executor.ConfigureOwner(m.services.Task, nil, nil, nil)
-	svc := flow.NewScheduler(m.services.Task)
+	executor.ConfigureOwner(m.features.Task, nil, nil, nil)
+	svc := flow.NewScheduler(m.features.Task)
 	svc.SetSearchPaths([]string{t.TempDir()})
 	svc.SetExecutor(subagent.NewExecutorAdapter(executor))
-	m.services.Flow = svc
+	m.features.Flow = svc
 	definition := "```mermaid\nflowchart LR\n map --> security\n map --> performance\n security --> report\n performance --> report\n```\n\n## map\nMARK_map\n\n## security\nMARK_security\n\n## performance\nMARK_performance\n\n## report\nMARK_report\n"
 	if err := svc.SaveDefinition("native-children", definition, ""); err != nil {
 		t.Fatal(err)
@@ -211,7 +211,7 @@ func TestFlowChildrenNativeVisibilityAndDisplayOnlyCompletion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	parent, ok := m.services.Task.Get(parentID)
+	parent, ok := m.features.Task.Get(parentID)
 	if !ok {
 		t.Fatal("missing native scheduler")
 	}
@@ -317,7 +317,7 @@ func TestFlowChildrenNativeVisibilityAndDisplayOnlyCompletion(t *testing.T) {
 				t.Fatalf("native worker %s missing from conversation: %s", name, live)
 			}
 			found := false
-			for _, bg := range m.services.Task.ListRunning() {
+			for _, bg := range m.features.Task.ListRunning() {
 				info := bg.GetStatus()
 				if info.ParentTaskID != parentID || !strings.Contains(info.Description, name) {
 					continue
@@ -327,7 +327,7 @@ func TestFlowChildrenNativeVisibilityAndDisplayOnlyCompletion(t *testing.T) {
 				}
 				m.workerMu.Lock()
 				tracked := false
-				for _, item := range m.services.Tracker.List() {
+				for _, item := range m.features.Tracker.List() {
 					if todo.BackgroundTaskID(item) == info.ID {
 						tracked = true
 					}
@@ -430,7 +430,7 @@ func TestFlowChildrenNativeVisibilityAndDisplayOnlyCompletion(t *testing.T) {
 	}
 	for name, checkpoint := range record.Nodes {
 		identity := checkpoint.Execution
-		bg, ok := m.services.Task.Get(identity.TaskID)
+		bg, ok := m.features.Task.Get(identity.TaskID)
 		if !ok || identity.SessionID == "" {
 			t.Fatalf("%s has no native execution: %+v", name, checkpoint)
 		}
@@ -438,7 +438,7 @@ func TestFlowChildrenNativeVisibilityAndDisplayOnlyCompletion(t *testing.T) {
 		if info.ParentTaskID != parentID || info.ID != identity.TaskID || info.AgentSessionID != identity.SessionID {
 			t.Fatalf("checkpoint identity diverged: %+v %+v", identity, info)
 		}
-		child, err := m.services.SessionStore.Read(t.Context(), identity.SessionID)
+		child, err := m.features.SessionStore.Read(t.Context(), identity.SessionID)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -446,7 +446,7 @@ func TestFlowChildrenNativeVisibilityAndDisplayOnlyCompletion(t *testing.T) {
 			t.Fatalf("%s child session has no actual conversation", name)
 		}
 	}
-	snapshot := m.services.Session.Snapshot()
+	snapshot := m.features.Session.Snapshot()
 	select {
 	case req := <-mainProvider.requests:
 		t.Fatalf("managed flow children woke main model: %+v", req)
@@ -455,11 +455,11 @@ func TestFlowChildrenNativeVisibilityAndDisplayOnlyCompletion(t *testing.T) {
 	if got := len(snapshot.Messages()); got != 0 {
 		t.Fatalf("display-only results added %d model messages", got)
 	}
-	saved, err := m.services.SessionStore.Read(t.Context(), m.sessionID())
+	saved, err := m.features.SessionStore.Read(t.Context(), m.sessionID())
 	if err != nil {
 		t.Fatal(err)
 	}
-	restored := m.services.SessionStore.ChatRows(saved)
+	restored := m.features.SessionStore.ChatRows(saved)
 	if len(restored) != 6 || len(m.conv.Messages) != 6 {
 		t.Fatalf("persisted lifecycle annotations=%d, live=%d", len(restored), len(m.conv.Messages))
 	}
