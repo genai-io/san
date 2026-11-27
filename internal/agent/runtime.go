@@ -20,11 +20,6 @@ var (
 	ErrRuntimeStopped  = errors.New("agent session stopped before the message was accepted")
 )
 
-type runInputRecording interface {
-	acceptInput(PendingInput) error
-	owns(*session.Session) bool
-}
-
 type run struct {
 	agent     core.Agent
 	cancel    context.CancelFunc
@@ -32,7 +27,8 @@ type run struct {
 	pending   []core.Message // accepted inputs not yet announced by MessageAdded; Runtime.mu guards
 	stopped   bool
 	onEvent   func(core.Event)
-	recording runInputRecording
+	recording *session.Session
+	recorder  *session.Recorder
 	recall    *fastRecall
 }
 
@@ -71,7 +67,7 @@ func (s *Runtime) start(params BuildParams, messages []core.Message) error {
 			cancel()
 		}
 	}()
-	run := &run{done: make(chan struct{}), onEvent: params.OnEvent, recording: sessionInputBinding{owner: params.Recording, recorder: params.recorder}, recall: params.newFastRecall(ctx)}
+	run := &run{done: make(chan struct{}), onEvent: params.OnEvent, recording: params.Recording, recorder: params.recorder, recall: params.newFastRecall(ctx)}
 	params.OnEvent = func(ev core.Event) {
 		switch e := ev.(type) {
 		case sdkagent.MessageAdded:
@@ -263,9 +259,25 @@ func (s *Runtime) SendInput(input PendingInput) error {
 	if msg.ID == "" {
 		msg.ID = core.NewMessageID()
 	}
-	input.Message = msg
-	if err := run.recording.acceptInput(input); err != nil {
-		return err
+	if input.Source != nil || input.Destination != nil {
+		if input.Completion != nil || input.Source == nil || input.Destination == nil || input.Destination != run.recording {
+			return &llm.RecordingError{Err: fmt.Errorf("child input requires its original receiving session and source")}
+		}
+		if input.Source.Session == "" || input.Source.Session == input.Destination.ID() || input.Source.Seq == 0 {
+			return &llm.RecordingError{Err: fmt.Errorf("child input requires a foreign source event")}
+		}
+		source := *input.Source
+		if err := input.Destination.AcceptInput(context.Background(), msg, &source); err != nil {
+			return &llm.RecordingError{Err: err}
+		}
+	}
+	if input.Completion != nil {
+		if !input.Completion.OwnedBy(run.recording) {
+			return &llm.RecordingError{Err: fmt.Errorf("input completion belongs to another session")}
+		}
+		if err := input.Completion.AcceptMessage(context.Background(), msg); err != nil {
+			return &llm.RecordingError{Err: err}
+		}
 	}
 	if input.FromUser && input.Source == nil && input.Completion == nil && run.recall != nil {
 		query := input.RecallQuery
@@ -273,6 +285,9 @@ func (s *Runtime) SendInput(input PendingInput) error {
 			query = input.Message.Text()
 		}
 		run.recall.queueQuery(msg.ID, query)
+	}
+	if run.recorder != nil && input.FromUser && !input.Synthetic && input.Source == nil {
+		run.recorder.NoteUserInput(msg.ID)
 	}
 	run.pending = append(run.pending, msg)
 	run.agent.Append(msg)
@@ -363,7 +378,7 @@ func (s *Runtime) ParentToolSource(owner *session.Session, startup []core.ToolSc
 		if s.run == nil {
 			return slices.Clone(fallback)
 		}
-		if !s.run.recording.owns(owner) {
+		if s.run.recording != owner {
 			return []string{}
 		}
 		return names(s.run.agent.Tools().Schemas())

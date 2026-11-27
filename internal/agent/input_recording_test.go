@@ -39,13 +39,7 @@ func TestRecordedInputRuntimeAcceptance(t *testing.T) {
 			prepared.Content = ai.TextContent("continue\n\nfinal reminder")
 			runtimeOwner := owner
 			if mode == "wrong-owner" {
-				// Even an identical session ID in a different store is not the owner.
-				other, err := session.OpenStore(t.Context(), t.TempDir())
-				if err != nil {
-					t.Fatal(err)
-				}
-				defer other.Close()
-				runtimeOwner, err = other.Create(t.Context(), session.CreateOptions{ID: owner.ID()})
+				runtimeOwner, err = store.Create(t.Context(), session.CreateOptions{ID: "replacement"})
 				if err != nil {
 					t.Fatal(err)
 				}

@@ -97,9 +97,7 @@ func Default() *Runtime
   accounting; persistence errors abort instead of prompting. The original session
   owner stays fixed; default wiring remains legacy.
 - Runtime owns live native messages; the opened Session owns persistence and its
-  writer lease. Recorded inputs are checked against the run's original open
-  handle, not just its session ID, before entering the execution queue.
-  Stopping Runtime retains history. The Session remains open until
+  writer lease. Stopping Runtime retains history. The Session remains open until
   it is explicitly closed; see [session](session.md).
 
 ## Lifecycle
