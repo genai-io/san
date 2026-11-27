@@ -10,16 +10,16 @@ import (
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
-// ResultPreview keeps oversized text out of the model's conversation. Its store
+// ResultLimiter keeps oversized text out of the model's conversation. Its store
 // and session identity are captured at construction, never read from a mutable
 // current-session selector. A missing/failed store still produces a bounded
 // preview, explicitly reporting that the full content was not persisted.
-type ResultPreview struct {
+type ResultLimiter struct {
 	Store     *session.Store
 	SessionID string
 }
 
-func (p ResultPreview) Filter(_ context.Context, c sdkagent.PostToolContext) (*sdkagent.Result, error) {
+func (p ResultLimiter) Filter(_ context.Context, c sdkagent.PostToolContext) (*sdkagent.Result, error) {
 	const overflowThreshold = 100_000
 	const previewSize = 10_000
 	full := c.Result.Content.Text()

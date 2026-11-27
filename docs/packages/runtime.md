@@ -78,12 +78,12 @@ func Default() *Runtime
   with `CWD`/`CWDFunc` and the host's handling (or ignoring) of directory handoffs.
 - `main_session.go` pairs only the opened `Session` and full-result `Store`.
   `MainSession.Validate` rejects missing/closed owners and mismatched stores without
-  mutating services. Native session APIs provide recording; `ResultPreview` captures
+  mutating services. Native session APIs provide recording; `ResultLimiter` captures
   the validated store and session ID. `internal/app.buildAgentParams` explicitly
   binds recording, permission policy, hook/skill audits and live review/recall to
   `BuildParams`, the sole runtime configuration. Stop extension work before rebinding
   its session callbacks; the builder does not own extension lifetimes.
-- `result_preview.go` owns the main-agent output policy: text above 100,000 bytes is
+- `result_limiter.go` owns the main-agent output policy: text above 100,000 bytes is
   persisted under the captured session owner, with a UTF-8-safe 10,000-byte preview.
   Failed persistence explicitly says the full content was not saved. Result metadata
   and the existing blob handoff format are unchanged; recall is attached after paging.
@@ -191,7 +191,7 @@ internal/app/tui/main_session_test.go — TUI composition, native permission/hoo
                                    allow/deny paging and host callback preservation.
 internal/runtime/main_session_test.go — production main-session/runtime tool turns, allow/deny, hook audits,
                               transcript-before-terminal ordering, live recall and cancelled review.
-internal/runtime/result_preview_test.go — threshold, UTF-8 preview, metadata and persistence failure.
+internal/runtime/result_limiter_test.go — threshold, UTF-8 preview, metadata and persistence failure.
 internal/runtime/permission_policy_test.go — rule/judge/hook composition, exact grants,
                                           audit ordering and cancelled verdicts.
 internal/runtime/permission_memory_test.go — memory containment and deny precedence.
