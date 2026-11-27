@@ -8,8 +8,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/ask"
+	"github.com/genai-io/san/internal/runtime"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/perm"
 )
@@ -69,10 +69,10 @@ func (h *AgentToUI) ResolveApproval(ctx context.Context, source tool.AgentIntera
 	defer cancel()
 	req.Source = source
 	req.PermissionView = view
-	req.Permission = &agent.PermGateRequest{
+	req.Permission = &runtime.PermGateRequest{
 		Context: req.Context, RequestID: view.ID, ToolCallID: source.ToolCallID,
 		ToolName: view.ToolName, Description: view.Description, Input: input,
-		Response: make(chan agent.PermGateResponse, 1),
+		Response: make(chan runtime.PermGateResponse, 1),
 	}
 	if err := h.sendUserPrompt(req); err != nil {
 		return cancelled(err, req.Permission.AskedSnapshot())

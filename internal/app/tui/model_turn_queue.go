@@ -14,10 +14,10 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/tui/input"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/infra/log"
+	"github.com/genai-io/san/internal/runtime"
 )
 
 func (m *model) handleStopHookResult(msg stopHookResultMsg) tea.Cmd {
@@ -29,7 +29,7 @@ func (m *model) handleStopHookResult(msg stopHookResultMsg) tea.Cmd {
 		m.conv.Stream.Active || m.pendingMessages.Held() || m.pendingMessages.Len() > 0 || m.userInput.Queue.Len() > 0 {
 		return nil
 	}
-	decision := agent.StopDecision{Blocked: msg.Blocked, Reason: msg.Reason, Err: msg.Err}
+	decision := runtime.StopDecision{Blocked: msg.Blocked, Reason: msg.Reason, Err: msg.Err}
 	continuation, err := decision.Finish(m.appendTurnState)
 	if err != nil {
 		if msg.Err != nil {

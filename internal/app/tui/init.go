@@ -8,7 +8,6 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/ext"
 	"github.com/genai-io/san/internal/app/tui/input"
 	"github.com/genai-io/san/internal/app/tui/widgets/suggest"
@@ -21,6 +20,7 @@ import (
 	"github.com/genai-io/san/internal/mcp"
 	"github.com/genai-io/san/internal/persona"
 	"github.com/genai-io/san/internal/plugin"
+	"github.com/genai-io/san/internal/runtime"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/skill"
@@ -45,7 +45,7 @@ func initInfrastructure() error {
 	initExtensions(appCwd)
 
 	// Phase 3: tool infrastructure
-	agent.Initialize()
+	runtime.Initialize()
 	if err := task.Initialize(task.Options{}); err != nil {
 		log.Logger().Warn("task output directory unavailable; task output will not persist", zap.Error(err))
 	}
@@ -61,7 +61,7 @@ func initInfrastructure() error {
 	// active plugin root, plugin.PluginEnv falls back to this provider.
 	// It reads the foreground task's per-turn plugin scope.
 	plugin.SetRootProvider(func() string {
-		return agent.Default().PluginRoot()
+		return runtime.Default().PluginRoot()
 	})
 
 	// Phase 4: session

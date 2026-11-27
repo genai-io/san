@@ -8,10 +8,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/app/tui/input"
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/runtime"
 	"github.com/genai-io/san/internal/todo"
 )
 
@@ -125,7 +125,7 @@ func TestAgentMessageEchoIsIgnored(t *testing.T) {
 	m := &model{
 		userInput: input.Model{Queue: input.NewQueue()},
 		conv:      chat.NewModel(80),
-		services:  services{Tracker: todo.NewStore(), Agent: &agent.Runtime{}},
+		services:  services{Tracker: todo.NewStore(), Agent: &runtime.Runtime{}},
 	}
 
 	echo := sdkagent.MessageAdded{Message: core.UserMessage("anything", nil)}

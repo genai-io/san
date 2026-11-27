@@ -6,9 +6,9 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
-	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/runtime"
 	"github.com/genai-io/san/internal/tool"
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 	"github.com/genai-io/sdk-go/pkg/ai"
@@ -23,7 +23,7 @@ func TestSDKInferenceLifecycleCommitsAssistantAndNotices(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			m := fixedComposerModel(80, 40)
 			attachTurnSession(t, m)
-			m.services.Agent = &agent.Runtime{}
+			m.services.Agent = &runtime.Runtime{}
 			m.services.Tool = tool.NewRegistry()
 			m.pendingDecisions = &sync.Map{}
 			deliver := func(event core.Event) {

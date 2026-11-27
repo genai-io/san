@@ -10,8 +10,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/genai-io/san/internal/agent"
-	"github.com/genai-io/san/internal/agent/reminder"
 	"github.com/genai-io/san/internal/app/ext"
 	apphook "github.com/genai-io/san/internal/app/hook"
 	"github.com/genai-io/san/internal/command"
@@ -22,6 +20,8 @@ import (
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/mcp"
 	"github.com/genai-io/san/internal/plugin"
+	agentruntime "github.com/genai-io/san/internal/runtime"
+	"github.com/genai-io/san/internal/runtime/reminder"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/subagent"
@@ -102,9 +102,9 @@ const acpShellDirHelp = "Directory changes affect only this command; subsequent 
 // The SDK serializes prompts for a session, including the response barrier.
 type acpSession struct {
 	input              acpInput
-	nativeSession      agent.MainSession
-	runtimeBuildParams agent.BuildParams // retained across runtime rebuilds
-	runtime            agent.Runtime
+	nativeSession      agentruntime.MainSession
+	runtimeBuildParams agentruntime.BuildParams // retained across runtime rebuilds
+	runtime            agentruntime.Runtime
 	hooks              *hook.Engine
 	reminders          *reminder.Queue
 	toolResponses      sync.Map
@@ -223,7 +223,7 @@ func (h *acpHost) open(ctx context.Context, req protocol.NewSessionRequest, resu
 			return protocol.NewSessionResponse{}, err
 		}
 	}
-	s.nativeSession = agent.MainSession{Session: opened, Store: store}
+	s.nativeSession = agentruntime.MainSession{Session: opened, Store: store}
 	tasks := task.NewManager()
 	s.tracker = todo.NewStoreWithTasks(tasks)
 	if home, err := os.UserHomeDir(); err == nil {
@@ -252,7 +252,7 @@ func (h *acpHost) open(ctx context.Context, req protocol.NewSessionRequest, resu
 		memory = setting.MemoryStoreFor(req.CWD)
 	}
 	policy := s.permissions.ForDirectory(req.CWD)
-	s.runtimeBuildParams = agent.BuildParams{SessionID: opened.ID(), CWD: req.CWD, Provider: h.provider, ModelID: modelID,
+	s.runtimeBuildParams = agentruntime.BuildParams{SessionID: opened.ID(), CWD: req.CWD, Provider: h.provider, ModelID: modelID,
 		MaxTokens: setting.DefaultMaxTokens, Skills: skills, Plugins: plugins, PluginRoot: s.runtime.PluginRoot,
 		MCPTools:  mcp.AsCoreTools(servers.ToolSchemas(), servers),
 		FileViews: fs.NewFileViews(), ShellDirHelp: acpShellDirHelp,
@@ -261,8 +261,8 @@ func (h *acpHost) open(ctx context.Context, req protocol.NewSessionRequest, resu
 		PermissionRules:  policy.Decide,
 		CanApproveByHook: policy.CanApproveByHook,
 		HookEngine:       s.hooks, Recording: opened,
-		ResultFilter: agent.ResultPager{Store: store, SessionID: opened.ID()}.Filter,
-		AutoMemory:   agent.AutoMemoryConfig{Store: memory, Recall: settings.MemoryRecall(), IndexLimits: settings.MemoryPreview()},
+		ResultFilter: agentruntime.ResultPager{Store: store, SessionID: opened.ID()}.Filter,
+		AutoMemory:   agentruntime.AutoMemoryConfig{Store: memory, Recall: settings.MemoryRecall(), IndexLimits: settings.MemoryPreview()},
 		FileCache:    filecache.New(),
 	}
 	if history != nil {

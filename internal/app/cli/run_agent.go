@@ -11,11 +11,11 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/genai-io/san/internal/agent"
 	apphook "github.com/genai-io/san/internal/app/hook"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/runtime"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/subagent"
@@ -45,7 +45,7 @@ func newExecutor(provider llm.Provider, cwd, model string, settings *setting.Dat
 	permissions.AddWorkingDirectory(cwd)
 	executor.ConfigureOwner(tasks, registry, func(_ *session.Session, _ bool, source tool.AgentInteractionSource) tool.Resolver {
 		cwd := source.WorkingDirectory
-		policy := agent.PermissionPolicy{Settings: setting.ScopedPermissions{Data: settings, CWD: cwd}, Session: permissions}
+		policy := runtime.PermissionPolicy{Settings: setting.ScopedPermissions{Data: settings, CWD: cwd}, Session: permissions}
 		return permissionResolver{policy: policy}
 	}, nil)
 	executor.SetTracker(todo.NewStoreWithTasks(tasks))
@@ -57,13 +57,13 @@ func newExecutor(provider llm.Provider, cwd, model string, settings *setting.Dat
 	})
 	executor.SetPostTool(func(handler hook.Handler, result core.ToolResult, effect any) error {
 		engine, _ := handler.(*hook.Engine)
-		agent.PostTool(result, effect, engine, agent.WorkspaceCallbacks{})
+		runtime.PostTool(result, effect, engine, runtime.WorkspaceCallbacks{})
 		return nil
 	})
 	return executor, nil
 }
 
-type permissionResolver struct{ policy agent.PermissionPolicy }
+type permissionResolver struct{ policy runtime.PermissionPolicy }
 
 func (r permissionResolver) Resolve(ctx context.Context, name string, input map[string]any, force bool, reason string) perm.Resolution {
 	if err := ctx.Err(); err != nil {

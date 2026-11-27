@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/genai-io/san/internal/agent"
+	"github.com/genai-io/san/internal/runtime"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/tool/perm"
 	"github.com/genai-io/sdk-go/pkg/acp/protocol"
@@ -56,7 +56,7 @@ func TestACPDirectoryPoliciesShareLivePermissions(t *testing.T) {
 	}
 
 	permissions.AllowPattern("Bash(make test)")
-	for _, policy := range []agent.PermissionPolicy{parent, worker} {
+	for _, policy := range []runtime.PermissionPolicy{parent, worker} {
 		if got := policy.Decide("Bash", map[string]any{"command": "make test"}).Decision; got != perm.Permit {
 			t.Fatalf("existing directory policy did not observe grant: %v", got)
 		}

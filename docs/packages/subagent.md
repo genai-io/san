@@ -12,7 +12,7 @@ main agent's tool loop.
 
 ## Purpose
 
-Where [`packages/agent.md`](agent.md) owns the *foreground* agent session,
+Where [`packages/runtime.md`](runtime.md) owns the *foreground* agent session,
 this package owns the subagents that session spawns via the Agent tool.
 Each subagent runs its own `core.Agent` loop (event observation via
 `OnEvent`; no outbox) with an isolated conversation and its own
@@ -345,7 +345,7 @@ tests/integration/agent/file_read_test.go — unattended errors stay in live tas
 
 - Code: `internal/subagent/`
 - Message routing: [`mail`](mail.md)
-- Parent agent: [`packages/agent.md`](agent.md)
+- Parent agent: [`packages/runtime.md`](runtime.md)
 - Spawning tools: [`packages/tool.md`](tool.md) (Agent, SendMessage)
 - Background tasks: [`packages/task.md`](task.md)
 - Layer: `feature`

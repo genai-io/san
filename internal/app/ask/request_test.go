@@ -5,7 +5,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/genai-io/san/internal/agent"
+	"github.com/genai-io/san/internal/runtime"
 	"github.com/genai-io/san/internal/tool"
 )
 
@@ -69,7 +69,7 @@ func TestOwnerGenerationAndClosure(t *testing.T) {
 }
 
 func TestCancellationResponses(t *testing.T) {
-	permission := &Request{Permission: &agent.PermGateRequest{Response: make(chan agent.PermGateResponse, 1)}}
+	permission := &Request{Permission: &runtime.PermGateRequest{Response: make(chan runtime.PermGateResponse, 1)}}
 	ask := question(context.Background(), nil, "question")
 	secret := &Request{Secret: &Secret{Reply: make(chan SecretResponse, 1)}}
 	q := Queue{permission, ask, secret, nil}

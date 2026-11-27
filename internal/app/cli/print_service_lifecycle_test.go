@@ -17,7 +17,7 @@ import (
 	"github.com/genai-io/sdk-go/pkg/ai/aitest"
 )
 
-// Exercise the real application boundary and Bash adapter, not RunOnce: a
+// Exercise the real application boundary and Bash adapter, not RunHeadless: a
 // completed agent turn alone must not own application service shutdown.
 func TestPrintStopsServicesOnExit(t *testing.T) {
 	for _, fail := range []bool{false, true} {

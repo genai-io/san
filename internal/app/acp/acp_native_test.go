@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/infra/filecache"
+	agentruntime "github.com/genai-io/san/internal/runtime"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/fs"
@@ -21,7 +21,7 @@ import (
 )
 
 func TestACPShellDirHelp(t *testing.T) {
-	for _, schema := range (agent.BuildParams{ShellDirHelp: acpShellDirHelp}).Schemas() {
+	for _, schema := range (agentruntime.BuildParams{ShellDirHelp: acpShellDirHelp}).Schemas() {
 		if schema.Name == "Bash" {
 			if strings.Contains(schema.Description, "updates the session working directory") || !strings.Contains(schema.Description, "subsequent commands start in the original session working directory") {
 				t.Fatal(schema.Description)
@@ -67,7 +67,7 @@ func TestACPNativeHandoffOwners(t *testing.T) {
 		wg.Go(func() {
 			dir := t.TempDir()
 			path := filepath.Join(dir, "created")
-			s := &acpSession{hooks: hook.NewEngine(&setting.Data{}, "owner", dir, ""), runtimeBuildParams: agent.BuildParams{FileCache: filecache.New()}}
+			s := &acpSession{hooks: hook.NewEngine(&setting.Data{}, "owner", dir, ""), runtimeBuildParams: agentruntime.BuildParams{FileCache: filecache.New()}}
 			changed := make(chan string, 2)
 			s.hooks.AddSessionFunctionHook(hook.FileChanged, "", hook.FunctionHook{Callback: func(_ context.Context, in hook.HookInput) (hook.HookOutput, error) {
 				changed <- in.FilePath

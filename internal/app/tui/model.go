@@ -28,10 +28,10 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/app/tui/input"
 	"github.com/genai-io/san/internal/core"
+	agentruntime "github.com/genai-io/san/internal/runtime"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/tool/reviewskill"
@@ -48,7 +48,7 @@ type model struct {
 	agentSession      *session.Session // opened writer captured when the selected runtime started
 	workerMu          *sync.Mutex      // shared across render copies; initialized when task callbacks are wired
 	// pendingMessages retains input until the agent accepts it.
-	pendingMessages   agent.InputQueue
+	pendingMessages   agentruntime.InputQueue
 	queueContinuation *input.QueueItem // explicit queue Enter, valid only across this cancellation fence
 	pendingPluginRoot string
 
@@ -173,7 +173,7 @@ type model struct {
 	agentReviewCaps reviewskill.Capabilities
 
 	// autoMemory is the configuration captured by the live agent.
-	autoMemory agent.AutoMemoryConfig
+	autoMemory agentruntime.AutoMemoryConfig
 
 	// agentDisabledToolsSignature is the disabledToolsSignature() the live
 	// agent's toolset was built with; ensureAgentRuntime rebuilds when it no

@@ -6,10 +6,10 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/ask"
 	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/app/tui/input"
+	"github.com/genai-io/san/internal/runtime"
 	"github.com/genai-io/san/internal/tool/perm"
 )
 
@@ -131,7 +131,7 @@ func (m *model) showActiveUserPrompt() tea.Cmd {
 			view, err = m.preparePermissionRequest(req.Permission)
 			if err != nil {
 				select {
-				case req.Permission.Response <- agent.PermGateResponse{Reason: "cannot prepare " + req.Permission.ToolName + " approval: " + err.Error()}:
+				case req.Permission.Response <- runtime.PermGateResponse{Reason: "cannot prepare " + req.Permission.ToolName + " approval: " + err.Error()}:
 				default:
 				}
 				m.finishUserPrompt()

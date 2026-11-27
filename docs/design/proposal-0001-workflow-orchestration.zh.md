@@ -522,7 +522,7 @@ sdk-go 作为 `pkg/agent/flow`，补齐 SDK 架构文档描述的那条阶梯：
 | `internal/tool/workflow/` | 工具本体、列出节点与上界的权限预览、后台启动 |
 | `internal/app/conv/workflow_view.go` | 分层布局缓存成字符网格，逐帧重绘 |
 | `internal/tool/schema.go`、`set.go` | `ToolWorkflow`、`builtinToolOrder`、`parentOnlyTools` |
-| `internal/agent/build.go` | 注入 executor，照 `Agent` 工具的 `SetExecutor` |
+| `internal/runtime/build.go` | 注入 executor，照 `Agent` 工具的 `SetExecutor` |
 | `docs/reference/package-map.md` | 登记新包，否则 `make lint` 挂 |
 | `docs/concepts/workflow.md` | 随 P1 一起写，描述已经存在的东西 |
 

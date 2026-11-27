@@ -580,6 +580,6 @@ prompt 前缀（prompt cache 命中更稳）。
 | Conv 事件路由 | [`internal/app/tui/chat/update.go`](../../internal/app/tui/chat/update.go) |
 | `agent.Send` / outbox 轮询 | [`internal/app/tui/agent.go`](../../internal/app/tui/agent.go) |
 | 流式中断处理 | [`internal/app/tui/update_input_effects.go`](../../internal/app/tui/update_input_effects.go) |
-| `Cancel` | [`internal/agent/runtime.go`](../../internal/agent/runtime.go) |
+| `Cancel` | [`internal/runtime/runtime.go`](../../internal/runtime/runtime.go) |
 | `turn` / `Cancel` / Run loop | [`internal/core/run.go`](../../internal/core/run.go) |
 | 底部 UI 组合 | [`internal/app/tui/view.go`](../../internal/app/tui/view.go) |

@@ -8,11 +8,11 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/app/tui/input"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/flow"
+	"github.com/genai-io/san/internal/runtime"
 	"github.com/genai-io/san/internal/subagent"
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/todo"
@@ -179,7 +179,7 @@ func TestCtrlCStopsForegroundBeforeBackgroundFlow(t *testing.T) {
 	defer cancel()
 	wf := manager.CreateSchedulerTask("flow-in-background", "flow", "audit", ctx, cancel)
 	m := flowInputModel(manager)
-	m.services.Agent = &agent.Runtime{}
+	m.services.Agent = &runtime.Runtime{}
 	m.conv.Stream.Active = true
 
 	m.handleTextareaShortcut(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})

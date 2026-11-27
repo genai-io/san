@@ -10,10 +10,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/reflect/memory"
+	"github.com/genai-io/san/internal/runtime"
 	"github.com/genai-io/sdk-go/pkg/ai"
 	"github.com/genai-io/sdk-go/pkg/ai/aitest"
 	"gopkg.in/yaml.v3"
@@ -78,7 +78,7 @@ func TestAutoMemoryDocsExamples(t *testing.T) {
 	writeTestFile(t, filepath.Join(dir, note), "---\nname: '"+name+"'\ndescription: "+desc+"\ntype: project\n---\n"+desc+"\n")
 
 	provider := aitest.New(aitest.Says(`{"selected_memories":["` + note + `"]}`))
-	recaller := agent.Recaller{Provider: staticTestProvider{provider.Client()}, Model: "test"}
+	recaller := runtime.Recaller{Provider: staticTestProvider{provider.Client()}, Model: "test"}
 	if _, err := recaller.Prepare(t.Context(), store, core.UserMessage(question, nil), nil); err != nil {
 		t.Fatal(err)
 	}

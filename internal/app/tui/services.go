@@ -3,8 +3,6 @@ package tui
 import (
 	"context"
 
-	"github.com/genai-io/san/internal/agent"
-	"github.com/genai-io/san/internal/agent/reminder"
 	"github.com/genai-io/san/internal/command"
 	"github.com/genai-io/san/internal/cron"
 	"github.com/genai-io/san/internal/flow"
@@ -14,6 +12,8 @@ import (
 	"github.com/genai-io/san/internal/persona"
 	"github.com/genai-io/san/internal/plugin"
 	reflectskill "github.com/genai-io/san/internal/reflect/skill"
+	"github.com/genai-io/san/internal/runtime"
+	"github.com/genai-io/san/internal/runtime/reminder"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/skill"
@@ -43,7 +43,7 @@ type services struct {
 	Cron         *cron.Scheduler
 	MCP          *mcp.Manager
 	Plugin       *plugin.Registry
-	Agent        *agent.Runtime
+	Agent        *runtime.Runtime
 	Persona      *persona.Registry
 	Reminder     *reminder.Queue
 
@@ -78,7 +78,7 @@ func newServices() services {
 		Cron:         cron.Default(),
 		MCP:          mcp.DefaultManager(),
 		Plugin:       plugin.Default(),
-		Agent:        agent.Default(),
+		Agent:        runtime.Default(),
 		Persona:      persona.Default(),
 		Reminder:     reminder.NewQueue(),
 	}

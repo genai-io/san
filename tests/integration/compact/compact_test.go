@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/runtime"
 	"github.com/genai-io/san/tests/integration/testutil"
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
@@ -30,7 +30,7 @@ func TestCompact_SummarizesConversation(t *testing.T) {
 		core.AssistantMessage("you're welcome", "", nil),
 	}
 
-	summary, count, err := agent.CompactConversation(context.Background(), c, msgs, "", nil)
+	summary, count, err := runtime.CompactConversation(context.Background(), c, msgs, "", nil)
 	if err != nil {
 		t.Fatalf("CompactConversation() error: %v", err)
 	}
@@ -55,7 +55,7 @@ func TestCompact_WithFocus(t *testing.T) {
 		core.UserMessage("and run them", nil),
 	}
 
-	_, _, err := agent.CompactConversation(context.Background(), c, msgs, "testing", nil)
+	_, _, err := runtime.CompactConversation(context.Background(), c, msgs, "testing", nil)
 	if err != nil {
 		t.Fatalf("CompactConversation() error: %v", err)
 	}
@@ -87,8 +87,8 @@ func TestAConversationTooShortToShortenIsRefused(t *testing.T) {
 			c, fake := newFakeClient(
 				llm.CompletionResponse{Content: ai.TextContent("a summary nobody asked for"), StopReason: ai.StopEndTurn},
 			)
-			_, count, err := agent.CompactConversation(context.Background(), c, tc.msgs, "", nil)
-			if !errors.Is(err, agent.ErrNothingToCompact) {
+			_, count, err := runtime.CompactConversation(context.Background(), c, tc.msgs, "", nil)
+			if !errors.Is(err, runtime.ErrNothingToCompact) {
 				t.Fatalf("err = %v, want ErrNothingToCompact", err)
 			}
 			if count != len(tc.msgs) {
@@ -112,7 +112,7 @@ func TestCompact_WithoutOptionalSections_LeavesPromptPlain(t *testing.T) {
 		core.UserMessage("what did you find", nil),
 	}
 
-	_, _, err := agent.CompactConversation(context.Background(), c, msgs, "", nil)
+	_, _, err := runtime.CompactConversation(context.Background(), c, msgs, "", nil)
 	if err != nil {
 		t.Fatalf("CompactConversation() error: %v", err)
 	}

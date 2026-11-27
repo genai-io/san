@@ -3,15 +3,15 @@ package chat
 import (
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/genai-io/san/internal/agent"
+	"github.com/genai-io/san/internal/runtime"
 )
 
 type PermGateMsg struct {
-	Gate    *agent.PermissionGate
-	Request *agent.PermGateRequest
+	Gate    *runtime.PermissionGate
+	Request *runtime.PermGateRequest
 }
 
-func PollPermGate(pg *agent.PermissionGate) tea.Cmd {
+func PollPermGate(pg *runtime.PermissionGate) tea.Cmd {
 	if pg == nil {
 		return nil
 	}

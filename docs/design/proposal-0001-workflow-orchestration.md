@@ -573,7 +573,7 @@ speculative.
 | `internal/tool/workflow/` | the tool, permission preview listing nodes and bounds, background launch |
 | `internal/app/conv/workflow_view.go` | layered layout cached as a character grid, repainted per frame |
 | `internal/tool/schema.go`, `set.go` | `ToolWorkflow`, `builtinToolOrder`, `parentOnlyTools` |
-| `internal/agent/build.go` | executor injection, mirroring the `Agent` tool's `SetExecutor` |
+| `internal/runtime/build.go` | executor injection, mirroring the `Agent` tool's `SetExecutor` |
 | `docs/reference/package-map.md` | register the new package, or `make lint` fails |
 | `docs/concepts/workflow.md` | written with P1, describing what exists |
 

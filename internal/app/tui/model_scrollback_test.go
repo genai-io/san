@@ -9,12 +9,12 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/genai-io/san/internal/agent"
-	"github.com/genai-io/san/internal/agent/reminder"
 	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/app/tui/input"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/runtime"
+	"github.com/genai-io/san/internal/runtime/reminder"
 	"github.com/genai-io/san/internal/subagent"
 	"github.com/genai-io/san/internal/todo"
 	"github.com/genai-io/san/internal/tool/perm"
@@ -146,7 +146,7 @@ func TestHandoffFrameFitsAfterNarrowing(t *testing.T) {
 func TestClearDiscardsRecentSettledRows(t *testing.T) {
 	m := fixedComposerModel(80, 24)
 	initClearSessionTest(t, m)
-	m.services.Agent = &agent.Runtime{}
+	m.services.Agent = &runtime.Runtime{}
 	m.services.Reminder = reminder.NewQueue()
 	m.queueScrollbackPrint("OLD-REPLY", 0)
 	if _, _, handled := m.executeCommand(context.Background(), "/clear"); !handled {
@@ -160,7 +160,7 @@ func TestClearDiscardsRecentSettledRows(t *testing.T) {
 func TestClearCancelsQueuedHistoryAndIgnoresStaleMessages(t *testing.T) {
 	m := fixedComposerModel(80, 24)
 	initClearSessionTest(t, m)
-	m.services.Agent = &agent.Runtime{}
+	m.services.Agent = &runtime.Runtime{}
 	m.services.Reminder = reminder.NewQueue()
 	var rows []string
 	for i := 0; i < 19; i++ {
@@ -554,7 +554,7 @@ func TestDeferredApprovalWaitsForScrollbackHandoff(t *testing.T) {
 	}
 	cmd := m.flush.queueScrollbackPrint("COMMITTED_BEFORE_APPROVAL", 0)
 	m.enqueueUserPrompt(&chat.UserPromptRequest{
-		Permission: &agent.PermGateRequest{ToolName: "Bash"}, PermissionView: view,
+		Permission: &runtime.PermGateRequest{ToolName: "Bash"}, PermissionView: view,
 	})
 	if cmd == nil {
 		t.Fatal("the queued print must start")

@@ -14,7 +14,7 @@ import (
 	"github.com/genai-io/san/internal/infra/atomicfile"
 	"github.com/genai-io/san/internal/task"
 
-	"github.com/genai-io/san/internal/agent/mail"
+	"github.com/genai-io/san/internal/runtime/mail"
 	"github.com/genai-io/san/internal/tool"
 )
 

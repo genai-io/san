@@ -7,11 +7,11 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/tui/input"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/infra/log"
 	reflectskill "github.com/genai-io/san/internal/reflect/skill"
+	"github.com/genai-io/san/internal/runtime"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/tool/reviewskill"
@@ -46,7 +46,7 @@ func (m *model) resolveAutoSkillConfig() (reflectskill.Config, error) {
 }
 
 // wireAutoSkill binds the reviewer to the current session, model and strategy.
-func (m *model) wireAutoSkill(params agent.BuildParams) {
+func (m *model) wireAutoSkill(params runtime.BuildParams) {
 	m.teardownAutoSkill()
 	cfg, err := m.resolveAutoSkillConfig()
 	if err != nil {

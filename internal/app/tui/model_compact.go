@@ -16,12 +16,12 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"go.uber.org/zap"
 
-	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/app/tui/widgets"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/infra/log"
+	"github.com/genai-io/san/internal/runtime"
 	"github.com/genai-io/san/internal/session"
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 )
@@ -90,7 +90,7 @@ func (m *model) cancelManualCompaction() error {
 	return nil
 }
 
-func (m *model) BuildCompactRequest(focus, trigger string) agent.CompactRequest {
+func (m *model) BuildCompactRequest(focus, trigger string) runtime.CompactRequest {
 	client := m.buildLLMClient()
 	native := m.services.Agent.Messages()
 	messages := client.RequestMessages(native)
@@ -102,7 +102,7 @@ func (m *model) BuildCompactRequest(focus, trigger string) agent.CompactRequest 
 	// Rejected short requests never acquire a lifetime or disturb the UI.
 	if len(messages) >= core.MinMessagesToCompact {
 		if err := m.cancelManualCompaction(); err != nil {
-			return agent.CompactRequest{Ctx: ctx, Err: err}
+			return runtime.CompactRequest{Ctx: ctx, Err: err}
 		}
 		owner, requestErr = m.openCurrentSession()
 		if requestErr == nil && !owner.OwnedBy(m.services.SessionStore) {
@@ -124,7 +124,7 @@ func (m *model) BuildCompactRequest(focus, trigger string) agent.CompactRequest 
 			preCompact = m.pendingCompaction.runPreCompact(preCompact)
 		}
 	}
-	return agent.CompactRequest{
+	return runtime.CompactRequest{
 		Ctx:    ctx,
 		Client: client,
 		// Summarization runs on the active model, so the chain has to clear the
@@ -193,7 +193,7 @@ func (m *model) OnCompacted(info core.Compacted) tea.Cmd {
 	} else {
 		m.conv.Compact.Clear()
 	}
-	if restored := agent.PostCompact(info, m.services.Hook, m.services.Reminder, m.env.FileCache, func() {
+	if restored := runtime.PostCompact(info, m.services.Hook, m.services.Reminder, m.env.FileCache, func() {
 		m.refreshMemoryContext(m.env.CWD, "post_compact")
 	}); restored > 0 {
 		m.conv.AddNotice(fmt.Sprintf("Restored %d recently accessed file(s) for context.", restored))
@@ -228,7 +228,7 @@ func (m *model) HandleCompactResult(msg chat.CompactResultMsg) tea.Cmd {
 	// the nil recording owner). Validation precedes even error presentation.
 	p.cancel()
 	m.pendingCompaction = nil
-	if errors.Is(msg.Err, agent.ErrNothingToCompact) {
+	if errors.Is(msg.Err, runtime.ErrNothingToCompact) {
 		discardCompaction(msg.Completion)
 		// Not a failure: there was nothing to do. Saying so is the point —
 		// pressing /compact on a summary used to spend a model call to
@@ -255,7 +255,7 @@ func (m *model) HandleCompactResult(msg chat.CompactResultMsg) tea.Cmd {
 	if accepted {
 		return tea.Batch(m.CommitMessages()...)
 	}
-	summary, info, err := agent.RecordManualCompaction(p.session, msg.CompactResult)
+	summary, info, err := runtime.RecordManualCompaction(p.session, msg.CompactResult)
 	if err != nil {
 		m.conv.Compact.Complete(fmt.Sprintf("Compaction could not be saved: %v", err), true)
 		return tea.Batch(m.CommitMessages()...)

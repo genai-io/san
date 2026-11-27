@@ -7,14 +7,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/genai-io/san/internal/agent"
-	"github.com/genai-io/san/internal/agent/reminder"
 	"github.com/genai-io/san/internal/app/tui/input"
 	"github.com/genai-io/san/internal/command"
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/mcp"
 	"github.com/genai-io/san/internal/persona"
 	"github.com/genai-io/san/internal/plugin"
+	agentruntime "github.com/genai-io/san/internal/runtime"
+	"github.com/genai-io/san/internal/runtime/reminder"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/skill"
 	"github.com/genai-io/san/internal/subagent"
@@ -49,7 +49,7 @@ func extensionReloadModel(t *testing.T, cwd string) *model {
 	svc := services{
 		Setting: setting.Default(), Skill: skill.Default(), Command: command.Default(),
 		Subagent: subagent.Default(), MCP: mcp.DefaultManager(), Plugin: plugin.Default(), Persona: persona.Default(),
-		Agent: &agent.Runtime{}, Tool: tool.NewRegistry(), Reminder: reminder.NewQueue(),
+		Agent: &agentruntime.Runtime{}, Tool: tool.NewRegistry(), Reminder: reminder.NewQueue(),
 		Hook: hook.NewEngine(setting.NewData(), "", cwd, ""),
 	}
 	m := &model{env: env{CWD: cwd}, services: svc, learnedStores: newLearnedStoreContext(cwd, svc.Setting)}
@@ -147,7 +147,7 @@ func TestExtensionReloadReconcilesRunningMCPTools(t *testing.T) {
 	for _, path := range []string{"plugin", "project"} {
 		t.Run(path, func(t *testing.T) {
 			m := extensionReloadModel(t, t.TempDir())
-			if err := m.services.Agent.Start(agent.BuildParams{Provider: &testutil.FakeProvider{}, ModelID: "m"}, nil); err != nil {
+			if err := m.services.Agent.Start(agentruntime.BuildParams{Provider: &testutil.FakeProvider{}, ModelID: "m"}, nil); err != nil {
 				t.Fatal(err)
 			}
 			defer stopRuntime(t, m.services.Agent)

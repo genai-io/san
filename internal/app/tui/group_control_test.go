@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/genai-io/san/internal/agent"
-	"github.com/genai-io/san/internal/agent/reminder"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/group"
+	"github.com/genai-io/san/internal/runtime"
+	"github.com/genai-io/san/internal/runtime/reminder"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
 )
@@ -202,7 +202,7 @@ func TestGroupControlDestructiveRequiresNativeCommand(t *testing.T) {
 func TestGroupControlAppliesOnlyOnUIThread(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	m := newGroupControlModel(t)
-	m.services.Agent = &agent.Runtime{}
+	m.services.Agent = &runtime.Runtime{}
 	m.services.Reminder = reminder.NewQueue()
 	m.services.sessionID = "control-test"
 	group.BindSession(m.sessionID)

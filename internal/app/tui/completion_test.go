@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/hook"
+	"github.com/genai-io/san/internal/runtime"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/tests/integration/testutil"
@@ -63,7 +63,7 @@ func TestNormalIdleTurnStateRecordCount(t *testing.T) {
 			if m.pendingStopHook == nil || turnStateRecordCount(t, m) != before+1 {
 				t.Fatal("completion did not record state before scheduling the Stop check")
 			}
-			check := agent.NewStopCheck(m.services.Hook, core.LastAssistantChatContent(m.conv.Messages))
+			check := runtime.NewStopCheck(m.services.Hook, core.LastAssistantChatContent(m.conv.Messages))
 			if scenario == "changed-while-pending" {
 				m.env.AutoPilot.Mission = "changed state"
 			}

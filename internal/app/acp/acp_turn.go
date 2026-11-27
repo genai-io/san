@@ -9,7 +9,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/genai-io/san/internal/agent"
+	"github.com/genai-io/san/internal/runtime"
 
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/hook"
@@ -51,7 +51,7 @@ func (s *acpSession) prompt(ctx context.Context, turn *acp.Turn, req protocol.Pr
 	}
 	ctx = plugin.WithRoot(ctx, pluginRoot)
 	hookCtx, cancelHook := context.WithTimeout(ctx, 5*time.Second)
-	blocked, reason := agent.CheckPrompt(hookCtx, text.String(), s.hooks, s.reminders)
+	blocked, reason := runtime.CheckPrompt(hookCtx, text.String(), s.hooks, s.reminders)
 	cancelHook()
 	if blocked {
 		return response, fmt.Errorf("prompt blocked: %s", reason)
@@ -71,7 +71,7 @@ func (s *acpSession) prompt(ctx context.Context, turn *acp.Turn, req protocol.Pr
 	if prompt != text.String() {
 		submission = core.UserMessage(prompt, nil)
 	}
-	prepared := agent.PreparedMemory{Message: submission}
+	prepared := runtime.PreparedMemory{Message: submission}
 	if params.AutoMemory.Recall.Mode == setting.MemoryRecallWait && params.AutoMemory.Store.HasNotes() {
 		prepared, err = params.MemoryRecaller().PrepareWithSubmission(ctx, params.AutoMemory.Store, userInput, submission, history)
 	}
@@ -134,7 +134,7 @@ func (s *acpSession) prompt(ctx context.Context, turn *acp.Turn, req protocol.Pr
 		return protocol.PromptResponse{StopReason: protocol.StopReasonCancelled}, nil
 	}
 	msg := s.reminders.PrepareInput(prepared.Message)
-	if err := s.runtime.SendInput(agent.PendingInput{Message: msg, Completion: prepared.Completion, FromUser: true, RecallQuery: userInput.Text()}); err != nil {
+	if err := s.runtime.SendInput(runtime.PendingInput{Message: msg, Completion: prepared.Completion, FromUser: true, RecallQuery: userInput.Text()}); err != nil {
 		return response, err
 	}
 	cancelled := ctx.Done()
@@ -174,9 +174,9 @@ func (s *acpSession) prompt(ctx context.Context, turn *acp.Turn, req protocol.Pr
 			case core.TurnEnded:
 				recordErr := s.recordState()
 				if e.Result.StopReason != core.StopCanceled && e.Result.StopReason != core.StopError && ctx.Err() == nil && transportErr == nil {
-					recordErr = agent.EndTurn(agent.TurnCallbacks{RecordState: s.recordState,
+					recordErr = runtime.EndTurn(runtime.TurnCallbacks{RecordState: s.recordState,
 						NextInput: func() bool { return false }, AutoPilot: func() bool { return false }, Idle: func() {}})
-					decision := agent.NewStopCheck(s.hooks, e.Result.Content).Run(ctx)
+					decision := runtime.NewStopCheck(s.hooks, e.Result.Content).Run(ctx)
 					continuation, finishErr := decision.Finish(s.recordState)
 					recordErr = errors.Join(recordErr, finishErr)
 					e.Result.Finalization.Acknowledge(recordErr)
@@ -228,7 +228,7 @@ func (s *acpSession) prompt(ctx context.Context, turn *acp.Turn, req protocol.Pr
 				}
 				return response, errors.Join(e.Err, transportErr, s.nativeSession.Session.Err())
 			case core.Compacted:
-				agent.PostCompact(e, s.hooks, s.reminders, s.runtimeBuildParams.FileCache, s.refreshMemory)
+				runtime.PostCompact(e, s.hooks, s.reminders, s.runtimeBuildParams.FileCache, s.refreshMemory)
 			case sdkagent.ToolEnd:
 				s.postTool(e)
 			}
@@ -266,7 +266,7 @@ func acpStopFailure(err error) error {
 
 func (s *acpSession) postTool(e sdkagent.ToolEnd) {
 	handoff, _ := s.toolResponses.LoadAndDelete(e.ID)
-	agent.PostTool(core.ToolResult{ToolCallID: e.ID, ToolName: e.Name, Content: e.Result.Content, IsError: e.Err != nil}, handoff, s.hooks, agent.WorkspaceCallbacks{TouchFile: s.runtimeBuildParams.FileCache.Touch})
+	runtime.PostTool(core.ToolResult{ToolCallID: e.ID, ToolName: e.Name, Content: e.Result.Content, IsError: e.Err != nil}, handoff, s.hooks, runtime.WorkspaceCallbacks{TouchFile: s.runtimeBuildParams.FileCache.Touch})
 }
 
 func acpMessageChunk(text string) protocol.SessionUpdate {

@@ -4,13 +4,13 @@ import (
 	"context"
 	"strings"
 
-	"github.com/genai-io/san/internal/agent"
 	apphook "github.com/genai-io/san/internal/app/hook"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/plugin"
+	"github.com/genai-io/san/internal/runtime"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/skill"
@@ -45,7 +45,7 @@ func (s *acpSession) configureAgents() error {
 			}
 			if !background {
 				if gate := s.runtime.PermissionGate(); gate != nil {
-					rules := func(string, map[string]any) agent.PermDecisionResult { return policy.Decide(name, input) }
+					rules := func(string, map[string]any) runtime.PermDecisionResult { return policy.Decide(name, input) }
 					return gate.WithRules(rules).Resolve(ctx, name, setting.PermissionPaths(name, input, cwd), force, reason)
 				}
 				return perm.Resolution{Decision: "deny", By: "config", Reason: "parent prompt is unavailable"}
@@ -75,7 +75,7 @@ func (s *acpSession) configureAgents() error {
 	})
 	e.SetPostTool(func(handler hook.Handler, result core.ToolResult, effect any) error {
 		engine, _ := handler.(*hook.Engine)
-		agent.PostTool(result, effect, engine, agent.WorkspaceCallbacks{TouchFile: s.runtimeBuildParams.FileCache.Touch})
+		runtime.PostTool(result, effect, engine, runtime.WorkspaceCallbacks{TouchFile: s.runtimeBuildParams.FileCache.Touch})
 		return nil
 	})
 	user, project := system.FormatInstructions(system.LoadMemoryFiles(s.runtimeBuildParams.CWD))

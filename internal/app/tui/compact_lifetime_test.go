@@ -12,11 +12,11 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/app/tui/input"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/hook"
+	agentruntime "github.com/genai-io/san/internal/runtime"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/sdk-go/pkg/ai"
 	"github.com/genai-io/sdk-go/pkg/ai/aitest"
@@ -152,7 +152,7 @@ func TestManualCompactionFencesLateResults(t *testing.T) {
 					m.replaceSession(opened)
 				case "runtime":
 					provider := &restartStubProvider{requests: make(chan []core.Message, 1)}
-					if err := m.services.Agent.Start(agent.BuildParams{Provider: provider, ModelID: "m"}, m.services.Agent.Messages()); err != nil {
+					if err := m.services.Agent.Start(agentruntime.BuildParams{Provider: provider, ModelID: "m"}, m.services.Agent.Messages()); err != nil {
 						t.Fatal(err)
 					}
 				case "successor":
@@ -334,7 +334,7 @@ func TestManualCompactionCancelsPreCompactHook(t *testing.T) {
 		return hook.HookOutput{}, ctx.Err()
 	}})
 	request := m.BuildCompactRequest("", "manual")
-	result := make(chan agent.CompactResult, 1)
+	result := make(chan agentruntime.CompactResult, 1)
 	go func() { result <- request.Run() }()
 	waitCompact(t, entered)
 	m.cancelManualCompaction()

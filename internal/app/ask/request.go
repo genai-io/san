@@ -6,7 +6,7 @@ package ask
 import (
 	"context"
 
-	"github.com/genai-io/san/internal/agent"
+	"github.com/genai-io/san/internal/runtime"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/perm"
 )
@@ -24,7 +24,7 @@ type Request struct {
 	Context        context.Context
 	Owner          Owner
 	Source         tool.AgentInteractionSource
-	Permission     *agent.PermGateRequest
+	Permission     *runtime.PermGateRequest
 	PermissionView *perm.PermissionRequest
 	Question       *Question
 	Secret         *Secret
@@ -59,7 +59,7 @@ func (r *Request) Cancel() {
 	switch {
 	case r.Permission != nil:
 		select {
-		case r.Permission.Response <- agent.PermGateResponse{Reason: "interaction cancelled", Cancelled: true, By: "user"}:
+		case r.Permission.Response <- runtime.PermGateResponse{Reason: "interaction cancelled", Cancelled: true, By: "user"}:
 		default:
 		}
 	case r.Question != nil:

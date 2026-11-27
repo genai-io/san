@@ -13,7 +13,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 	xansi "github.com/charmbracelet/x/ansi"
 
-	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/app/tui/widgets"
 	"github.com/genai-io/san/internal/command"
@@ -23,6 +22,7 @@ import (
 	"github.com/genai-io/san/internal/mcp"
 	"github.com/genai-io/san/internal/persona"
 	"github.com/genai-io/san/internal/plugin"
+	"github.com/genai-io/san/internal/runtime"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/skill"
@@ -95,7 +95,7 @@ type SlashCommandEnv struct {
 	ClearSession            func() error
 	ClearScrollback         func(tea.Cmd) tea.Cmd
 	FireSessionEnd          func(reason string)
-	BuildCompactRequest     func(focus, trigger string) agent.CompactRequest
+	BuildCompactRequest     func(focus, trigger string) runtime.CompactRequest
 	BeginCompact            func()
 	SpinnerTickCmd          func() tea.Cmd
 	OpenHistory             func() tea.Cmd

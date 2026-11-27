@@ -3,8 +3,8 @@ package tui
 import (
 	"testing"
 
-	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/group"
+	"github.com/genai-io/san/internal/runtime"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/tool"
 )
@@ -17,7 +17,7 @@ func TestOrdinaryMainRuntimeOffersWorkerMessaging(t *testing.T) {
 			data.DisabledTools = map[string]bool{tool.ToolSendMessage: true}
 		}
 		m := &model{services: services{Setting: setting.New(data)}}
-		params := agent.BuildParams{DisabledTools: m.disabledTools()}
+		params := runtime.BuildParams{DisabledTools: m.disabledTools()}
 		offered := false
 		for _, schema := range params.ToolSchemas() {
 			if schema.Name == tool.ToolSendMessage {

@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/mcp"
+	"github.com/genai-io/san/internal/runtime"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/task"
@@ -18,7 +18,7 @@ import (
 
 func newRecapModel(t *testing.T) *model {
 	m := fixedComposerModel(80, 40)
-	m.services.Agent, m.services.Task = &agent.Runtime{}, task.NewManager()
+	m.services.Agent, m.services.Task = &runtime.Runtime{}, task.NewManager()
 	m.services.MCP = mcp.NewManagerForTest(nil)
 	m.env.LLMProvider = &autopilotStubProvider{}
 	m.env.SessionPermissions = setting.NewSessionPermissions()

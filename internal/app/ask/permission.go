@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/genai-io/san/internal/agent"
+	"github.com/genai-io/san/internal/runtime"
 	"github.com/genai-io/san/internal/tool/perm"
 )
 
@@ -86,9 +86,9 @@ func (p *Permission) Resolve(owner Owner, d PermissionDecision, allowTool func(s
 	asked := p.asked
 	asked.Options = append([]string(nil), asked.Options...)
 	asked.Detail = append(json.RawMessage(nil), asked.Detail...)
-	response := agent.PermGateResponse{Allow: d.Approved, Reason: reason, By: "user", Scope: scope, Asked: &asked}
+	response := runtime.PermGateResponse{Allow: d.Approved, Reason: reason, By: "user", Scope: scope, Asked: &asked}
 	if !p.request.Valid(owner) {
-		response = agent.PermGateResponse{Reason: "interaction cancelled", By: "user", Cancelled: true, Asked: &asked}
+		response = runtime.PermGateResponse{Reason: "interaction cancelled", By: "user", Cancelled: true, Asked: &asked}
 	}
 	select {
 	case p.request.Permission.Response <- response:

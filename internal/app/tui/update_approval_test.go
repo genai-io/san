@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/runtime"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/perm"
@@ -21,7 +21,7 @@ func TestMainApprovalCarriesExecutionContext(t *testing.T) {
 	m := userPromptModel()
 	m.env.CWD = t.TempDir()
 	m.env.SessionPermissions = setting.NewSessionPermissions()
-	request, err := m.preparePermissionRequest(&agent.PermGateRequest{RequestID: "main-context", ToolName: "Bash", Input: map[string]any{"command": "touch fixture.txt"}})
+	request, err := m.preparePermissionRequest(&runtime.PermGateRequest{RequestID: "main-context", ToolName: "Bash", Input: map[string]any{"command": "touch fixture.txt"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,10 +43,10 @@ func TestMainPermissionBoundaryRejectsInvalidShellBeforeApproval(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			m := userPromptModel()
-			m.services.Agent = &agent.Runtime{}
+			m.services.Agent = &runtime.Runtime{}
 			m.env.CWD = t.TempDir()
-			gate := agent.NewPermissionGate(func(string, map[string]any) agent.PermDecisionResult {
-				return agent.PermDecisionResult{Decision: perm.Prompt, Reason: "mode: default requires confirmation"}
+			gate := runtime.NewPermissionGate(func(string, map[string]any) runtime.PermDecisionResult {
+				return runtime.PermDecisionResult{Decision: perm.Prompt, Reason: "mode: default requires confirmation"}
 			})
 			defer gate.Close()
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

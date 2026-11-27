@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/genai-io/san/internal/agent/mail"
+	"github.com/genai-io/san/internal/runtime/mail"
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/tool"
 	agenttools "github.com/genai-io/san/internal/tool/agent"

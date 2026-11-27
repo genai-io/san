@@ -5,10 +5,10 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/runtime"
 )
 
 func TestCompactUsesNativeRequestCount(t *testing.T) {
@@ -21,9 +21,9 @@ func TestCompactUsesNativeRequestCount(t *testing.T) {
 			LLM: conn, Conversation: conversation,
 			SpinnerTickCmd: func() tea.Cmd { return nil },
 			BeginCompact:   func() { begun++ },
-			BuildCompactRequest: func(focus, trigger string) agent.CompactRequest {
+			BuildCompactRequest: func(focus, trigger string) runtime.CompactRequest {
 				built++
-				return agent.CompactRequest{Messages: make([]core.Message, count), SummaryFocus: focus, Trigger: trigger}
+				return runtime.CompactRequest{Messages: make([]core.Message, count), SummaryFocus: focus, Trigger: trigger}
 			},
 		}}
 		_, cmd, err := controller.handleCompactCommand(context.Background(), " focus ")

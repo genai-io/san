@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/genai-io/san/internal/agent/mail"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/group"
+	"github.com/genai-io/san/internal/runtime/mail"
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/perm"

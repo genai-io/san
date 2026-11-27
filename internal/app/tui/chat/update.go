@@ -10,9 +10,9 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/infra/log"
+	"github.com/genai-io/san/internal/runtime"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/toolresult"
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
@@ -149,7 +149,7 @@ func handleAgentEventBatch(rt Runtime, m *Model, events []core.Event, closed boo
 
 func applyAgentEvent(rt Runtime, m *Model, ev core.Event) tea.Cmd {
 	switch e := ev.(type) {
-	case agent.MemoryRecalled:
+	case runtime.MemoryRecalled:
 		if len(e.NoteIDs) > 0 {
 			m.Append(core.ChatMessage{Role: core.ChatNotice, AutoMemoryRecallNotice: compactRecallNotice(e.AfterMessage, e.NoteIDs)})
 		}

@@ -14,11 +14,11 @@ import (
 	"github.com/ActiveState/vt10x"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/genai-io/san/internal/agent"
-	"github.com/genai-io/san/internal/agent/reminder"
 	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/app/tui/widgets/suggest"
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/runtime"
+	"github.com/genai-io/san/internal/runtime/reminder"
 	"github.com/genai-io/san/internal/task"
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 	"github.com/genai-io/sdk-go/pkg/ai"
@@ -494,7 +494,7 @@ func TestClearCancelsHistoryBeforeAndDuringNativePrint(t *testing.T) {
 		t.Run(fmt.Sprintf("started=%v", started), func(t *testing.T) {
 			m := &clearScrollbackRendererModel{model: fixedComposerModel(80, 24), started: started, settled: make(chan struct{}, 1)}
 			initClearSessionTest(t, m.model)
-			m.services.Agent = &agent.Runtime{}
+			m.services.Agent = &runtime.Runtime{}
 			m.services.Reminder = reminder.NewQueue()
 			m.userInput.Textarea.SetValue("LIVE-DRAFT")
 			terminal := newTerminalHistoryState(80, 24)
@@ -863,7 +863,7 @@ func TestFirstReplyKeepsUserRowInEveryTerminalFrame(t *testing.T) {
 	for _, height := range []int{24, 40} {
 		t.Run(fmt.Sprintf("height %d", height), func(t *testing.T) {
 			m := &fixedComposerRendererModel{model: fixedComposerModel(100, height), settled: make(chan struct{}, 1)}
-			m.services.Agent = &agent.Runtime{}
+			m.services.Agent = &runtime.Runtime{}
 			m.welcomePending = true
 			m.conv.Append(core.ChatMessage{Role: core.ChatUser, Content: "hi"})
 			m.conv.Stream = chat.StreamState{Active: true, Waiting: true}
@@ -958,7 +958,7 @@ func TestStreamingHistoryHandoffKeepsVisibleText(t *testing.T) {
 			const width, height = 80, 24
 			const anchor, continuation = "LIVE-ANCHOR", "CONTINUATION"
 			m := &fixedComposerRendererModel{model: fixedComposerModel(width, height), settled: make(chan struct{}, 1)}
-			m.services.Agent = &agent.Runtime{}
+			m.services.Agent = &runtime.Runtime{}
 			msg := m.conv.Append(core.ChatMessage{Role: core.ChatAssistant, Content: anchor})
 			m.conv.Stream = chat.StreamState{Active: true, MessageID: msg.ID}
 			var rows []string

@@ -12,11 +12,11 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"go.uber.org/zap"
 
-	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/group"
 	"github.com/genai-io/san/internal/infra/log"
 	"github.com/genai-io/san/internal/llm"
+	agentruntime "github.com/genai-io/san/internal/runtime"
 	"github.com/genai-io/san/internal/session"
 )
 
@@ -37,7 +37,7 @@ type groupControlRequest struct {
 	cancel              context.CancelFunc
 	session, membership string
 	owner               *session.Session
-	runtime             *agent.Runtime
+	runtime             *agentruntime.Runtime
 	recording           *session.Completion
 }
 

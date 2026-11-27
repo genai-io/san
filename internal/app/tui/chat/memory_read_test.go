@@ -9,11 +9,11 @@ import (
 
 	"charm.land/lipgloss/v2"
 
-	"github.com/genai-io/san/internal/agent"
-	"github.com/genai-io/san/internal/agent/reminder"
 	"github.com/genai-io/san/internal/app/tui/widgets"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/core/system"
+	"github.com/genai-io/san/internal/runtime"
+	"github.com/genai-io/san/internal/runtime/reminder"
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
@@ -144,7 +144,7 @@ func TestRecalledMemoryAppearsBesideTheReceivingToolResult(t *testing.T) {
 
 func TestFastRecallNoticeFitsOnOneMutedLine(t *testing.T) {
 	m := NewModel(80)
-	applyAgentEvent(nil, &m, agent.MemoryRecalled{AfterMessage: "user", NoteIDs: []string{"user/sign-off.md", "project/freeze.md"}})
+	applyAgentEvent(nil, &m, runtime.MemoryRecalled{AfterMessage: "user", NoteIDs: []string{"user/sign-off.md", "project/freeze.md"}})
 	if len(m.Messages) != 1 || m.Messages[0].Role != core.ChatNotice || m.Messages[0].AutoMemoryRecallNotice == nil || m.Messages[0].AutoMemoryRecallNotice.AfterMessageID != "user" {
 		t.Fatalf("recall did not produce one anchored display-only notice: %+v", m.Messages)
 	}

@@ -10,12 +10,12 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
-	"github.com/genai-io/san/internal/agent"
-	"github.com/genai-io/san/internal/agent/reminder"
 	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/group"
 	"github.com/genai-io/san/internal/infra/atomicfile"
+	"github.com/genai-io/san/internal/runtime"
+	"github.com/genai-io/san/internal/runtime/reminder"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/tests/integration/testutil"
 )
@@ -23,7 +23,7 @@ import (
 func TestGroupBatchSummarySurvivesPersistence(t *testing.T) {
 	store := testutil.OpenSessionStore(t, t.TempDir())
 	m := commitTestModel()
-	m.services.Agent = &agent.Runtime{}
+	m.services.Agent = &runtime.Runtime{}
 	m.conv.Stream.Active = true
 	m.grp.unattended = 2
 	m.deliverMemberMessages("test", group.Member{}, []group.Message{
@@ -226,7 +226,7 @@ func TestMemberStateFollowsTheSession(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = group.Leave() })
-	m := &model{services: services{Agent: &agent.Runtime{}}, conv: chat.NewModel(80)}
+	m := &model{services: services{Agent: &runtime.Runtime{}}, conv: chat.NewModel(80)}
 	state := func() group.State { return group.Members("shop")[0].State }
 
 	m.syncGroupState()
@@ -238,7 +238,7 @@ func TestMemberStateFollowsTheSession(t *testing.T) {
 	if got := state(); got != group.Working {
 		t.Errorf("running turn wrote %q", got)
 	}
-	m.userPrompts.active = &chat.UserPromptRequest{Permission: &agent.PermGateRequest{}}
+	m.userPrompts.active = &chat.UserPromptRequest{Permission: &runtime.PermGateRequest{}}
 	m.syncGroupState()
 	if got := state(); got != group.Approval {
 		t.Errorf("parked approval wrote %q", got)

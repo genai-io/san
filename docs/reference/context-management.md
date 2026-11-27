@@ -44,7 +44,7 @@ The full transcript stays intact. Resume loads only the active messages, adds an
 |---|---|
 | `internal/core/system` and `internal/core/run.go` | Assemble and refresh the system prompt. |
 | Hosts and [`reminder.Queue`](../packages/reminder.md) | Hosts register sources; the queue prepares reminder updates for input. |
-| `internal/core/compact.go` and `internal/agent/compaction.go` | Trigger compaction and restore context. |
+| `internal/core/compact.go` and `internal/runtime/compaction.go` | Trigger compaction and restore context. |
 | `internal/session` | Record requests and reconstruct active messages. |
 
 Use the [Inspector](../guides/inspector.md) to check that no-op reloads preserve the prefix, published changes reach the next request, and compact or resume doesn't duplicate unchanged reminders.
