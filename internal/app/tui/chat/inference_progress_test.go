@@ -23,8 +23,8 @@ func inferenceView(m *Model, width int) string {
 }
 
 func TestInferenceProgressRemainsVisibleAfterTextAndNotices(t *testing.T) {
-	m, rt := NewModel(80), &streamUpdateDeps{}
-	applyAgentEvent(rt, &m, sdkagent.InferenceStart{Attempt: 1})
+	m, stub := NewModel(80), &streamStub{}
+	applyAgentEvent(stub, &m, sdkagent.InferenceStart{Attempt: 1})
 	m.Stream.StartedAt = time.Now().Add(-112 * time.Second)
 	m.Stream.LastDataAt = m.Stream.StartedAt
 	if view := inferenceView(&m, 80); strings.Count(view, "✦") != 1 || !strings.Contains(view, "Waiting for model") {
@@ -32,7 +32,7 @@ func TestInferenceProgressRemainsVisibleAfterTextAndNotices(t *testing.T) {
 	}
 	m.AppendStream("I will write the HTML now.", "")
 	m.AddNotice("a background task completed")
-	applyChunk(rt, &m, ai.Event{Type: ai.EventProgress, Progress: &ai.Progress{
+	applyChunk(stub, &m, ai.Event{Type: ai.EventProgress, Progress: &ai.Progress{
 		ToolCallID: "write-1", ToolName: "Write", InputBytes: 33051,
 	}})
 	view := inferenceView(&m, 80)
@@ -63,41 +63,41 @@ func TestInferenceProgressRemainsVisibleAfterTextAndNotices(t *testing.T) {
 }
 
 func TestInferenceProgressClearsAtFailureRetryAndCancellation(t *testing.T) {
-	m, rt := NewModel(80), &streamUpdateDeps{}
+	m, stub := NewModel(80), &streamStub{}
 	progress := ai.Event{Type: ai.EventProgress, Progress: &ai.Progress{ToolName: "Write", InputBytes: 1024}}
-	applyAgentEvent(rt, &m, sdkagent.InferenceStart{Attempt: 1})
-	applyChunk(rt, &m, progress)
+	applyAgentEvent(stub, &m, sdkagent.InferenceStart{Attempt: 1})
+	applyChunk(stub, &m, progress)
 	owner := m.Stream.MessageID
-	applyAgentEvent(rt, &m, sdkagent.InferenceEnd{Attempt: 1, Err: errors.New("stream stalled")})
+	applyAgentEvent(stub, &m, sdkagent.InferenceEnd{Attempt: 1, Err: errors.New("stream stalled")})
 	if m.Stream.Inferring || !m.Stream.LastDataAt.IsZero() || m.Stream.GeneratingTool != "" || m.Stream.GeneratedBytes != 0 || m.Stream.MessageID != owner {
 		t.Fatalf("failure did not clear generation while preserving the retry owner: %+v", m.Stream)
 	}
-	applyChunk(rt, &m, progress)
+	applyChunk(stub, &m, progress)
 	if m.Stream.GeneratedBytes != 0 {
 		t.Fatal("late progress revived a failed inference")
 	}
-	applyAgentEvent(rt, &m, sdkagent.InferenceStart{Attempt: 2})
+	applyAgentEvent(stub, &m, sdkagent.InferenceStart{Attempt: 2})
 	if view := inferenceView(&m, 100); !strings.Contains(view, "Retrying · attempt 2") || strings.Contains(view, "1024 bytes") {
 		t.Fatalf("retry lost its state or inherited old progress: %q", view)
 	}
 	m.Stream.Stop()
-	applyChunk(rt, &m, progress)
+	applyChunk(stub, &m, progress)
 	if m.Stream.Inferring || m.Stream.GeneratedBytes != 0 || !m.Stream.LastDataAt.IsZero() || strings.Contains(inferenceView(&m, 100), "✦") {
 		t.Fatal("late progress revived a cancelled inference")
 	}
 }
 
 func TestInferenceProgressStopsBeforeToolExecution(t *testing.T) {
-	m, rt := NewModel(80), &streamUpdateDeps{}
-	applyAgentEvent(rt, &m, sdkagent.InferenceStart{Attempt: 1})
-	applyChunk(rt, &m, ai.Event{Type: ai.EventProgress, Progress: &ai.Progress{ToolName: "Write", InputBytes: 100}})
-	applyAgentEvent(rt, &m, sdkagent.InferenceEnd{Response: &ai.Response{Content: ai.Content{
+	m, stub := NewModel(80), &streamStub{}
+	applyAgentEvent(stub, &m, sdkagent.InferenceStart{Attempt: 1})
+	applyChunk(stub, &m, ai.Event{Type: ai.EventProgress, Progress: &ai.Progress{ToolName: "Write", InputBytes: 100}})
+	applyAgentEvent(stub, &m, sdkagent.InferenceEnd{Response: &ai.Response{Content: ai.Content{
 		ai.ToolCallBlock(ai.ToolCall{ID: "write-1", Name: "Write", Input: `{}`}),
 	}}})
 	if m.Stream.Inferring || len(m.Tool.PendingCalls) != 1 || m.Stream.GeneratedBytes != 0 {
 		t.Fatalf("completed inference did not transition to pending execution: %+v", m.Stream)
 	}
-	applyAgentEvent(rt, &m, sdkagent.ToolUpdate{ID: "write-1", Name: "Write"})
+	applyAgentEvent(stub, &m, sdkagent.ToolUpdate{ID: "write-1", Name: "Write"})
 	if m.Stream.BuildingTool != "Write" || m.Stream.Inferring {
 		t.Fatal("tool execution was mistaken for argument generation")
 	}

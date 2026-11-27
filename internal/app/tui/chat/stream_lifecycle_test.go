@@ -10,26 +10,26 @@ import (
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
-type streamUpdateDeps struct{ UpdateDeps }
+type streamStub struct{ UpdateDeps }
 
-func (*streamUpdateDeps) CommitMessages() []tea.Cmd       { return nil }
-func (*streamUpdateDeps) FlushStreamingBlocks() []tea.Cmd { return nil }
-func (*streamUpdateDeps) OnInference(*ai.Response)        {}
+func (*streamStub) CommitMessages() []tea.Cmd       { return nil }
+func (*streamStub) FlushStreamingBlocks() []tea.Cmd { return nil }
+func (*streamStub) OnInference(*ai.Response)        {}
 
 func TestInferenceIdentitySurvivesNoticesAndDefensiveDone(t *testing.T) {
 	// sdk-go consumes EventDone internally. This covers defensive handling;
 	// app/model_inference_lifecycle_test.go exercises the normal terminal path.
-	m, rt := NewModel(80), &streamUpdateDeps{}
-	applyAgentEvent(rt, &m, sdkagent.InferenceStart{})
+	m, stub := NewModel(80), &streamStub{}
+	applyAgentEvent(stub, &m, sdkagent.InferenceStart{})
 	owner := m.Stream.MessageID
 	m.AddAgentNotice("background completed")
-	applyChunk(rt, &m, ai.Event{Type: ai.EventBlockDelta, Block: ai.Block{Type: ai.BlockText, Text: "reply"}})
+	applyChunk(stub, &m, ai.Event{Type: ai.EventBlockDelta, Block: ai.Block{Type: ai.BlockText, Text: "reply"}})
 	response := &ai.Response{Content: ai.Content{{Type: ai.BlockThinking, Signature: "signature"}}}
-	applyChunk(rt, &m, ai.Event{Type: ai.EventDone, Response: response})
+	applyChunk(stub, &m, ai.Event{Type: ai.EventDone, Response: response})
 	if m.Stream.Active || m.Stream.MessageID != owner {
 		t.Fatal("Done lost the identity before final metadata arrived")
 	}
-	applyAgentEvent(rt, &m, sdkagent.InferenceEnd{Response: response})
+	applyAgentEvent(stub, &m, sdkagent.InferenceEnd{Response: response})
 	reply := m.Messages[1]
 	if m.Stream.MessageID != "" || reply.ID != owner || reply.Content != "reply" || reply.ThinkingSignature != "signature" {
 		t.Fatalf("metadata did not reach its inference: %+v", m)
@@ -40,27 +40,27 @@ func TestInferenceIdentitySurvivesNoticesAndDefensiveDone(t *testing.T) {
 }
 
 func TestFailedInferencePreservesIdentityForRetry(t *testing.T) {
-	m, rt := NewModel(80), &streamUpdateDeps{}
-	applyAgentEvent(rt, &m, sdkagent.InferenceStart{})
+	m, stub := NewModel(80), &streamStub{}
+	applyAgentEvent(stub, &m, sdkagent.InferenceStart{})
 	owner := m.Stream.MessageID
-	applyAgentEvent(rt, &m, sdkagent.InferenceEnd{Attempt: 1, Err: errors.New("provider unavailable"), Response: &ai.Response{Content: ai.Content{{
+	applyAgentEvent(stub, &m, sdkagent.InferenceEnd{Attempt: 1, Err: errors.New("provider unavailable"), Response: &ai.Response{Content: ai.Content{{
 		Type: ai.BlockToolCall, ToolCall: &ai.ToolCall{ID: "discarded", Name: "Read"},
 	}}}})
 	if m.Stream.MessageID != owner || len(m.Tool.PendingCalls) != 0 || len(m.Messages) != 1 {
 		t.Fatalf("failed attempt accepted tools or added a persistent error: %+v", m)
 	}
-	applyAgentEvent(rt, &m, sdkagent.InferenceStart{Attempt: 2})
+	applyAgentEvent(stub, &m, sdkagent.InferenceStart{Attempt: 2})
 	if len(m.Messages) != 1 || m.Stream.MessageID == owner {
 		t.Fatalf("retry did not replace its failed inference: %+v", m)
 	}
 }
 
 func TestCanceledInferenceCannotReviveTools(t *testing.T) {
-	m, rt := NewModel(80), &streamUpdateDeps{}
-	applyAgentEvent(rt, &m, sdkagent.InferenceStart{})
+	m, stub := NewModel(80), &streamStub{}
+	applyAgentEvent(stub, &m, sdkagent.InferenceStart{})
 	m.Stream.Stop()
 	m.AddNotice("cancelled")
-	applyAgentEvent(rt, &m, sdkagent.InferenceEnd{Response: &ai.Response{Content: ai.Content{{
+	applyAgentEvent(stub, &m, sdkagent.InferenceEnd{Response: &ai.Response{Content: ai.Content{{
 		Type: ai.BlockToolCall, ToolCall: &ai.ToolCall{ID: "late", Name: "Read"},
 	}}}})
 	if len(m.Tool.PendingCalls) != 0 || len(m.Messages[0].ToolCalls) != 0 {
@@ -69,12 +69,12 @@ func TestCanceledInferenceCannotReviveTools(t *testing.T) {
 }
 
 func TestInferenceRetryPreservesNoticeAndRebindsIdentity(t *testing.T) {
-	m, rt := NewModel(80), &streamUpdateDeps{}
-	applyAgentEvent(rt, &m, sdkagent.InferenceStart{})
+	m, stub := NewModel(80), &streamStub{}
+	applyAgentEvent(stub, &m, sdkagent.InferenceStart{})
 	old := m.Stream.MessageID
 	m.AppendStream("partial reply", "")
 	m.AddNotice("background error")
-	applyAgentEvent(rt, &m, sdkagent.InferenceStart{Attempt: 2})
+	applyAgentEvent(stub, &m, sdkagent.InferenceStart{Attempt: 2})
 	m.AppendStream("retried reply", "")
 	if m.Stream.MessageID == "" || m.Stream.MessageID == old || len(m.Messages) != 2 || m.Messages[0].Content != "background error" || m.Messages[1].Content != "retried reply" {
 		t.Fatalf("retry lost the notice or streamed into the old message: %+v", m)
@@ -84,14 +84,14 @@ func TestInferenceRetryPreservesNoticeAndRebindsIdentity(t *testing.T) {
 // A batch is announced whole (ToolStart each) and then run a call at a time; a
 // queued call must not be timed or marked current until its run begins.
 func TestQueuedToolCallIsTimedFromItsRun(t *testing.T) {
-	m, rt := NewModel(80), &streamUpdateDeps{}
+	m, stub := NewModel(80), &streamStub{}
 	m.Tool.Track([]core.ToolCall{{ID: "first", Name: "Bash"}, {ID: "second", Name: "Read"}})
-	applyAgentEvent(rt, &m, sdkagent.ToolStart{ID: "first", Name: "Bash"})
-	applyAgentEvent(rt, &m, sdkagent.ToolStart{ID: "second", Name: "Read"})
+	applyAgentEvent(stub, &m, sdkagent.ToolStart{ID: "first", Name: "Bash"})
+	applyAgentEvent(stub, &m, sdkagent.ToolStart{ID: "second", Name: "Read"})
 	if len(m.Tool.StartedAt) != 0 {
 		t.Fatalf("announced calls are timed before they run: %v", m.Tool.StartedAt)
 	}
-	applyAgentEvent(rt, &m, sdkagent.ToolUpdate{ID: "first", Name: "Bash"})
+	applyAgentEvent(stub, &m, sdkagent.ToolUpdate{ID: "first", Name: "Bash"})
 	if _, ok := m.Tool.StartedAt["first"]; !ok || len(m.Tool.StartedAt) != 1 {
 		t.Fatalf("only the running call is timed, got %v", m.Tool.StartedAt)
 	}

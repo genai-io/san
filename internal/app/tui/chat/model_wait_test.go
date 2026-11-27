@@ -43,9 +43,9 @@ func TestInferenceSilenceClockOnlyTracksRealData(t *testing.T) {
 		{"block boundary", ai.Event{Type: ai.EventBlockStart, Block: ai.TextBlock("")}, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			m, rt := NewModel(80), &streamUpdateDeps{}
-			applyAgentEvent(rt, &m, sdkagent.InferenceStart{Attempt: 1})
-			applyChunk(rt, &m, ai.Event{Type: ai.EventProgress, Progress: &ai.Progress{ToolName: "Write", InputBytes: 100}})
+			m, stub := NewModel(80), &streamStub{}
+			applyAgentEvent(stub, &m, sdkagent.InferenceStart{Attempt: 1})
+			applyChunk(stub, &m, ai.Event{Type: ai.EventProgress, Progress: &ai.Progress{ToolName: "Write", InputBytes: 100}})
 			old := time.Now().Add(-time.Minute)
 			m.Stream.StartedAt, m.Stream.LastDataAt = old, old
 			m.AddNotice("background activity is not model data")
@@ -53,7 +53,7 @@ func TestInferenceSilenceClockOnlyTracksRealData(t *testing.T) {
 			if !m.Stream.LastDataAt.Equal(old) || !strings.Contains(inferenceView(&m, 80), "Waiting for model") {
 				t.Fatal("background notices or UI ticks reset the silence clock")
 			}
-			applyChunk(rt, &m, tc.event)
+			applyChunk(stub, &m, tc.event)
 			if got := m.Stream.LastDataAt.After(old); got != tc.fresh {
 				t.Fatalf("fresh data = %v, want %v", got, tc.fresh)
 			}
