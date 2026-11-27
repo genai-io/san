@@ -22,7 +22,7 @@ type personaItem struct {
 }
 
 // personaSelectedMsg is emitted when the user picks a persona to switch to; the
-// app applies it (persist + hot-patch) via OverlayContext.SetActivePersona.
+// app applies it (persist + hot-patch) via PanelContext.SetActivePersona.
 type personaSelectedMsg struct {
 	Name string
 }
@@ -240,14 +240,14 @@ func (s *PersonaSelector) panel() widgets.Panel {
 // --- Persona Runtime ---
 
 // UpdatePersona applies persona picker actions (switch / open / delete) via the
-// app callbacks on OverlayContext and shows a status line.
-func UpdatePersona(overlay OverlayContext, state *PersonaSelector, msg tea.Msg) (tea.Cmd, bool) {
+// app callbacks on PanelContext and shows a status line.
+func UpdatePersona(panel PanelContext, state *PersonaSelector, msg tea.Msg) (tea.Cmd, bool) {
 	switch msg := msg.(type) {
 	case personaSelectedMsg:
 		state.Cancel()
-		if overlay.SetActivePersona != nil {
-			if err := overlay.SetActivePersona(msg.Name); err != nil {
-				token := overlay.State.Provider.SetStatusMessage("Persona switch failed: " + err.Error())
+		if panel.SetActivePersona != nil {
+			if err := panel.SetActivePersona(msg.Name); err != nil {
+				token := panel.State.Provider.SetStatusMessage("Persona switch failed: " + err.Error())
 				return widgets.StatusTimer(4*time.Second, token), true
 			}
 		}
@@ -255,23 +255,23 @@ func UpdatePersona(overlay OverlayContext, state *PersonaSelector, msg tea.Msg) 
 		if msg.Name == "" || msg.Name == persona.DefaultName {
 			status = "Persona: default (built-in San)"
 		}
-		token := overlay.State.Provider.SetStatusMessage(status)
+		token := panel.State.Provider.SetStatusMessage(status)
 		return widgets.StatusTimer(3*time.Second, token), true
 
 	case personaOpenMsg:
-		if overlay.OpenPersona != nil {
-			return overlay.OpenPersona(msg.Name), true
+		if panel.OpenPersona != nil {
+			return panel.OpenPersona(msg.Name), true
 		}
 		return nil, true
 
 	case personaDeleteMsg:
-		if overlay.DeletePersona != nil {
-			if err := overlay.DeletePersona(msg.Name); err != nil {
-				token := overlay.State.Provider.SetStatusMessage("Delete failed: " + err.Error())
+		if panel.DeletePersona != nil {
+			if err := panel.DeletePersona(msg.Name); err != nil {
+				token := panel.State.Provider.SetStatusMessage("Delete failed: " + err.Error())
 				return widgets.StatusTimer(4*time.Second, token), true
 			}
 		}
-		token := overlay.State.Provider.SetStatusMessage("Deleted persona: " + msg.Name)
+		token := panel.State.Provider.SetStatusMessage("Deleted persona: " + msg.Name)
 		return widgets.StatusTimer(3*time.Second, token), true
 	}
 	return nil, false

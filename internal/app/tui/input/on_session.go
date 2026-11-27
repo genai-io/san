@@ -299,7 +299,7 @@ func sessionFormatRelativeTime(t time.Time) string {
 }
 
 // UpdateSession routes session selection messages.
-func UpdateSession(overlay OverlayContext, state *SessionState, msg tea.Msg) (tea.Cmd, bool) {
+func UpdateSession(panel PanelContext, state *SessionState, msg tea.Msg) (tea.Cmd, bool) {
 	switch msg := msg.(type) {
 	case sessionsListedMsg:
 		selector := &state.Selector
@@ -310,16 +310,16 @@ func UpdateSession(overlay OverlayContext, state *SessionState, msg tea.Msg) (te
 		}
 		return nil, true
 	case sessionSelectedMsg:
-		return handleSessionSelected(overlay, msg), true
+		return handleSessionSelected(panel, msg), true
 	}
 	return nil, false
 }
 
-func handleSessionSelected(overlay OverlayContext, msg sessionSelectedMsg) tea.Cmd {
-	if err := overlay.LoadSession(msg.SessionID); err != nil {
-		overlay.Conv.AddNotice("Failed to load session: " + err.Error())
+func handleSessionSelected(panel PanelContext, msg sessionSelectedMsg) tea.Cmd {
+	if err := panel.LoadSession(msg.SessionID); err != nil {
+		panel.Conv.AddNotice("Failed to load session: " + err.Error())
 	}
 
 	// Replay the restored conversation through the normal scrollback pipeline.
-	return tea.Batch(overlay.CommitAllMessages()...)
+	return tea.Batch(panel.CommitAllMessages()...)
 }

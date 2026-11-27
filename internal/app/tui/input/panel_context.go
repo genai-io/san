@@ -7,8 +7,8 @@ import (
 	"github.com/genai-io/san/internal/llm"
 )
 
-// OverlayContext gives overlay handlers the current input state and workspace actions.
-type OverlayContext struct {
+// PanelContext gives panel handlers the current input state and workspace actions.
+type PanelContext struct {
 	State *Model
 	Conv  *chat.ConversationModel
 	Cwd   string

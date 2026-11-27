@@ -28,7 +28,7 @@ func TestMCPConnectResultIgnoresReplacedManager(t *testing.T) {
 	fresh := coremcp.NewManagerForTest(map[string]coremcp.ServerConfig{"demo": {Name: "demo"}})
 	fresh.SetConnecting("demo", true)
 	state := MCPState{Selector: NewMCPSelector(fresh)}
-	cmd, handled := UpdateMCP(OverlayContext{}, &state, mcpConnectResultMsg{manager: old, ServerName: "demo", Err: errors.New("old failure")})
+	cmd, handled := UpdateMCP(PanelContext{}, &state, mcpConnectResultMsg{manager: old, ServerName: "demo", Err: errors.New("old failure")})
 	if !handled || cmd != nil {
 		t.Fatal("stale completion not consumed")
 	}

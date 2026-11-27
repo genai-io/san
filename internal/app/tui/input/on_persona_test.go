@@ -178,7 +178,7 @@ func TestPersonaSelector_RenderKeepsRowsWithinPanel(t *testing.T) {
 func TestUpdatePersona_AppliesAndCancels(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	var got string
-	deps := OverlayContext{
+	deps := PanelContext{
 		State:            &Model{},
 		SetActivePersona: func(name string) error { got = name; return nil },
 	}

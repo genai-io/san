@@ -283,7 +283,7 @@ func (s *ProviderState) SetStatusMessage(msg string) int64 {
 }
 
 // UpdateProvider routes provider connection and selection messages.
-func UpdateProvider(overlay OverlayContext, state *ProviderState, msg tea.Msg) (tea.Cmd, bool) {
+func UpdateProvider(panel PanelContext, state *ProviderState, msg tea.Msg) (tea.Cmd, bool) {
 	switch msg := msg.(type) {
 	case providerConnectingTickMsg:
 		// Keep ticking the spinner while connect/refresh is in flight; stop once
@@ -298,16 +298,16 @@ func UpdateProvider(overlay OverlayContext, state *ProviderState, msg tea.Msg) (
 		return nil, true
 	case providerConnectResultMsg:
 		cmd := state.Selector.HandleConnectResult(msg)
-		if msg.Success && overlay.ReloadModelStore != nil {
-			overlay.ReloadModelStore()
+		if msg.Success && panel.ReloadModelStore != nil {
+			panel.ReloadModelStore()
 		}
 		return cmd, true
 	case providerModelSelectedMsg:
-		return handleProviderModelSelected(overlay, state, msg), true
+		return handleProviderModelSelected(panel, state, msg), true
 	case providerModelsLoadedMsg:
 		state.Selector.HandleModelsLoaded(msg)
-		if overlay.ReloadModelStore != nil {
-			overlay.ReloadModelStore()
+		if panel.ReloadModelStore != nil {
+			panel.ReloadModelStore()
 		}
 		return nil, true
 	case widgets.StatusExpiredMsg:
@@ -319,7 +319,7 @@ func UpdateProvider(overlay OverlayContext, state *ProviderState, msg tea.Msg) (
 	return nil, false
 }
 
-func handleProviderModelSelected(overlay OverlayContext, state *ProviderState, msg providerModelSelectedMsg) tea.Cmd {
+func handleProviderModelSelected(panel PanelContext, state *ProviderState, msg providerModelSelectedMsg) tea.Cmd {
 	selector := &state.Selector
 	var err error
 	projectUnchanged := false
@@ -334,8 +334,8 @@ func handleProviderModelSelected(overlay OverlayContext, state *ProviderState, m
 		if err == nil && selector.store.HasProjectModel() {
 			projectUnchanged = true
 			err = selector.store.SetUserDefaultModel(msg.ModelID, llm.ProviderID(msg.ProviderName), msg.AuthMethod)
-			if err == nil && overlay.ReloadModelStore != nil {
-				overlay.ReloadModelStore()
+			if err == nil && panel.ReloadModelStore != nil {
+				panel.ReloadModelStore()
 			}
 		}
 	}
@@ -343,7 +343,7 @@ func handleProviderModelSelected(overlay OverlayContext, state *ProviderState, m
 		var p llm.Provider
 		p, err = llm.GetProvider(context.Background(), llm.ProviderID(msg.ProviderName), msg.AuthMethod)
 		if err == nil {
-			err = overlay.SwitchProvider(p, func() error {
+			err = panel.SwitchProvider(p, func() error {
 				if msg.UserDefault {
 					err = selector.store.SetUserDefaultModel(msg.ModelID, llm.ProviderID(msg.ProviderName), msg.AuthMethod)
 				} else {
@@ -352,7 +352,7 @@ func handleProviderModelSelected(overlay OverlayContext, state *ProviderState, m
 				if err != nil {
 					return err
 				}
-				overlay.SetCurrentModel(&llm.CurrentModelInfo{
+				panel.SetCurrentModel(&llm.CurrentModelInfo{
 					ModelID:    msg.ModelID,
 					Provider:   llm.ProviderID(msg.ProviderName),
 					AuthMethod: msg.AuthMethod,
@@ -362,8 +362,8 @@ func handleProviderModelSelected(overlay OverlayContext, state *ProviderState, m
 		}
 	}
 	if err != nil {
-		overlay.Conv.Append(core.ChatMessage{Role: core.ChatNotice, Content: "Error: " + err.Error()})
-		return tea.Batch(overlay.CommitMessages()...)
+		panel.Conv.Append(core.ChatMessage{Role: core.ChatNotice, Content: "Error: " + err.Error()})
+		return tea.Batch(panel.CommitMessages()...)
 	}
 	label := "Project model"
 	if msg.UserDefault || !selector.store.HasProjectModel() {
@@ -371,9 +371,9 @@ func handleProviderModelSelected(overlay OverlayContext, state *ProviderState, m
 	}
 	status := fmt.Sprintf("%s: %s", label, msg.ModelID)
 	if projectUnchanged {
-		overlay.Conv.Append(core.ChatMessage{Role: core.ChatNotice, Content: status + " (project unchanged)"})
-		return tea.Batch(overlay.CommitMessages()...)
+		panel.Conv.Append(core.ChatMessage{Role: core.ChatNotice, Content: status + " (project unchanged)"})
+		return tea.Batch(panel.CommitMessages()...)
 	}
 	token := state.SetStatusMessage(status)
-	return tea.Batch(append(overlay.CommitMessages(), widgets.StatusTimer(3*time.Second, token))...)
+	return tea.Batch(append(panel.CommitMessages(), widgets.StatusTimer(3*time.Second, token))...)
 }

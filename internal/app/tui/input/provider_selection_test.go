@@ -22,7 +22,7 @@ func TestProviderSelectionCommitsOnlyInsideSwitch(t *testing.T) {
 	current := store.CurrentModel()
 	conversation := chat.NewModel(80)
 	calls, commits, projections := 0, 0, 0
-	deps := OverlayContext{
+	deps := PanelContext{
 		Conv:            &conversation.ConversationModel,
 		CommitMessages:  func() []tea.Cmd { projections++; return nil },
 		SetCurrentModel: func(info *llm.CurrentModelInfo) { commits++; current = info },

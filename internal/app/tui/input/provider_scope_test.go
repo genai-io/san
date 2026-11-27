@@ -120,7 +120,7 @@ func TestProviderGlobalScopeHandler(t *testing.T) {
 			current := store.CurrentModel()
 			switches, sets, reloads := 0, 0, 0
 			conversation := chat.NewModel(80)
-			deps := OverlayContext{
+			deps := PanelContext{
 				Conv:           &conversation.ConversationModel,
 				CommitMessages: func() []tea.Cmd { return nil },
 				ReloadModelStore: func() {
@@ -216,7 +216,7 @@ func TestProviderGlobalScopeProjectReadFailure(t *testing.T) {
 			state := ProviderState{Selector: scopeSelector(store, "openai")}
 			state.Selector.selectedIdx = 1
 			conversation := chat.NewModel(80)
-			deps := OverlayContext{
+			deps := PanelContext{
 				Conv:           &conversation.ConversationModel,
 				CommitMessages: func() []tea.Cmd { return nil },
 				SwitchProvider: func(llm.Provider, func() error) error {

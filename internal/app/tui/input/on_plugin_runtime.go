@@ -37,7 +37,7 @@ type pluginOpResultMsg struct {
 }
 
 // UpdatePlugin routes plugin management messages.
-func UpdatePlugin(overlay OverlayContext, state *PluginSelector, msg tea.Msg) (tea.Cmd, bool) {
+func UpdatePlugin(panel PanelContext, state *PluginSelector, msg tea.Msg) (tea.Cmd, bool) {
 	switch msg := msg.(type) {
 	case pluginEnableMsg:
 		reg, name := state.registry, msg.PluginName
@@ -56,7 +56,7 @@ func UpdatePlugin(overlay OverlayContext, state *PluginSelector, msg tea.Msg) (t
 		), true
 
 	case pluginInstallMsg:
-		reg, cwd := state.registry, overlay.Cwd
+		reg, cwd := state.registry, panel.Cwd
 		name, market, scope := msg.PluginName, msg.Marketplace, msg.Scope
 		return tea.Batch(
 			state.beginLoading("Installing "+name+"..."),
@@ -96,7 +96,7 @@ func UpdatePlugin(overlay OverlayContext, state *PluginSelector, msg tea.Msg) (t
 		}
 		state.refreshAfterOp()
 		if msg.err == nil && msg.reload {
-			_ = overlay.ReloadAfterPluginChange()
+			_ = panel.ReloadAfterPluginChange()
 		}
 		return nil, true
 

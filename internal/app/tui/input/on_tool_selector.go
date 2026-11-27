@@ -36,7 +36,7 @@ type ToolToggleMsg struct {
 	Enabled  bool
 }
 
-// ToolSelector holds the state for the tool selector overlay. The tab/filter/
+// ToolSelector holds the state for the tool selector panel. The tab/filter/
 // keypress/frame mechanics live in the embedded tabbedList; this type owns tool
 // loading, the row layout, and the enable/disable action. It matches the agent
 // and skill overlays so the three read as one family.

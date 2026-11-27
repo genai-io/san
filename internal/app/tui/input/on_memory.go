@@ -404,59 +404,59 @@ var memoryWarnStyle = lipgloss.NewStyle().Foreground(widgets.CurrentTheme.Warnin
 // ── Runtime interface & Update ──────────────────────────────────────────
 
 // UpdateMemory routes memory selection and editor messages.
-func UpdateMemory(overlay OverlayContext, state *MemoryState, msg tea.Msg) (tea.Cmd, bool) {
+func UpdateMemory(panel PanelContext, state *MemoryState, msg tea.Msg) (tea.Cmd, bool) {
 	switch msg := msg.(type) {
 	case memorySelectedMsg:
-		return handleMemorySelected(overlay, state, msg), true
+		return handleMemorySelected(panel, state, msg), true
 	case MemoryEditorFinishedMsg:
-		return handleMemoryEditorFinished(overlay, state, msg), true
+		return handleMemoryEditorFinished(panel, state, msg), true
 	}
 	return nil, false
 }
 
-func handleMemorySelected(overlay OverlayContext, state *MemoryState, msg memorySelectedMsg) tea.Cmd {
+func handleMemorySelected(panel PanelContext, state *MemoryState, msg memorySelectedMsg) tea.Cmd {
 	filePath := msg.Path
 
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
-		if err := CreateMemoryFile(filePath, msg.Level, overlay.Cwd); err != nil {
-			overlay.Conv.Append(core.ChatMessage{
+		if err := CreateMemoryFile(filePath, msg.Level, panel.Cwd); err != nil {
+			panel.Conv.Append(core.ChatMessage{
 				Role:    core.ChatNotice,
 				Content: fmt.Sprintf("Error: %v", err),
 			})
-			return tea.Batch(overlay.CommitMessages()...)
+			return tea.Batch(panel.CommitMessages()...)
 		}
 	}
 
 	state.EditingFile = filePath
 
-	displayPath := FormatMemoryDisplayPath(filePath, msg.Level, overlay.Cwd)
+	displayPath := FormatMemoryDisplayPath(filePath, msg.Level, panel.Cwd)
 
-	overlay.Conv.Append(core.ChatMessage{
+	panel.Conv.Append(core.ChatMessage{
 		Role:    core.ChatNotice,
 		Content: fmt.Sprintf("Opening %s memory: %s", msg.Level, displayPath),
 	})
 
-	commitCmds := overlay.CommitMessages()
+	commitCmds := panel.CommitMessages()
 	commitCmds = append(commitCmds, startExternalEditorForMemory(filePath))
 	return tea.Batch(commitCmds...)
 }
 
-func handleMemoryEditorFinished(overlay OverlayContext, state *MemoryState, msg MemoryEditorFinishedMsg) tea.Cmd {
+func handleMemoryEditorFinished(panel PanelContext, state *MemoryState, msg MemoryEditorFinishedMsg) tea.Cmd {
 	filePath := state.EditingFile
 	state.EditingFile = ""
 
-	overlay.ClearCachedInstructions()
+	panel.ClearCachedInstructions()
 
 	content := fmt.Sprintf("Saved: %s", filePath)
 	if msg.Err != nil {
 		content = fmt.Sprintf("Editor error: %v", msg.Err)
 	} else {
-		overlay.RefreshMemoryContext(overlay.Cwd, "memory_edit")
-		overlay.FireFileChanged(filePath, "memory_editor")
+		panel.RefreshMemoryContext(panel.Cwd, "memory_edit")
+		panel.FireFileChanged(filePath, "memory_editor")
 	}
 
-	overlay.Conv.Append(core.ChatMessage{Role: core.ChatNotice, Content: content})
-	return tea.Batch(overlay.CommitMessages()...)
+	panel.Conv.Append(core.ChatMessage{Role: core.ChatNotice, Content: content})
+	return tea.Batch(panel.CommitMessages()...)
 }
 
 // startExternalEditorForMemory launches the external editor for a memory file.

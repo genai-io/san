@@ -486,7 +486,7 @@ func mcpStartConnect(reg *coremcp.Manager, name string) tea.Cmd {
 // ── Runtime interface ───────────────────────────────────────────────
 
 // UpdateMCP routes MCP server management messages.
-func UpdateMCP(overlay OverlayContext, state *MCPState, msg tea.Msg) (tea.Cmd, bool) {
+func UpdateMCP(panel PanelContext, state *MCPState, msg tea.Msg) (tea.Cmd, bool) {
 	switch msg := msg.(type) {
 	case mcpConnectMsg:
 		if state.Selector.registry != nil {
@@ -510,8 +510,8 @@ func UpdateMCP(overlay OverlayContext, state *MCPState, msg tea.Msg) (tea.Cmd, b
 		state.Selector.HandleConnectResult(msg)
 		if !state.Selector.IsActive() && !msg.Success {
 			content := fmt.Sprintf("Failed to connect to '%s': %v", msg.ServerName, msg.Err)
-			overlay.Conv.Append(core.ChatMessage{Role: core.ChatNotice, Content: content})
-			return tea.Batch(overlay.CommitMessages()...), true
+			panel.Conv.Append(core.ChatMessage{Role: core.ChatNotice, Content: content})
+			return tea.Batch(panel.CommitMessages()...), true
 		}
 		return nil, true
 
@@ -531,14 +531,14 @@ func UpdateMCP(overlay OverlayContext, state *MCPState, msg tea.Msg) (tea.Cmd, b
 		return nil, true
 
 	case mcpAddServerMsg:
-		overlay.State.Textarea.SetValue("/mcp add ")
+		panel.State.Textarea.SetValue("/mcp add ")
 		return nil, true
 
 	case mcpEditServerMsg:
 		info, err := coremcp.PrepareServerEdit(state.Selector.registry, msg.ServerName)
 		if err != nil {
-			overlay.Conv.Append(core.ChatMessage{Role: core.ChatNotice, Content: fmt.Sprintf("Error: %v", err)})
-			return tea.Batch(overlay.CommitMessages()...), true
+			panel.Conv.Append(core.ChatMessage{Role: core.ChatNotice, Content: fmt.Sprintf("Error: %v", err)})
+			return tea.Batch(panel.CommitMessages()...), true
 		}
 		state.EditingFile = info.TempFile
 		state.EditingServer = info.ServerName
@@ -555,17 +555,17 @@ func UpdateMCP(overlay OverlayContext, state *MCPState, msg tea.Msg) (tea.Cmd, b
 
 		if msg.Err != nil {
 			os.Remove(info.TempFile)
-			overlay.Conv.Append(core.ChatMessage{Role: core.ChatNotice, Content: fmt.Sprintf("Editor error: %v", msg.Err)})
-			return tea.Batch(overlay.CommitMessages()...), true
+			panel.Conv.Append(core.ChatMessage{Role: core.ChatNotice, Content: fmt.Sprintf("Editor error: %v", msg.Err)})
+			return tea.Batch(panel.CommitMessages()...), true
 		}
 
 		if err := coremcp.ApplyServerEdit(state.Selector.registry, info); err != nil {
-			overlay.Conv.Append(core.ChatMessage{Role: core.ChatNotice, Content: fmt.Sprintf("Failed to apply edit: %v", err)})
-			return tea.Batch(overlay.CommitMessages()...), true
+			panel.Conv.Append(core.ChatMessage{Role: core.ChatNotice, Content: fmt.Sprintf("Failed to apply edit: %v", err)})
+			return tea.Batch(panel.CommitMessages()...), true
 		}
 
-		overlay.Conv.Append(core.ChatMessage{Role: core.ChatNotice, Content: fmt.Sprintf("Updated MCP server '%s'", info.ServerName)})
-		return tea.Batch(overlay.CommitMessages()...), true
+		panel.Conv.Append(core.ChatMessage{Role: core.ChatNotice, Content: fmt.Sprintf("Updated MCP server '%s'", info.ServerName)})
+		return tea.Batch(panel.CommitMessages()...), true
 	}
 	return nil, false
 }
