@@ -257,7 +257,7 @@ func (h *acpHost) open(ctx context.Context, req protocol.NewSessionRequest, resu
 		PermissionRules:  policy.Decide,
 		CanApproveByHook: policy.CanApproveByHook,
 		HookEngine:       s.hooks, Recording: opened,
-		ResultFilter: agentruntime.ResultPreview{Store: store, SessionID: opened.ID()}.Filter,
+		ResultFilter: agentruntime.ResultLimiter{Store: store, SessionID: opened.ID()}.Filter,
 		AutoMemory:   agentruntime.AutoMemoryConfig{Store: memory, Recall: settings.MemoryRecall(), IndexLimits: settings.MemoryPreview()},
 		FileCache:    filecache.New(),
 	}

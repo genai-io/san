@@ -221,7 +221,7 @@ func (m *model) buildAgentParams() (agentruntime.BuildParams, error) {
 			Judge: rt.judge.Permission, Observe: m.recordDecision, Recording: rec,
 		})
 	}
-	params.ResultFilter = agentruntime.ResultPreview{Store: owner.Store, SessionID: owner.Session.ID()}.Filter
+	params.ResultFilter = agentruntime.ResultLimiter{Store: owner.Store, SessionID: owner.Session.ID()}.Filter
 	return params, nil
 }
 

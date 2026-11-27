@@ -34,7 +34,7 @@ func runRecordedPrint(ctx context.Context, params runtime.BuildParams, message c
 		params.Skills.SetStateChangeObserver(session.NewRecorder(owner, params.Provider.Name()).RecordSkillStateChange)
 		defer params.Skills.SetStateChangeObserver(nil)
 	}
-	params.ResultFilter = runtime.ResultPreview{Store: store, SessionID: owner.ID()}.Filter
+	params.ResultFilter = runtime.ResultLimiter{Store: store, SessionID: owner.ID()}.Filter
 	if params.Tasks == nil {
 		params.Tasks = task.Default()
 	}
