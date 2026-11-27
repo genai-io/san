@@ -2,7 +2,7 @@
 // configured MCP servers and exposes the tools they advertise to the
 // agent loop.
 //
-// Callers use the concrete *Manager. Config editing (used by `san mcp edit`)
+// Callers use the concrete *ServerSet. Config editing (used by `san mcp edit`)
 // is exposed as the free functions PrepareServerEdit / ApplyServerEdit.
 package mcp
 
@@ -12,12 +12,12 @@ type Options struct {
 	PluginServers func() []PluginServer
 }
 
-// Initialize creates the MCP manager and installs it as the package-level
+// Initialize creates the MCP server set and installs it as the package-level
 // default. Idempotent: callers may invoke it more than once (e.g. after a
 // cwd change or plugin reload) and downstream callers reading
-// DefaultManager will see the latest instance.
+// Default will see the latest instance.
 func Initialize(opts Options) error {
-	reg, err := NewManager(opts.CWD)
+	reg, err := NewServerSet(opts.CWD)
 	if err != nil {
 		return err
 	}
@@ -30,42 +30,42 @@ func Initialize(opts Options) error {
 	// the old project and the new one — tearing it down would drop every
 	// mcp__* tool from the agent mid-session, with nothing to reconnect it
 	// (AutoConnect only runs at startup).
-	reg.adoptLiveClients(DefaultManager())
-	setDefaultManager(reg)
+	reg.adoptLiveClients(Default())
+	setDefault(reg)
 	return nil
 }
 
-// DefaultManager returns the package-level MCP manager. Returns the
-// empty pre-Initialize manager if Initialize has not run.
+// Default returns the package-level MCP server set. Returns the
+// empty pre-Initialize server set if Initialize has not run.
 //
 // This is the only seam. There is no separate Service interface — every
 // consumer (subagent executor, TUI selector, agent tool wiring,
-// cmd subcommands) depends on *Manager directly. Tool execution goes
+// cmd subcommands) depends on *ServerSet directly. Tool execution goes
 // through AsCoreTools. Config editing uses the free functions
 // PrepareServerEdit / ApplyServerEdit.
-func DefaultManager() *Manager {
-	managerMu.RLock()
-	defer managerMu.RUnlock()
-	return defaultManager
+func Default() *ServerSet {
+	defaultMu.RLock()
+	defer defaultMu.RUnlock()
+	return defaultServers
 }
 
-func setDefaultManager(reg *Manager) {
-	managerMu.Lock()
-	defer managerMu.Unlock()
-	defaultManager = reg
+func setDefault(reg *ServerSet) {
+	defaultMu.Lock()
+	defer defaultMu.Unlock()
+	defaultServers = reg
 }
 
-// SetDefaultManager replaces the package-level manager. Intended for
-// tests. A nil argument restores the empty pre-Initialize manager.
-func SetDefaultManager(reg *Manager) {
+// SetDefault replaces the package-level server set. Intended for
+// tests. A nil argument restores the empty pre-Initialize server set.
+func SetDefault(reg *ServerSet) {
 	if reg == nil {
-		reg = newEmptyManager()
+		reg = newEmptyServerSet()
 	}
-	setDefaultManager(reg)
+	setDefault(reg)
 }
 
-// ResetDefaultManager restores the empty pre-Initialize manager.
+// ResetDefault restores the empty pre-Initialize server set.
 // Intended for tests.
-func ResetDefaultManager() {
-	setDefaultManager(newEmptyManager())
+func ResetDefault() {
+	setDefault(newEmptyServerSet())
 }

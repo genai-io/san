@@ -12,7 +12,7 @@ import (
 // mcpCoreTool wraps an MCP tool as a core.Tool for use with core.Agent.
 type mcpCoreTool struct {
 	schema  core.ToolSchema
-	servers *Manager
+	servers *ServerSet
 }
 
 func (t *mcpCoreTool) Schema() core.ToolSchema { return t.schema }
@@ -32,7 +32,7 @@ func (t *mcpCoreTool) Run(ctx context.Context, call ai.ToolCall) (agent.Result, 
 
 // AsCoreTools converts MCP tool schemas into core.Tool implementations
 // that route execution through servers.
-func AsCoreTools(schemas []core.ToolSchema, servers *Manager) []core.Tool {
+func AsCoreTools(schemas []core.ToolSchema, servers *ServerSet) []core.Tool {
 	if servers == nil || len(schemas) == 0 {
 		return nil
 	}

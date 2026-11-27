@@ -108,7 +108,7 @@ type acpSession struct {
 	hooks              *hook.Engine
 	reminders          *reminder.Queue
 	toolResponses      sync.Map
-	mcp                *mcp.Manager
+	mcp                *mcp.ServerSet
 	permissions        *acpPermissions
 	commands           *command.Registry
 	lastSentCommands   []command.Info // Last command list sent to the client; unchanged lists are not resent.

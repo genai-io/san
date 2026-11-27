@@ -45,7 +45,7 @@ func TestSyncMCPToolsReachesTheRunningAgent(t *testing.T) {
 
 	m := &model{services: services{
 		Agent:   sess,
-		MCP:     mcp.NewManagerForTest(nil),
+		MCP:     mcp.NewServerSetForTest(nil),
 		Setting: setting.Default(),
 	}}
 	m.syncMCPTools()
@@ -66,7 +66,7 @@ func TestSyncMCPToolsReachesTheRunningAgent(t *testing.T) {
 func TestSyncMCPToolsBeforeAnAgentExists(t *testing.T) {
 	for _, runtime := range []*agentruntime.Runtime{nil, new(agentruntime.Runtime)} {
 		m := &model{services: services{
-			Agent: runtime, MCP: mcp.NewManagerForTest(nil), Setting: setting.Default(),
+			Agent: runtime, MCP: mcp.NewServerSetForTest(nil), Setting: setting.Default(),
 		}}
 		m.syncMCPTools()
 	}
@@ -82,16 +82,16 @@ func TestMCPNotificationsReconcileOnTheUILoop(t *testing.T) {
 	addTool("probe")
 	httpServer := httptest.NewServer(sdkmcp.NewStreamableHTTPHandler(func(*http.Request) *sdkmcp.Server { return server }, nil))
 	defer httpServer.Close()
-	manager := mcp.NewManagerForTest(map[string]mcp.ServerConfig{"reload": {Type: mcp.TransportHTTP, URL: httpServer.URL}})
-	defer func() { _ = manager.Close() }()
+	servers := mcp.NewServerSetForTest(map[string]mcp.ServerConfig{"reload": {Type: mcp.TransportHTTP, URL: httpServer.URL}})
+	defer func() { _ = servers.Close() }()
 	runtime := &agentruntime.Runtime{}
 	if err := runtime.Start(agentruntime.BuildParams{Provider: &testutil.FakeProvider{}, ModelID: "m"}, nil); err != nil {
 		t.Fatal(err)
 	}
 	defer stopRuntime(t, runtime)
-	m := &model{services: services{Agent: runtime, MCP: manager, Setting: setting.New(setting.NewData())}}
+	m := &model{services: services{Agent: runtime, MCP: servers, Setting: setting.New(setting.NewData())}}
 	m.bindMCPTools()
-	if err := manager.Connect(t.Context(), "reload"); err != nil {
+	if err := servers.Connect(t.Context(), "reload"); err != nil {
 		t.Fatal(err)
 	}
 	if runtime.Tools().Get("mcp__reload__probe") != nil {

@@ -17,8 +17,8 @@ func (m *Model) RebindSelectors(services SelectorServices) {
 	if m.Skill.Selector.registry != services.SkillRegistry {
 		m.Skill.Selector = NewSkillSelector(services.SkillRegistry)
 	}
-	if m.MCP.Selector.registry != services.MCPRegistry {
-		m.MCP.Selector = NewMCPSelector(services.MCPRegistry)
+	if m.MCP.Selector.serverSet != services.MCPServers {
+		m.MCP.Selector = NewMCPSelector(services.MCPServers)
 	}
 	if m.Plugin.registry != services.PluginRegistry {
 		m.Plugin = NewPluginSelector(services.PluginRegistry)

@@ -82,7 +82,7 @@ func newBaseModel() model {
 func selectorServices(svc services, learnedStores *learnedStoreContext) input.SelectorServices {
 	return input.SelectorServices{
 		AgentRegistry: svc.Subagent, PersonaRegistry: svc.Persona, SkillRegistry: svc.Skill,
-		MCPRegistry: svc.MCP, PluginRegistry: svc.Plugin, Setting: svc.Setting,
+		MCPServers: svc.MCP, PluginRegistry: svc.Plugin, Setting: svc.Setting,
 		LoadDisabled: svc.Setting.DisabledToolsAt, UpdateDisabled: svc.Setting.UpdateDisabledToolAt,
 		HeldOn: toolsHeldOn,
 		Reflection: input.ReflectionSources{

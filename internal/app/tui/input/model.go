@@ -118,7 +118,7 @@ type SelectorServices struct {
 	AgentRegistry   *subagent.Registry
 	PersonaRegistry *corepersona.Registry
 	SkillRegistry   *coreskill.Registry
-	MCPRegistry     *coremcp.Manager
+	MCPServers      *coremcp.ServerSet
 	PluginRegistry  *coreplugin.Registry
 	Setting         *coresetting.Settings
 	LoadDisabled    func(scope setting.Scope) map[string]bool
@@ -145,7 +145,7 @@ func New(cwd string, width int, matchFunc suggest.Matcher, services SelectorServ
 		Skill:      SkillState{Selector: NewSkillSelector(services.SkillRegistry)},
 		Session:    SessionState{Selector: NewSessionSelector()},
 		Memory:     MemoryState{Selector: NewMemorySelector()},
-		MCP:        MCPState{Selector: NewMCPSelector(services.MCPRegistry)},
+		MCP:        MCPState{Selector: NewMCPSelector(services.MCPServers)},
 		Plugin:     NewPluginSelector(services.PluginRegistry),
 		Provider:   ProviderState{Selector: NewProviderSelector()},
 		Tool:       NewToolSelector(services.LoadDisabled, services.UpdateDisabled, services.HeldOn),

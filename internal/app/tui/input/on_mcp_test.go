@@ -10,10 +10,10 @@ import (
 	coremcp "github.com/genai-io/san/internal/mcp"
 )
 
-func withTestRegistry(t *testing.T, reg *coremcp.Manager) {
+func withTestRegistry(t *testing.T, reg *coremcp.ServerSet) {
 	t.Helper()
-	coremcp.SetDefaultManager(reg)
-	t.Cleanup(coremcp.ResetDefaultManager)
+	coremcp.SetDefault(reg)
+	t.Cleanup(coremcp.ResetDefault)
 }
 
 func TestHandleCommand_UninitializedRegistryMessage(t *testing.T) {
@@ -33,7 +33,7 @@ func TestHandleCommand_UninitializedRegistryMessage(t *testing.T) {
 }
 
 func TestHandleCommand_EmptyArgsOpensSelector(t *testing.T) {
-	reg := coremcp.NewManagerForTest(map[string]coremcp.ServerConfig{
+	reg := coremcp.NewServerSetForTest(map[string]coremcp.ServerConfig{
 		"demo": {Name: "demo", Command: "echo", Scope: coremcp.ScopeLocal},
 	})
 	withTestRegistry(t, reg)
@@ -56,7 +56,7 @@ func TestPrepareServerEditAndApplyServerEdit_RoundTrip(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("HOME", tmpHome)
 
-	reg, err := coremcp.NewManager(tmpDir)
+	reg, err := coremcp.NewServerSet(tmpDir)
 	if err != nil {
 		t.Fatalf("NewRegistry() error = %v", err)
 	}
@@ -112,7 +112,7 @@ func TestPrepareServerEditAndApplyServerEdit_RoundTrip(t *testing.T) {
 }
 
 func TestHandleGet_MasksSecretsAndShowsDefaults(t *testing.T) {
-	reg := coremcp.NewManagerForTest(map[string]coremcp.ServerConfig{
+	reg := coremcp.NewServerSetForTest(map[string]coremcp.ServerConfig{
 		"api": {
 			Name:    "api",
 			Type:    coremcp.TransportHTTP,

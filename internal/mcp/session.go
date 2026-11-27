@@ -14,8 +14,8 @@ var serverName = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
 // NewSession loads native configuration and adds connection-local contributions.
 // Conflicting names fail rather than redirecting an existing permission rule.
 // Nothing is persisted or installed as the process default.
-func NewSession(cwd string, plugins []PluginServer, supplied map[string]ServerConfig) (*Manager, error) {
-	r, err := NewManager(cwd)
+func NewSession(cwd string, plugins []PluginServer, supplied map[string]ServerConfig) (*ServerSet, error) {
+	r, err := NewServerSet(cwd)
 	if err != nil {
 		return nil, err
 	}
@@ -42,7 +42,7 @@ func NewSession(cwd string, plugins []PluginServer, supplied map[string]ServerCo
 
 // ConnectAll is synchronous; the owner must join it before Close. Failure closes
 // all partially opened connections. Errors omit server output and credentials.
-func (r *Manager) ConnectAll(ctx context.Context) error {
+func (r *ServerSet) ConnectAll(ctx context.Context) error {
 	for _, server := range r.List() {
 		if r.IsDisabled(server.Config.Name) {
 			continue
@@ -55,7 +55,7 @@ func (r *Manager) ConnectAll(ctx context.Context) error {
 }
 
 // Close joins owned clients. Call only after connects and tool calls have joined.
-func (r *Manager) Close() error {
+func (r *ServerSet) Close() error {
 	r.mu.Lock()
 	clients := r.clients
 	r.clients = make(map[string]*Client)

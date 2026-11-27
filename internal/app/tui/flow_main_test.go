@@ -141,7 +141,7 @@ func testFlowMainNativeRuntime(t *testing.T, warm bool) {
 	m.env.LLMProvider = p
 	m.services.Skill = skill.NewRegistry()
 	m.services.Tool = tool.NewRegistry()
-	m.services.MCP = mcp.NewManagerForTest(nil)
+	m.services.MCP = mcp.NewServerSetForTest(nil)
 	if warm {
 		if err := m.services.Agent.Start(agentruntime.BuildParams{Provider: p, ModelID: "m", Recording: opened, PermissionRules: (agentruntime.PermissionPolicy{}).Decide}, m.services.Agent.Messages()); err != nil {
 			t.Fatal(err)

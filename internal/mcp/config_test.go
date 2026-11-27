@@ -324,9 +324,9 @@ func TestConfigLoader_RemoveServerFromAll_RemovesEveryScope(t *testing.T) {
 }
 
 func TestNewRegistry_IncludesPluginServers(t *testing.T) {
-	reg, err := NewManager(t.TempDir())
+	reg, err := NewServerSet(t.TempDir())
 	if err != nil {
-		t.Fatalf("NewManager() error = %v", err)
+		t.Fatalf("NewServerSet() error = %v", err)
 	}
 
 	reg.PluginServers = func() []PluginServer {

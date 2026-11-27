@@ -43,7 +43,7 @@ func TestBuildAgentParamsNativeAuditsAndPaging(t *testing.T) {
 				data.Permissions.Deny = []string{name}
 			}
 			m.services.Setting = setting.New(data)
-			m.services.MCP = mcp.NewManagerForTest(nil)
+			m.services.MCP = mcp.NewServerSetForTest(nil)
 			m.services.Hook = hook.NewEngine(data, "wrong-owner", m.env.CWD, "")
 			m.services.Hook.AddSessionFunctionHook(hook.PreToolUse, name, hook.FunctionHook{
 				Callback: func(_ context.Context, input hook.HookInput) (hook.HookOutput, error) {

@@ -24,11 +24,11 @@ func TestRebindSelectorsSearchWritesReplacementSettings(t *testing.T) {
 }
 
 func TestMCPConnectResultIgnoresReplacedManager(t *testing.T) {
-	old := coremcp.NewManagerForTest(nil)
-	fresh := coremcp.NewManagerForTest(map[string]coremcp.ServerConfig{"demo": {Name: "demo"}})
+	old := coremcp.NewServerSetForTest(nil)
+	fresh := coremcp.NewServerSetForTest(map[string]coremcp.ServerConfig{"demo": {Name: "demo"}})
 	fresh.SetConnecting("demo", true)
 	state := MCPState{Selector: NewMCPSelector(fresh)}
-	cmd, handled := UpdateMCP(PanelContext{}, &state, mcpConnectResultMsg{manager: old, ServerName: "demo", Err: errors.New("old failure")})
+	cmd, handled := UpdateMCP(PanelContext{}, &state, mcpConnectResultMsg{serverSet: old, ServerName: "demo", Err: errors.New("old failure")})
 	if !handled || cmd != nil {
 		t.Fatal("stale completion not consumed")
 	}
@@ -39,7 +39,7 @@ func TestMCPConnectResultIgnoresReplacedManager(t *testing.T) {
 	}
 	// Connect results retain their source manager.
 	msg := mcpStartConnect(old, "missing")().(mcpConnectResultMsg)
-	if msg.manager != old {
+	if msg.serverSet != old {
 		t.Fatal("connect command omitted manager identity")
 	}
 }

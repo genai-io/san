@@ -7,11 +7,11 @@ import (
 
 // slowTransport takes as long to close as a wedged stdio server: Close waits on
 // the read loop (2s) and then the child's exit (5s).
-// connectedManager is a registry holding already-connected clients, each
+// connectedServerSet is a registry holding already-connected clients, each
 // reaching a fake session rather than a server.
-func connectedManager(t *testing.T, servers map[string]*fakeSession) *Manager {
+func connectedServerSet(t *testing.T, servers map[string]*fakeSession) *ServerSet {
 	t.Helper()
-	r := newEmptyManager()
+	r := newEmptyServerSet()
 	for name, session := range servers {
 		cfg := ServerConfig{Name: name, Type: "stdio", Command: name}
 		r.configs[name] = cfg
@@ -26,7 +26,7 @@ func connectedManager(t *testing.T, servers map[string]*fakeSession) *Manager {
 // goroutine blocked with it — CallTool takes the read lock.
 func TestDisconnectDoesNotBlockOnATeardown(t *testing.T) {
 	tr := newSlowSession(500 * time.Millisecond)
-	r := connectedManager(t, map[string]*fakeSession{"wedged": tr})
+	r := connectedServerSet(t, map[string]*fakeSession{"wedged": tr})
 
 	start := time.Now()
 	r.Disconnect("wedged")
@@ -57,6 +57,6 @@ func TestDisconnectDoesNotBlockOnATeardown(t *testing.T) {
 
 // Disconnecting a server that is not connected is a no-op, not a panic.
 func TestDisconnectUnknownServerIsANoop(t *testing.T) {
-	r := connectedManager(t, nil)
+	r := connectedServerSet(t, nil)
 	r.Disconnect("never-connected")
 }

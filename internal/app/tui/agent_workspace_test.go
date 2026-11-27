@@ -18,7 +18,7 @@ func TestBuildAgentParamsLiveReviewWorkspace(t *testing.T) {
 	m, _ := resumedModel(t, nil)
 	m.userInput = fixedComposerModel(80, 24).userInput
 	m.services.Tool = tool.NewRegistry()
-	m.services.MCP = mcp.NewManagerForTest(nil)
+	m.services.MCP = mcp.NewServerSetForTest(nil)
 	m.judgeApprovals, m.judgeEscalations = new(atomic.Int64), new(atomic.Int64)
 	gitCwd, plainCwd := t.TempDir(), t.TempDir()
 	if out, err := exec.Command("git", "init", "--quiet", gitCwd).CombinedOutput(); err != nil {
@@ -92,7 +92,7 @@ func TestBuildAgentParamsLiveReviewWorkspace(t *testing.T) {
 
 func TestAutopilotWorkspaceSnapshotConcurrent(t *testing.T) {
 	m, _ := resumedModel(t, nil)
-	m.services.MCP = mcp.NewManagerForTest(nil)
+	m.services.MCP = mcp.NewServerSetForTest(nil)
 	m.judgeApprovals, m.judgeEscalations = new(atomic.Int64), new(atomic.Int64)
 	m.env.SessionPermissions.SetMode(setting.ModeAutoPilot)
 	provider := &autopilotStubProvider{content: `{"decision":"escalate","reason":"test"}`}

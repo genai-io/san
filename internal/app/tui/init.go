@@ -135,7 +135,7 @@ func (m *model) reloadProjectServices(cwd string) {
 	m.services.Skill = skill.Default()
 	m.services.Command = command.Default()
 	m.services.Subagent = subagent.Default()
-	m.services.MCP = mcp.DefaultManager()
+	m.services.MCP = mcp.Default()
 	m.services.Persona = persona.Default()
 	m.userInput.RebindSelectors(selectorServices(m.services, m.learnedStores))
 	m.userInput.Suggestions = suggest.NewState(commandSuggestionMatcher(m.services.Command, m.services.Flow))

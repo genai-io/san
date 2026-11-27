@@ -58,7 +58,7 @@ type Executor struct {
 	projectInstructions        string              // project memory (AGENTS.md) for edit-capable subagents
 	skillsPrompt               string              // available skills section for capable subagents
 	resolveSkill               func(string) string // nil uses the TUI registry
-	mcpManager                 *mcp.Manager        // tool schemas, execution, per-subagent server sets
+	mcpServers                 *mcp.ServerSet      // tool schemas, execution, per-subagent server sets
 	disabledToolsMu            sync.RWMutex
 	disabledTools              map[string]bool // effective global disabled tools, copied on set/read
 	tasks                      *task.RunSet
@@ -170,8 +170,8 @@ func (e *Executor) SetSkillsDirectory(skillsPrompt string) {
 }
 
 // SetMCPDependencies wires MCP tool access and server connections.
-func (e *Executor) SetMCPDependencies(registry *mcp.Manager) {
-	e.mcpManager = registry
+func (e *Executor) SetMCPDependencies(registry *mcp.ServerSet) {
+	e.mcpServers = registry
 }
 
 // SetDisabledTools supplies the effective global disabled-tool policy inherited
@@ -605,8 +605,8 @@ func (e *Executor) buildAgent(ctx context.Context, run *preparedRun, onToolExec 
 	servers := slices.DeleteFunc(slices.Clone(rc.config.McpServers), func(server string) bool {
 		return !slices.ContainsFunc(rc.ceiling, func(name string) bool { return strings.HasPrefix(name, "mcp__"+server+"__") })
 	})
-	if len(servers) > 0 && e.mcpManager != nil {
-		mcpCleanup, errs := mcp.ConnectServers(ctx, e.mcpManager, servers)
+	if len(servers) > 0 && e.mcpServers != nil {
+		mcpCleanup, errs := mcp.ConnectServers(ctx, e.mcpServers, servers)
 		if mcpCleanup != nil {
 			cleanup = mcpCleanup
 		}
@@ -670,8 +670,8 @@ func (e *Executor) buildAgent(ctx context.Context, run *preparedRun, onToolExec 
 	tools := tool.AdaptToolRegistry(schemas, run.currentCwd, adaptOpts...)
 
 	// Add MCP tool executors
-	if e.mcpManager != nil {
-		for _, t := range mcp.AsCoreTools(schemas, e.mcpManager) {
+	if e.mcpServers != nil {
+		for _, t := range mcp.AsCoreTools(schemas, e.mcpServers) {
 			tools.Add(t, "mcp:"+t.Schema().Name)
 		}
 	}

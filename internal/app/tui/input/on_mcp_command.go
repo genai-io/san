@@ -10,7 +10,7 @@ import (
 
 // HandleMCPCommand dispatches /mcp subcommands.
 func HandleMCPCommand(ctx context.Context, selector *MCPSelector, width, height int, args string) (string, *coremcp.EditInfo, error) {
-	if selector.registry == nil {
+	if selector.serverSet == nil {
 		return "MCP is not initialized.\n\nAdd MCP servers with:\n  /mcp add <name> -- <command> [args...]", nil, nil
 	}
 
@@ -32,35 +32,35 @@ func HandleMCPCommand(ctx context.Context, selector *MCPSelector, width, height 
 
 	switch subCmd {
 	case "add":
-		r, err := handleMCPAdd(selector.registry, ctx, parts[1:])
+		r, err := handleMCPAdd(selector.serverSet, ctx, parts[1:])
 		return r, nil, err
 	case "edit":
-		return handleMCPEdit(selector.registry, serverName)
+		return handleMCPEdit(selector.serverSet, serverName)
 	case "remove":
-		r, err := handleMCPRemove(selector.registry, serverName)
+		r, err := handleMCPRemove(selector.serverSet, serverName)
 		return r, nil, err
 	case "get":
-		r, err := handleMCPGet(selector.registry, serverName)
+		r, err := handleMCPGet(selector.serverSet, serverName)
 		return r, nil, err
 	case "connect":
-		r, err := handleMCPConnect(selector.registry, ctx, serverName)
+		r, err := handleMCPConnect(selector.serverSet, ctx, serverName)
 		return r, nil, err
 	case "disconnect":
-		r, err := handleMCPDisconnect(selector.registry, serverName)
+		r, err := handleMCPDisconnect(selector.serverSet, serverName)
 		return r, nil, err
 	case "reconnect":
-		r, err := handleMCPReconnect(selector.registry, ctx, serverName)
+		r, err := handleMCPReconnect(selector.serverSet, ctx, serverName)
 		return r, nil, err
 	case "list", "status":
-		r, err := handleMCPList(selector.registry)
+		r, err := handleMCPList(selector.serverSet)
 		return r, nil, err
 	default:
-		r, err := handleMCPConnect(selector.registry, ctx, subCmd)
+		r, err := handleMCPConnect(selector.serverSet, ctx, subCmd)
 		return r, nil, err
 	}
 }
 
-func handleMCPList(reg *coremcp.Manager) (string, error) {
+func handleMCPList(reg *coremcp.ServerSet) (string, error) {
 	servers := reg.List()
 
 	if len(servers) == 0 {
@@ -107,7 +107,7 @@ func handleMCPList(reg *coremcp.Manager) (string, error) {
 	return sb.String(), nil
 }
 
-func handleMCPEdit(reg *coremcp.Manager, name string) (string, *coremcp.EditInfo, error) {
+func handleMCPEdit(reg *coremcp.ServerSet, name string) (string, *coremcp.EditInfo, error) {
 	if name == "" {
 		return "Usage: /mcp edit <server-name>", nil, nil
 	}
@@ -118,7 +118,7 @@ func handleMCPEdit(reg *coremcp.Manager, name string) (string, *coremcp.EditInfo
 	return "", info, nil
 }
 
-func handleMCPConnect(reg *coremcp.Manager, ctx context.Context, name string) (string, error) {
+func handleMCPConnect(reg *coremcp.ServerSet, ctx context.Context, name string) (string, error) {
 	if name == "" {
 		return "Usage: /mcp connect <server-name>", nil
 	}
@@ -139,7 +139,7 @@ func handleMCPConnect(reg *coremcp.Manager, ctx context.Context, name string) (s
 	return fmt.Sprintf("Connected to %s", name), nil
 }
 
-func handleMCPDisconnect(reg *coremcp.Manager, name string) (string, error) {
+func handleMCPDisconnect(reg *coremcp.ServerSet, name string) (string, error) {
 	if name == "" {
 		return "Usage: /mcp disconnect <server-name>", nil
 	}
@@ -148,7 +148,7 @@ func handleMCPDisconnect(reg *coremcp.Manager, name string) (string, error) {
 	return fmt.Sprintf("Disconnected from %s", name), nil
 }
 
-func handleMCPAdd(reg *coremcp.Manager, ctx context.Context, args []string) (string, error) {
+func handleMCPAdd(reg *coremcp.ServerSet, ctx context.Context, args []string) (string, error) {
 	if len(args) == 0 {
 		return mcpAddUsage(), nil
 	}
@@ -243,7 +243,7 @@ func handleMCPAdd(reg *coremcp.Manager, ctx context.Context, args []string) (str
 	return fmt.Sprintf("Added and connected to '%s' (%s, %s scope)\nTools available: %d", name, transport, scope, toolCount), nil
 }
 
-func handleMCPRemove(reg *coremcp.Manager, name string) (string, error) {
+func handleMCPRemove(reg *coremcp.ServerSet, name string) (string, error) {
 	if name == "" {
 		return "Usage: /mcp remove <server-name>", nil
 	}
@@ -259,7 +259,7 @@ func handleMCPRemove(reg *coremcp.Manager, name string) (string, error) {
 	return fmt.Sprintf("Removed server '%s'", name), nil
 }
 
-func handleMCPGet(reg *coremcp.Manager, name string) (string, error) {
+func handleMCPGet(reg *coremcp.ServerSet, name string) (string, error) {
 	if name == "" {
 		return "Usage: /mcp get <server-name>", nil
 	}
@@ -331,7 +331,7 @@ func handleMCPGet(reg *coremcp.Manager, name string) (string, error) {
 	return sb.String(), nil
 }
 
-func handleMCPReconnect(reg *coremcp.Manager, ctx context.Context, name string) (string, error) {
+func handleMCPReconnect(reg *coremcp.ServerSet, ctx context.Context, name string) (string, error) {
 	if name == "" {
 		return "Usage: /mcp reconnect <server-name>", nil
 	}

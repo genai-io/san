@@ -115,7 +115,7 @@ func TestResumeInstructionNotice(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			m, store := resumedModel(t, nil)
 			t.Cleanup(group.Forget)
-			m.services.MCP = mcp.NewManagerForTest(nil)
+			m.services.MCP = mcp.NewServerSetForTest(nil)
 			m.conv.OnNotice = m.recordNotice
 			target := mustCreateSession(t, store, session.CreateOptions{ID: "other", InitialCWD: m.env.CWD})
 			if !tc.legacy {

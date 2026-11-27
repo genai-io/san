@@ -30,8 +30,8 @@ type PluginServer struct {
 	Scope   string
 }
 
-// Manager manages multiple MCP server connections
-type Manager struct {
+// ServerSet holds configured MCP servers and their live clients.
+type ServerSet struct {
 	mu                    sync.RWMutex
 	connectionLifecycleMu sync.Mutex
 	retired               bool // guarded by mu
@@ -61,34 +61,34 @@ type mcpState struct {
 	Disabled []string `json:"disabled,omitempty"`
 }
 
-// defaultManager is the package-level manager; managerMu guards the pointer
-// itself. The Manager it points at locks its own contents — what needed
+// defaultServers is the package-level server set; defaultMu guards the pointer
+// itself. The ServerSet it points at locks its own contents — what needed
 // guarding is the swap, which Initialize performs on the bubbletea goroutine
-// (reloadProjectServices) while DefaultManager() is read elsewhere.
+// (reloadProjectServices) while Default() is read elsewhere.
 var (
-	managerMu sync.RWMutex
+	defaultMu sync.RWMutex
 	// Serializes adoption lock ordering; never held during transport I/O.
-	managerTransferMu sync.Mutex
-	defaultManager    = newEmptyManager()
+	clientTransferMu sync.Mutex
+	defaultServers   = newEmptyServerSet()
 )
 
-// adoptLiveClients moves connections from the outgoing manager into this one
+// adoptLiveClients moves connections from the outgoing server set into this one
 // for every server whose configuration is unchanged, and tears down the rest.
 //
-// Without it a cwd change replaced the manager with a fresh, zero-client one:
+// Without it a cwd change replaced the server set with a fresh, zero-client one:
 // GetToolSchemas returned nothing, so every mcp__* tool silently vanished from
-// the agent for the rest of the session, and the outgoing manager's stdio
+// the agent for the rest of the session, and the outgoing server set's stdio
 // subprocesses were dropped on the floor still running.
 //
 // The teardown of servers that did NOT survive runs detached: Client.Disconnect
 // waits on the child's read loop and exit, up to seven seconds per server, and
 // Initialize is called from the bubbletea goroutine.
-func (r *Manager) adoptLiveClients(old *Manager) {
+func (r *ServerSet) adoptLiveClients(old *ServerSet) {
 	if old == nil || old == r {
 		return
 	}
 
-	managerTransferMu.Lock()
+	clientTransferMu.Lock()
 	old.connectionLifecycleMu.Lock()
 	r.connectionLifecycleMu.Lock()
 	old.mu.Lock()
@@ -98,7 +98,7 @@ func (r *Manager) adoptLiveClients(old *Manager) {
 		old.mu.Unlock()
 		r.connectionLifecycleMu.Unlock()
 		old.connectionLifecycleMu.Unlock()
-		managerTransferMu.Unlock()
+		clientTransferMu.Unlock()
 		return
 	}
 	old.retired = true
@@ -121,7 +121,7 @@ func (r *Manager) adoptLiveClients(old *Manager) {
 	old.mu.Unlock()
 	r.connectionLifecycleMu.Unlock()
 	old.connectionLifecycleMu.Unlock()
-	managerTransferMu.Unlock()
+	clientTransferMu.Unlock()
 
 	if len(stale) > 0 {
 		go func() {
@@ -132,8 +132,8 @@ func (r *Manager) adoptLiveClients(old *Manager) {
 	}
 }
 
-func newEmptyManager() *Manager {
-	return &Manager{
+func newEmptyServerSet() *ServerSet {
+	return &ServerSet{
 		clients:    make(map[string]*Client),
 		configs:    make(map[string]ServerConfig),
 		disabled:   make(map[string]bool),
@@ -142,10 +142,10 @@ func newEmptyManager() *Manager {
 	}
 }
 
-// NewManagerForTest creates a manager with pre-loaded configs for testing.
+// NewServerSetForTest creates a server set with pre-loaded configs for testing.
 // It does not read from disk.
-func NewManagerForTest(configs map[string]ServerConfig) *Manager {
-	return &Manager{
+func NewServerSetForTest(configs map[string]ServerConfig) *ServerSet {
+	return &ServerSet{
 		clients:    make(map[string]*Client),
 		configs:    configs,
 		disabled:   make(map[string]bool),
@@ -154,15 +154,15 @@ func NewManagerForTest(configs map[string]ServerConfig) *Manager {
 	}
 }
 
-// NewManager creates a new MCP manager
-func NewManager(cwd string) (*Manager, error) {
+// NewServerSet creates a new MCP server set
+func NewServerSet(cwd string) (*ServerSet, error) {
 	loader := NewConfigLoader(cwd)
 	configs, err := loader.LoadAll()
 	if err != nil {
 		return nil, fmt.Errorf("failed to load MCP configs: %w", err)
 	}
 
-	reg := &Manager{
+	reg := &ServerSet{
 		clients:    make(map[string]*Client),
 		configs:    configs,
 		disabled:   make(map[string]bool),
@@ -179,7 +179,7 @@ func NewManager(cwd string) (*Manager, error) {
 // Reload reloads configurations from disk.
 // Clients whose server config no longer exists are disconnected to avoid
 // orphaned connections.
-func (r *Manager) Reload() error {
+func (r *ServerSet) Reload() error {
 	configs, err := r.loader.LoadAll()
 	if err != nil {
 		return err
@@ -205,7 +205,7 @@ func (r *Manager) Reload() error {
 	return nil
 }
 
-func (r *Manager) mergePluginMCPConfigs(configs map[string]ServerConfig) map[string]ServerConfig {
+func (r *ServerSet) mergePluginMCPConfigs(configs map[string]ServerConfig) map[string]ServerConfig {
 	merged := make(map[string]ServerConfig, len(configs))
 	maps.Copy(merged, configs)
 	if r.PluginServers == nil {
@@ -227,7 +227,7 @@ func (r *Manager) mergePluginMCPConfigs(configs map[string]ServerConfig) map[str
 }
 
 // AddServer adds a new server configuration
-func (r *Manager) AddServer(name string, config ServerConfig, scope Scope) error {
+func (r *ServerSet) AddServer(name string, config ServerConfig, scope Scope) error {
 	if err := r.loader.SaveServer(name, config, scope); err != nil {
 		return err
 	}
@@ -242,7 +242,7 @@ func (r *Manager) AddServer(name string, config ServerConfig, scope Scope) error
 }
 
 // RemoveServer removes a server configuration
-func (r *Manager) RemoveServer(name string) error {
+func (r *ServerSet) RemoveServer(name string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -273,7 +273,7 @@ func (r *Manager) RemoveServer(name string) error {
 // an explicit disconnect, even if an Agent definition originally created it.
 // Network I/O runs outside connectionLifecycleMu so TUI operations are not
 // blocked during a slow or remote connection.
-func (r *Manager) Connect(ctx context.Context, serverName string) error {
+func (r *ServerSet) Connect(ctx context.Context, serverName string) error {
 	r.connectionLifecycleMu.Lock()
 
 	// Fast path: already connected — just mark as retained.
@@ -281,7 +281,7 @@ func (r *Manager) Connect(ctx context.Context, serverName string) error {
 	if r.retired {
 		r.mu.Unlock()
 		r.connectionLifecycleMu.Unlock()
-		return fmt.Errorf("MCP manager retired: cannot connect to %s", serverName)
+		return fmt.Errorf("MCP server set retired: cannot connect to %s", serverName)
 	}
 	config, ok := r.configs[serverName]
 	if !ok {
@@ -318,7 +318,7 @@ func (r *Manager) Connect(ctx context.Context, serverName string) error {
 		r.connectionLifecycleMu.Unlock()
 		client.SetOnToolsChanged(nil)
 		_ = client.Disconnect()
-		return fmt.Errorf("MCP manager retired while connecting to %s", serverName)
+		return fmt.Errorf("MCP server set retired while connecting to %s", serverName)
 	}
 	r.clients[serverName] = client
 	r.mu.Unlock()
@@ -328,8 +328,8 @@ func (r *Manager) Connect(ctx context.Context, serverName string) error {
 	return nil
 }
 
-// Disconnect drops a server from the manager. The server is gone from the
-// manager's point of view when this returns; the transport teardown runs in
+// Disconnect drops a server from the server set. The server is gone from the
+// server set's point of view when this returns; the transport teardown runs in
 // the background.
 //
 // Detached because Client.Disconnect waits on the child's read loop and then
@@ -337,7 +337,7 @@ func (r *Manager) Connect(ctx context.Context, serverName string) error {
 // the bubbletea Update goroutine (the /mcp panel, /mcp disconnect). Doing it
 // inline froze the UI for that whole time, and doing it under r.mu froze the
 // agent goroutine with it, since CallTool takes the read lock.
-func (r *Manager) Disconnect(name string) {
+func (r *ServerSet) Disconnect(name string) {
 	r.mu.Lock()
 	client, ok := r.clients[name]
 	if ok {
@@ -365,7 +365,7 @@ func closeInBackground(name string, client *Client) {
 }
 
 // Client returns a client by name
-func (r *Manager) Client(name string) (*Client, bool) {
+func (r *ServerSet) Client(name string) (*Client, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	client, ok := r.clients[name]
@@ -373,7 +373,7 @@ func (r *Manager) Client(name string) (*Client, bool) {
 }
 
 // Config returns a server config by name
-func (r *Manager) Config(name string) (ServerConfig, bool) {
+func (r *ServerSet) Config(name string) (ServerConfig, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	config, ok := r.configs[name]
@@ -381,7 +381,7 @@ func (r *Manager) Config(name string) (ServerConfig, bool) {
 }
 
 // List returns all configured servers with their current status
-func (r *Manager) List() []Server {
+func (r *ServerSet) List() []Server {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -414,7 +414,7 @@ var emptySchema = map[string]any{
 }
 
 // ToolSchemas returns core.ToolSchema schemas for all connected MCP servers
-func (r *Manager) ToolSchemas() []core.ToolSchema {
+func (r *ServerSet) ToolSchemas() []core.ToolSchema {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -447,7 +447,7 @@ func schemaOrEmpty(def any) any {
 
 // CallTool calls a tool on an MCP server
 // The tool name should be in the format: mcp__<server>__<tool>
-func (r *Manager) CallTool(ctx context.Context, fullName string, arguments map[string]any) (*ToolResult, error) {
+func (r *ServerSet) CallTool(ctx context.Context, fullName string, arguments map[string]any) (*ToolResult, error) {
 	serverName, toolName, ok := parseMCPToolName(fullName)
 	if !ok {
 		return nil, fmt.Errorf("invalid MCP tool name: %s", fullName)
@@ -462,7 +462,7 @@ func (r *Manager) CallTool(ctx context.Context, fullName string, arguments map[s
 }
 
 // SetOnToolsChanged sets a callback for when tools change
-func (r *Manager) SetOnToolsChanged(callback func()) {
+func (r *ServerSet) SetOnToolsChanged(callback func()) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if !r.retired {
@@ -471,7 +471,7 @@ func (r *Manager) SetOnToolsChanged(callback func()) {
 }
 
 // notifyToolsChanged calls the tools changed callback if set
-func (r *Manager) notifyToolsChanged() {
+func (r *ServerSet) notifyToolsChanged() {
 	r.mu.RLock()
 	callback := r.onToolsChanged
 	r.mu.RUnlock()
@@ -503,7 +503,7 @@ func IsMCPTool(name string) bool {
 
 // SetConnecting marks or unmarks a server as currently connecting.
 // On failure, call SetConnectError to store the error; List() will report StatusError.
-func (r *Manager) SetConnecting(name string, val bool) {
+func (r *ServerSet) SetConnecting(name string, val bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if val {
@@ -515,7 +515,7 @@ func (r *Manager) SetConnecting(name string, val bool) {
 }
 
 // SetConnectError stores a connection error for a server that failed to connect.
-func (r *Manager) SetConnectError(name string, errMsg string) {
+func (r *ServerSet) SetConnectError(name string, errMsg string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if errMsg != "" {
@@ -526,14 +526,14 @@ func (r *Manager) SetConnectError(name string, errMsg string) {
 }
 
 // IsDisabled returns whether a server has been explicitly disabled by the user.
-func (r *Manager) IsDisabled(name string) bool {
+func (r *ServerSet) IsDisabled(name string) bool {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return r.disabled[name]
 }
 
 // SetDisabled sets the disabled state for a server and persists it.
-func (r *Manager) SetDisabled(name string, disabled bool) {
+func (r *ServerSet) SetDisabled(name string, disabled bool) {
 	r.mu.Lock()
 	if disabled {
 		r.disabled[name] = true
@@ -545,7 +545,7 @@ func (r *Manager) SetDisabled(name string, disabled bool) {
 }
 
 // statePath returns the path to the state file.
-func (r *Manager) statePath() string {
+func (r *ServerSet) statePath() string {
 	if r.loader != nil {
 		return filepath.Join(r.loader.ProjectDir(), "mcp-state.json")
 	}
@@ -553,7 +553,7 @@ func (r *Manager) statePath() string {
 }
 
 // loadState loads persisted disabled state from disk.
-func (r *Manager) loadState() {
+func (r *ServerSet) loadState() {
 	path := r.statePath()
 	if path == "" {
 		return
@@ -574,7 +574,7 @@ func (r *Manager) loadState() {
 }
 
 // saveState persists disabled state to disk.
-func (r *Manager) saveState() {
+func (r *ServerSet) saveState() {
 	path := r.statePath()
 	if path == "" {
 		return

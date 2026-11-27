@@ -13,7 +13,7 @@ import (
 )
 
 // Load extension registries per session; never swap the TUI's defaults.
-func acpExtensions(ctx context.Context, cwd string, settings *setting.Data, supplied []protocol.MCPServer) (*plugin.Registry, *skill.Registry, *mcp.Manager, error) {
+func acpExtensions(ctx context.Context, cwd string, settings *setting.Data, supplied []protocol.MCPServer) (*plugin.Registry, *skill.Registry, *mcp.ServerSet, error) {
 	plugins := plugin.NewRegistry()
 	if err := plugins.Load(ctx, cwd); err != nil {
 		return nil, nil, nil, err

@@ -317,7 +317,7 @@ func newSuggestionModel(t *testing.T, suggest bool, mode setting.OperationMode) 
 	m.services.LLM = &llm.Conn{}
 	m.services.Agent = &runtime.Runtime{}
 	m.services.Setting = setting.New(setting.NewData())
-	m.services.MCP = mcp.NewManagerForTest(nil)
+	m.services.MCP = mcp.NewServerSetForTest(nil)
 	m.env.LLMProvider = &autopilotStubProvider{}
 	m.env.SessionPermissions = setting.NewSessionPermissions()
 	m.env.OperationMode = mode

@@ -20,12 +20,12 @@ import (
 // newFakeRegistry creates a registry with N server configs for testing.
 // The configs are not connected; use this for testing config listing and
 // disconnected state scenarios.
-func newFakeRegistry(names ...string) *mcp.Manager {
+func newFakeRegistry(names ...string) *mcp.ServerSet {
 	configs := make(map[string]mcp.ServerConfig, len(names))
 	for _, name := range names {
 		configs[name] = mcp.ServerConfig{Name: name, Command: "fake-" + name}
 	}
-	return mcp.NewManagerForTest(configs)
+	return mcp.NewServerSetForTest(configs)
 }
 
 func TestRegistry_ListConfigs(t *testing.T) {
@@ -477,7 +477,7 @@ func TestRealMCP_Registry_EndToEnd(t *testing.T) {
 			Args:    []string{"-y", "@modelcontextprotocol/server-everything"},
 		},
 	}
-	registry := mcp.NewManagerForTest(configs)
+	registry := mcp.NewServerSetForTest(configs)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()

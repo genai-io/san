@@ -30,32 +30,32 @@ func extensionReloadModel(t *testing.T, cwd string) *model {
 	t.Setenv("USERPROFILE", home)
 	t.Setenv("SAN_TRUST_WORKSPACE", "1")
 	plugins, agents, skills := plugin.Default(), subagent.Default(), skill.Default()
-	commands, personas, servers := command.Default(), persona.Default(), mcp.DefaultManager()
+	commands, personas, servers := command.Default(), persona.Default(), mcp.Default()
 	plugin.SetDefaultRegistry(plugin.NewRegistry())
 	subagent.SetDefaultRegistry(subagent.NewRegistry())
-	mcp.SetDefaultManager(mcp.NewManagerForTest(nil))
+	mcp.SetDefault(mcp.NewServerSetForTest(nil))
 	t.Cleanup(func() {
-		_ = mcp.DefaultManager().Close()
+		_ = mcp.Default().Close()
 		plugin.SetDefaultRegistry(plugins)
 		subagent.SetDefaultRegistry(agents)
 		skill.SetDefaultRegistry(skills)
 		command.SetDefaultRegistry(commands)
 		persona.SetDefault(personas)
-		mcp.SetDefaultManager(servers)
+		mcp.SetDefault(servers)
 		setting.Initialize(setting.Options{})
 	})
 	setting.Initialize(setting.Options{CWD: cwd})
 	initExtensions(cwd)
 	svc := services{
 		Setting: setting.Default(), Skill: skill.Default(), Command: command.Default(),
-		Subagent: subagent.Default(), MCP: mcp.DefaultManager(), Plugin: plugin.Default(), Persona: persona.Default(),
+		Subagent: subagent.Default(), MCP: mcp.Default(), Plugin: plugin.Default(), Persona: persona.Default(),
 		Agent: &agentruntime.Runtime{}, Tool: tool.NewRegistry(), Reminder: reminder.NewQueue(),
 		Hook: hook.NewEngine(setting.NewData(), "", cwd, ""),
 	}
 	m := &model{env: env{CWD: cwd}, services: svc, learnedStores: newLearnedStoreContext(cwd, svc.Setting)}
 	m.userInput = input.New(cwd, 80, commandSuggestionMatcher(svc.Command, svc.Flow), input.SelectorServices{
 		AgentRegistry: svc.Subagent, PersonaRegistry: svc.Persona, SkillRegistry: svc.Skill,
-		MCPRegistry: svc.MCP, PluginRegistry: svc.Plugin, Setting: svc.Setting,
+		MCPServers: svc.MCP, PluginRegistry: svc.Plugin, Setting: svc.Setting,
 		LoadDisabled: svc.Setting.DisabledToolsAt, UpdateDisabled: svc.Setting.UpdateDisabledToolAt,
 	})
 	return m

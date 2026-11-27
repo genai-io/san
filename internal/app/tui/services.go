@@ -41,7 +41,7 @@ type services struct {
 	Flow         *flow.Service
 	Tracker      *todo.Store
 	Cron         *cron.Scheduler
-	MCP          *mcp.Manager
+	MCP          *mcp.ServerSet
 	Plugin       *plugin.Registry
 	Agent        *runtime.Runtime
 	Persona      *persona.Registry
@@ -76,7 +76,7 @@ func newServices() services {
 		Flow:         flow.NewService(tasks),
 		Tracker:      todo.NewStoreWithTasks(tasks),
 		Cron:         cron.Default(),
-		MCP:          mcp.DefaultManager(),
+		MCP:          mcp.Default(),
 		Plugin:       plugin.Default(),
 		Agent:        runtime.Default(),
 		Persona:      persona.Default(),

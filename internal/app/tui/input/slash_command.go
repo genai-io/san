@@ -59,7 +59,7 @@ type SlashCommandEnv struct {
 	SessionID    func() string
 	Skill        *skill.Registry
 	Plugin       *plugin.Registry
-	MCP          *mcp.Manager
+	MCP          *mcp.ServerSet
 	Tracker      *todo.Store
 	Cron         *cron.Scheduler
 	ToolSvc      *tool.Registry
