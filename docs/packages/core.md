@@ -5,20 +5,14 @@ layer: core
 
 # core
 
-The agent primitive: the `Agent` interface, its surrounding `System` /
-`Tools` / `LLM` contracts, and the message/event types they exchange. No
-implementations live here — only the contracts every feature package
-shares.
+The shared agent executor and the message, tool and event contracts it uses.
+Both foreground sessions and subagents build a `core.Agent`.
 
 ## Purpose
 
-Everything in `feature` and above depends on this package; nothing here
-depends on anything outside `internal/infra/log`, `context`, and stdlib. Keeping
-the surface small and stable is the whole point.
-
-This is also the only package that gets multiple interfaces on one page —
-`Agent`, `System`, `Tools`, `Tool`, `LLM` are the system's primitives and
-move together when they move at all.
+Core runs a conversation one turn at a time. It does not select a session,
+open a recording, or decide when a host replaces its executor. Those decisions
+belong to the foreground [runtime](agent.md) or the [subagent](subagent.md) host.
 
 ## Contract
 
@@ -135,13 +129,9 @@ need no changes.
 
 ## Internals
 
-There are no business-logic internals to document — implementations live
-in `internal/agent` (for `core.Agent`), `internal/core/system/` (for
-`System`), `internal/tool/` (for `Tool`/`Tools`), and
-`internal/llm` (for `LLM`).
-
-Three implementation files back `NewAgent`, kept inside `core` because the
-loop is inseparable from the contract:
+`agent.go` defines the executor and its configuration. `run.go` drives it;
+`turn_finalization.go` tracks completion and consumer acknowledgement of one
+specific turn. Neither owns the host's stop/restart lifecycle.
 
 - `run.go` — the agent: the loop that waits for work and the exchange it hands
   it to. Messages have one queue, the SDK agent's: `Append` adds to it, and the

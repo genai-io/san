@@ -56,6 +56,9 @@ func Default() *Runtime
   stop and restart cannot overlap.
   The native message chain survives both deliberate stops and unexpected exits;
   resume can seed it before the first run. `Reset` clears it after shutdown.
+- `runonce.go` owns single-exchange execution for headless callers. It uses
+  the same builder but calls `ThinkAct` directly; it does not start or stop a
+  foreground `Runtime`. `input.go` owns inputs not yet delivered to that runtime.
 - `build.go` translates `BuildParams` (model, identity, skills, tools,
   permission mode, cwd, ...) into a `core.Config` for `core.NewAgent`. Root gates
   stamp the tool-call ID before hooks, judge and human approval run, matching
