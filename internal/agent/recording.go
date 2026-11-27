@@ -10,6 +10,41 @@ import (
 	"github.com/genai-io/san/internal/skill"
 )
 
+// sessionInputBinding uses the open handle, not its reusable session ID, as owner.
+type sessionInputBinding struct {
+	owner    *session.Session
+	recorder *session.Recorder
+}
+
+func (b sessionInputBinding) owns(owner *session.Session) bool { return b.owner == owner }
+
+func (b sessionInputBinding) acceptInput(input PendingInput) error {
+	if input.Source != nil || input.Destination != nil {
+		if input.Completion != nil || input.Source == nil || input.Destination == nil || !b.owns(input.Destination) {
+			return &llm.RecordingError{Err: fmt.Errorf("child input requires its original receiving session and source")}
+		}
+		if input.Source.Session == "" || input.Source.Session == b.owner.ID() || input.Source.Seq == 0 {
+			return &llm.RecordingError{Err: fmt.Errorf("child input requires a foreign source event")}
+		}
+		source := *input.Source
+		if err := b.owner.AcceptInput(context.Background(), input.Message, &source); err != nil {
+			return &llm.RecordingError{Err: err}
+		}
+	}
+	if input.Completion != nil {
+		if !input.Completion.OwnedBy(b.owner) {
+			return &llm.RecordingError{Err: fmt.Errorf("input completion belongs to another session")}
+		}
+		if err := input.Completion.AcceptMessage(context.Background(), input.Message); err != nil {
+			return &llm.RecordingError{Err: err}
+		}
+	}
+	if b.recorder != nil && input.FromUser && !input.Synthetic && input.Source == nil {
+		b.recorder.NoteUserInput(input.Message.ID)
+	}
+	return nil
+}
+
 // prepareRecording keeps the runtime's fallback observer and native admissions
 // on the same recorder. Headless construction uses it without a Runtime.
 func (p *BuildParams) prepareRecording() error {
