@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -132,7 +133,16 @@ func printExitMessage(m *model) {
 	if owner := m.services.Session; owner != nil {
 		history := owner.Snapshot()
 		if history.HasMessages() {
-			command = resumeCommandForSession(owner.ID(), owner.Path())
+			saved := ""
+			if cwd, _ := os.Getwd(); cwd == "" {
+				saved = history.Identity().InitialCWD
+			} else if _, err := resumeDirectory(history, cwd); err != nil {
+				saved = history.Identity().InitialCWD
+				if last := history.State().ExecutionCWD; last != nil {
+					saved = *last
+				}
+			}
+			command = resumeCommandForSession(owner.ID(), owner.Path(), saved)
 		}
 	}
 	if command != "" {
@@ -152,14 +162,18 @@ func printExitMessage(m *model) {
 	}
 }
 
-func resumeCommandForSession(sessionID, transcriptPath string) string {
+func resumeCommandForSession(sessionID, transcriptPath, savedCWD string) string {
 	if sessionID == "" || transcriptPath == "" {
 		return ""
 	}
 	if _, err := os.Stat(transcriptPath); err != nil {
 		return ""
 	}
-	return "san -r " + sessionID
+	command := "san -r " + sessionID
+	if cwd, _ := os.Getwd(); savedCWD != "" && savedCWD != cwd {
+		return "cd '" + strings.ReplaceAll(savedCWD, "'", `'\''`) + "' && " + command
+	}
+	return command
 }
 
 func formatAsyncHookContinuationContext(result hook.AsyncHookResult, reason string) string {
