@@ -57,6 +57,33 @@ func TestResumeDirectoryMismatchPreservesSelectionAndReleasesLease(t *testing.T)
 	_ = reopened.Close()
 }
 
+func TestResumeFromCreationDirectoryAfterWorktreeChange(t *testing.T) {
+	m, store := resumedModel(t, parallelResultChain())
+	t.Cleanup(group.Forget)
+	initial := m.env.CWD
+	target := mustCreateSession(t, store, session.CreateOptions{ID: "worktree", InitialCWD: initial})
+	last := t.TempDir()
+	if err := target.Append(t.Context(), session.Event{Payload: session.SessionUpdatePayload{State: &session.StatePatch{ExecutionCWD: session.SetField(last)}}}); err != nil {
+		t.Fatal(err)
+	}
+	if reset, err := resumeDirectory(target.Snapshot(), last); err != nil || reset {
+		t.Fatalf("last worktree: reset=%v err=%v", reset, err)
+	}
+	if _, err := resumeDirectory(target.Snapshot(), t.TempDir()); err == nil {
+		t.Fatal("accepted unrelated directory")
+	}
+	if err := target.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.loadSessionByID("worktree"); err != nil {
+		t.Fatal(err)
+	}
+	history := m.services.Session.Snapshot()
+	if cwd := history.State().ExecutionCWD; cwd == nil || *cwd != initial || m.env.CWD != initial {
+		t.Fatalf("did not resume in creation directory: %v", cwd)
+	}
+}
+
 func TestResumeDirectorySameDirectorySucceeds(t *testing.T) {
 	m, store := resumedModel(t, parallelResultChain())
 	t.Cleanup(group.Forget)

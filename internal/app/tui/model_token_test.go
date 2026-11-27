@@ -67,9 +67,15 @@ func TestOnInferenceCountsCachedPromptInContext(t *testing.T) {
 }
 
 func TestResumeCommandForSessionRequiresPersistedTranscript(t *testing.T) {
-	transcriptPath := filepath.Join(t.TempDir(), "session.jsonl")
+	cwd := t.TempDir()
+	t.Chdir(cwd)
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	transcriptPath := filepath.Join(cwd, "session.jsonl")
 
-	if got := resumeCommandForSession("session-1", transcriptPath); got != "" {
+	if got := resumeCommandForSession("session-1", transcriptPath, cwd); got != "" {
 		t.Fatalf("resumeCommandForSession() = %q, want empty command for missing transcript", got)
 	}
 
@@ -77,8 +83,11 @@ func TestResumeCommandForSessionRequiresPersistedTranscript(t *testing.T) {
 		t.Fatalf("write transcript: %v", err)
 	}
 
-	if got := resumeCommandForSession("session-1", transcriptPath); got != "san -r session-1" {
+	if got := resumeCommandForSession("session-1", transcriptPath, cwd); got != "san -r session-1" {
 		t.Fatalf("resumeCommandForSession() = %q, want san -r session-1", got)
+	}
+	if got := resumeCommandForSession("session-1", transcriptPath, "/work/it's linked"); got != `cd '/work/it'\''s linked' && san -r session-1` {
+		t.Fatalf("resume from another directory: %q", got)
 	}
 }
 

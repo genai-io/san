@@ -15,6 +15,19 @@ import (
 	"github.com/genai-io/san/internal/tool/fs"
 )
 
+// resumeDirectory reports whether resuming in the original workspace needs a new execution CWD.
+func resumeDirectory(history session.Projection, requested string) (bool, error) {
+	initial := history.Identity().InitialCWD
+	if saved := history.State().ExecutionCWD; saved != nil {
+		err := session.ValidateResumeDirectory(*saved, requested)
+		if err != nil && initial != "" && session.ValidateResumeDirectory(initial, requested) == nil {
+			return true, nil
+		}
+		return false, err
+	}
+	return false, session.ValidateResumeDirectory(initial, requested)
+}
+
 func (m *model) loadSessionByID(id string) error {
 	if err := m.ensureSessionStore(); err != nil {
 		return err
@@ -30,11 +43,7 @@ func (m *model) loadSessionByID(id string) error {
 	if err != nil {
 		return err
 	}
-	saved := history.Identity().InitialCWD
-	if cwd := history.State().ExecutionCWD; cwd != nil {
-		saved = *cwd
-	}
-	if err := session.ValidateResumeDirectory(saved, m.env.CWD); err != nil {
+	if _, err := resumeDirectory(history, m.env.CWD); err != nil {
 		return err
 	}
 	// Validate presentation metadata before changing the selected owner too.
@@ -45,17 +54,8 @@ func (m *model) loadSessionByID(id string) error {
 		return err
 	}
 	opened := m.services.Session
-	if opened != nil && opened.ID() == id && opened.Err() == nil && m.services.Hook != nil {
-		oldHooks := m.services.Hook
-		next := oldHooks.ForSession(opened.ID(), m.env.CWD, opened.Path())
-		oldHooks.Shutdown()
-		m.services.Hook = next
-		apphook.Bind(next, m.env.LLMProvider, opened, m.env.GetModelID())
-		m.configureAsyncHookCallback()
-		m.wireTaskLifecycle(next)
-		history = opened.Snapshot()
-	}
-	if opened == nil || opened.ID() != id || opened.Err() != nil {
+	reuse := opened != nil && opened.ID() == id && opened.Err() == nil
+	if !reuse {
 		if opened != nil && opened.ID() == id {
 			if m.services.Hook != nil {
 				m.services.Hook.Shutdown()
@@ -68,17 +68,30 @@ func (m *model) loadSessionByID(id string) error {
 		if err != nil {
 			return err
 		}
+	}
+	history = opened.Snapshot()
+	resetCWD, err := resumeDirectory(history, m.env.CWD)
+	if err == nil {
+		_, _, err = m.resolveSessionModel(history)
+	}
+	if err == nil && resetCWD {
+		err = opened.Append(context.Background(), session.Event{Payload: session.SessionUpdatePayload{State: &session.StatePatch{ExecutionCWD: session.SetField(m.env.CWD)}}})
 		history = opened.Snapshot()
-		saved = history.Identity().InitialCWD
-		if cwd := history.State().ExecutionCWD; cwd != nil {
-			saved = *cwd
-		}
-		if err := session.ValidateResumeDirectory(saved, m.env.CWD); err != nil {
+	}
+	if err != nil {
+		if !reuse {
 			return errors.Join(err, opened.Close())
 		}
-		if _, _, err := m.resolveSessionModel(history); err != nil {
-			return errors.Join(err, opened.Close())
-		}
+		return err
+	}
+	if reuse && m.services.Hook != nil {
+		oldHooks := m.services.Hook
+		next := oldHooks.ForSession(opened.ID(), m.env.CWD, opened.Path())
+		oldHooks.Shutdown()
+		m.services.Hook = next
+		apphook.Bind(next, m.env.LLMProvider, opened, m.env.GetModelID())
+		m.configureAsyncHookCallback()
+		m.wireTaskLifecycle(next)
 	}
 	if err := m.replaceSession(opened); err != nil {
 		return err

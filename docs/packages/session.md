@@ -46,7 +46,9 @@ absolute and symlink-resolved. A moved repository gets a new identity.
 Settings, instructions and trust remain checkout-local and resolve using current
 credentials. A session fixes project, workspace and initial cwd at creation;
 `state.execution_cwd` records later execution state without changing project
-ownership. Hosts reject implicit directory switching on resume. Saved bypass
+ownership. The TUI can resume from the initial cwd or the last execution cwd;
+subsequent tools run in the directory used to resume. Hosts do not implicitly
+switch directories. Saved bypass
 mode never grants permission that current startup policy did not grant.
 
 ## Storage
