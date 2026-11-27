@@ -12,12 +12,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/genai-io/san/internal/runtime/reminder"
 	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/infra/filecache"
 	"github.com/genai-io/san/internal/llm"
 	agentruntime "github.com/genai-io/san/internal/runtime"
+	"github.com/genai-io/san/internal/runtime/reminder"
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 )
 

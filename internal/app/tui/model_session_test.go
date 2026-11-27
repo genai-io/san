@@ -7,8 +7,8 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/genai-io/san/internal/runtime/reminder"
 	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/runtime/reminder"
 	"github.com/genai-io/san/internal/setting"
 
 	"github.com/genai-io/san/internal/app/tui/chat"

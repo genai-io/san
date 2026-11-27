@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/genai-io/san/internal/runtime/reminder"
 	"github.com/genai-io/san/internal/hook"
+	"github.com/genai-io/san/internal/runtime/reminder"
 	"github.com/genai-io/san/internal/setting"
 )
 

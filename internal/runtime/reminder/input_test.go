@@ -7,9 +7,9 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/genai-io/san/internal/runtime/reminder"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/runtime"
+	"github.com/genai-io/san/internal/runtime/reminder"
 )
 
 func prepareText(s *reminder.Queue, text string) string {

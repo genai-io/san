@@ -3,7 +3,6 @@ package tui
 import (
 	"context"
 
-	"github.com/genai-io/san/internal/runtime/reminder"
 	"github.com/genai-io/san/internal/command"
 	"github.com/genai-io/san/internal/cron"
 	"github.com/genai-io/san/internal/flow"
@@ -14,6 +13,7 @@ import (
 	"github.com/genai-io/san/internal/plugin"
 	reflectskill "github.com/genai-io/san/internal/reflect/skill"
 	"github.com/genai-io/san/internal/runtime"
+	"github.com/genai-io/san/internal/runtime/reminder"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/skill"

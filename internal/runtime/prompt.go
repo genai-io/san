@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 
-	"github.com/genai-io/san/internal/runtime/reminder"
 	"github.com/genai-io/san/internal/hook"
+	"github.com/genai-io/san/internal/runtime/reminder"
 )
 
 // CheckPrompt applies UserPromptSubmit policy and stages context for later delivery.

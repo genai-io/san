@@ -12,10 +12,10 @@ import (
 
 	"github.com/genai-io/san/internal/group"
 
-	"github.com/genai-io/san/internal/runtime/mail"
 	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/app/tui/input"
 	"github.com/genai-io/san/internal/hook"
+	"github.com/genai-io/san/internal/runtime/mail"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/task"

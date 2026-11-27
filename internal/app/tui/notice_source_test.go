@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/genai-io/san/internal/runtime/mail"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/group"
 	"github.com/genai-io/san/internal/runtime"
+	"github.com/genai-io/san/internal/runtime/mail"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/tests/integration/testutil"

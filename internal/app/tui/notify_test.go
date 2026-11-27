@@ -8,8 +8,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/charmbracelet/x/ansi"
-	"github.com/genai-io/san/internal/runtime/mail"
 	"github.com/genai-io/san/internal/app/tui/chat"
+	"github.com/genai-io/san/internal/runtime/mail"
 	"github.com/genai-io/san/internal/task"
 )
 

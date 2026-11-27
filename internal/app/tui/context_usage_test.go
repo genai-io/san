@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/genai-io/san/internal/runtime/reminder"
 	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/runtime/reminder"
 )
 
 // A user turn carries the skills directory and memory files inline, so the
