@@ -60,7 +60,7 @@ func TestProviderSelectionStopTimeoutPreservesSelection(t *testing.T) {
 		t.Fatal(err)
 	}
 	<-started
-	deps := m.overlayDeps()
+	deps := m.overlayContext()
 	commits := 0
 	commit := func() error {
 		commits++

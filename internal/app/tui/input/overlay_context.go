@@ -7,8 +7,8 @@ import (
 	"github.com/genai-io/san/internal/llm"
 )
 
-// OverlayDeps holds all dependencies needed by overlay selector handlers.
-type OverlayDeps struct {
+// OverlayContext gives overlay handlers the current input state and workspace actions.
+type OverlayContext struct {
 	State *Model
 	Conv  *chat.ConversationModel
 	Cwd   string

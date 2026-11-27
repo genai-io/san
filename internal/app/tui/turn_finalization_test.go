@@ -46,7 +46,7 @@ func TestCancelledTurnFinalizationConsumerAndSession(t *testing.T) {
 	for _, mode := range []string{"saved", "natural", "essential-write-failed", "write-failed", "session-replaced", "outbox-replaced"} {
 		t.Run(mode, func(t *testing.T) {
 			m, store := resumedModel(t, []core.Message{core.UserMessage("history", nil)})
-			m.userInput = input.New(m.env.CWD, 80, nil, input.SelectorDeps{Setting: m.services.Setting})
+			m.userInput = input.New(m.env.CWD, 80, nil, input.SelectorServices{Setting: m.services.Setting})
 			llm := aitest.Always(aitest.Hangs())
 			if mode == "natural" {
 				llm = aitest.Always(aitest.Says("done"))

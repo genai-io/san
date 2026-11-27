@@ -399,7 +399,7 @@ func TestAutopilotModeSettledSkipsSuggestionMidTurn(t *testing.T) {
 // proposal; typing steps it aside and esc dismisses it.
 func TestMissionOfferInComposer(t *testing.T) {
 	m := newSuggestionModel(t, true, setting.ModeAutoPilot)
-	m.userInput = input.New("", 80, nil, input.SelectorDeps{})
+	m.userInput = input.New("", 80, nil, input.SelectorServices{})
 	m.env.AutoPilot.Mission = "ship the release"
 	m.env.AutoPilot.MissionState = "" // not started
 

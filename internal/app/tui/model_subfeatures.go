@@ -15,7 +15,7 @@ import (
 	"github.com/genai-io/san/internal/llm"
 )
 
-func (m *model) overlayDeps() input.OverlayDeps {
+func (m *model) overlayContext() input.OverlayContext {
 	reloadModelStore := func() {
 		if store := m.services.LLM.Store(); store != nil {
 			if err := store.Reload(); err != nil {
@@ -23,7 +23,7 @@ func (m *model) overlayDeps() input.OverlayDeps {
 			}
 		}
 	}
-	return input.OverlayDeps{
+	return input.OverlayContext{
 		State:             &m.userInput,
 		Conv:              &m.conv.ConversationModel,
 		Cwd:               m.env.CWD,

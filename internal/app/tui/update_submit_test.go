@@ -22,7 +22,7 @@ func flowInputModel(manager *task.Manager) *model {
 	m := &model{
 		services:  services{Task: manager, Flow: flow.NewService(manager), Subagent: subagent.NewRegistry(), Tracker: todo.NewStore()},
 		conv:      chat.NewModel(80),
-		userInput: input.New("", 80, nil, input.SelectorDeps{}),
+		userInput: input.New("", 80, nil, input.SelectorServices{}),
 	}
 	m.env.Width = 80
 	return m

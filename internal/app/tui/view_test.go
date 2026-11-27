@@ -226,7 +226,7 @@ func TestComposerCursorAlignsWithEveryRow(t *testing.T) {
 			m := &model{
 				env:       env{Width: width, Height: 24, Ready: true},
 				conv:      chat.NewModel(width),
-				userInput: input.New("", width, nil, input.SelectorDeps{}),
+				userInput: input.New("", width, nil, input.SelectorServices{}),
 			}
 			m.userInput.Textarea.SetWidth(width - 4 - 2)
 			m.userInput.Textarea.SetValue(tt.value)
@@ -318,7 +318,7 @@ func fixedComposerModel(width, height int) *model {
 		conv:      chat.NewModel(width),
 		userInput: input.New("", width, func(string) []suggest.Suggestion {
 			return []suggest.Suggestion{{Name: "help", Description: "Show commands"}, {Name: "history", Description: "Inspect conversation"}}
-		}, input.SelectorDeps{}),
+		}, input.SelectorServices{}),
 		services: services{
 			Tracker: todo.NewStore(), Subagent: subagent.NewRegistry(),
 			Setting: &setting.Settings{}, Hook: hook.NewEngine(nil, "", "", ""), LLM: &llm.Conn{},
@@ -717,7 +717,7 @@ func dockedModalModelWithCalls(t *testing.T, rationale string, batch []core.Tool
 	m := &model{
 		env:       env{Width: width, Height: height, Ready: true},
 		conv:      chat.NewModel(width),
-		userInput: input.New("", width, nil, input.SelectorDeps{}),
+		userInput: input.New("", width, nil, input.SelectorServices{}),
 		services:  services{Tracker: todo.NewStore(), Subagent: subagent.NewRegistry(), Setting: &setting.Settings{}},
 	}
 	// The stream is still open across a permission gate — it clears only on a

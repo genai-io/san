@@ -191,7 +191,7 @@ func TestMixedPastedAndFileImagesKeepBothOnAgentSend(t *testing.T) {
 
 func TestCanceledStreamDrainPreservesQueuedAndDraftImages(t *testing.T) {
 	m, provider := textOnlyModel(t)
-	m.userInput = input.New("", 80, nil, input.SelectorDeps{})
+	m.userInput = input.New("", 80, nil, input.SelectorServices{})
 	m.services.Setting = setting.New(setting.NewData())
 	m.services.Hook = hook.NewEngine(nil, "", "", "")
 	m.agentReviewCaps = m.autoSkillCapabilities()

@@ -132,7 +132,7 @@ func TestFlowMainNativeRuntimeResultAndIdentity(t *testing.T) { testFlowMainNati
 func TestFlowMainFreshRuntimeResultAndIdentity(t *testing.T)  { testFlowMainNativeRuntime(t, false) }
 func testFlowMainNativeRuntime(t *testing.T, warm bool) {
 	m, _ := resumedModel(t, []core.Message{core.UserMessage("existing main history", nil)})
-	m.userInput = input.New(m.env.CWD, 80, nil, input.SelectorDeps{Setting: m.services.Setting})
+	m.userInput = input.New(m.env.CWD, 80, nil, input.SelectorServices{Setting: m.services.Setting})
 	m.flowMain = newFlowMainBridge()
 	opened := m.services.Session
 	m.agentSession = opened

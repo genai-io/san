@@ -15,7 +15,7 @@ import (
 // TestRenderPreview prints both Reflection tabs without ANSI codes.
 func TestRenderPreview(t *testing.T) {
 	cwd, svc := t.TempDir(), setting.New(nil)
-	c := NewReflectionSelector(ReflectionDeps{Workspace: func() (string, *setting.Settings) { return cwd, svc }})
+	c := NewReflectionSelector(ReflectionSources{Workspace: func() (string, *setting.Settings) { return cwd, svc }})
 	c.Enter(50, 25)
 	ansi := regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
 	for _, want := range [][]string{{"Recall", "Update", "options", "esc close · tab panels"}, {"Create new skills"}} {

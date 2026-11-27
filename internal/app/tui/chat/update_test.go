@@ -21,8 +21,8 @@ func TestFinishingAgentKeepsSiblingActivity(t *testing.T) {
 		m.TaskActivity = map[int][]string{0: {"Read(first.go)"}, 1: {"Read(second.go)"}}
 		sibling := 1 - first
 		want := m.TaskActivity[sibling][0]
-		rt := &postToolUpdateDeps{}
-		applyPostTool(rt, &m, core.ToolResult{ToolCallID: calls[first].ID, ToolName: "Agent"}, nil)
+		spy := &stepSpy{}
+		applyPostTool(spy, &m, core.ToolResult{ToolCallID: calls[first].ID, ToolName: "Agent"}, nil)
 		if _, ok := m.TaskActivity[first]; ok {
 			t.Fatalf("completed agent %d retained live activity", first)
 		}
@@ -34,24 +34,24 @@ func TestFinishingAgentKeepsSiblingActivity(t *testing.T) {
 		if !strings.Contains(rendered, want) {
 			t.Fatalf("finishing agent %d hid sibling activity %q: %s", first, want, rendered)
 		}
-		applyPostTool(rt, &m, core.ToolResult{ToolCallID: calls[sibling].ID, ToolName: "Agent"}, nil)
+		applyPostTool(spy, &m, core.ToolResult{ToolCallID: calls[sibling].ID, ToolName: "Agent"}, nil)
 		if len(m.TaskActivity) != 0 {
 			t.Fatalf("completed batch retained live activity: %#v", m.TaskActivity)
 		}
 	}
 }
 
-type postToolUpdateDeps struct {
+type stepSpy struct {
 	UI
 	drainCalls int
 }
 
-func (r *postToolUpdateDeps) OnToolResult(tr core.ToolResult) *core.ToolResult {
+func (r *stepSpy) OnToolResult(tr core.ToolResult) *core.ToolResult {
 	return &tr
 }
-func (r *postToolUpdateDeps) TakeJudgeDecision(string) *core.JudgeDecision { return nil }
-func (r *postToolUpdateDeps) CommitMessages() []tea.Cmd                    { return nil }
-func (r *postToolUpdateDeps) OnStepEnd() tea.Cmd {
+func (r *stepSpy) TakeJudgeDecision(string) *core.JudgeDecision { return nil }
+func (r *stepSpy) CommitMessages() []tea.Cmd                    { return nil }
+func (r *stepSpy) OnStepEnd() tea.Cmd {
 	r.drainCalls++
 	return nil
 }
@@ -59,30 +59,30 @@ func (r *postToolUpdateDeps) OnStepEnd() tea.Cmd {
 func TestPostToolDrainsQueuedInputAfterEntireToolBatch(t *testing.T) {
 	m := NewModel(80)
 	m.Tool.Track([]core.ToolCall{{ID: "tc-1", Name: "Read"}, {ID: "tc-2", Name: "Bash"}})
-	rt := &postToolUpdateDeps{}
+	spy := &stepSpy{}
 
-	applyPostTool(rt, &m, core.ToolResult{ToolCallID: "tc-1", ToolName: "Read"}, nil)
-	if rt.drainCalls != 0 {
-		t.Fatalf("drained pending input after first tool result; calls = %d", rt.drainCalls)
+	applyPostTool(spy, &m, core.ToolResult{ToolCallID: "tc-1", ToolName: "Read"}, nil)
+	if spy.drainCalls != 0 {
+		t.Fatalf("drained pending input after first tool result; calls = %d", spy.drainCalls)
 	}
-	applyPostTool(rt, &m, core.ToolResult{ToolCallID: "tc-2", ToolName: "Bash"}, nil)
-	if rt.drainCalls != 1 {
-		t.Fatalf("drain calls after complete tool batch = %d, want 1", rt.drainCalls)
+	applyPostTool(spy, &m, core.ToolResult{ToolCallID: "tc-2", ToolName: "Bash"}, nil)
+	if spy.drainCalls != 1 {
+		t.Fatalf("drain calls after complete tool batch = %d, want 1", spy.drainCalls)
 	}
 }
 
 func TestPostToolDrainsQueuedInputAfterOutOfOrderToolBatch(t *testing.T) {
 	m := NewModel(80)
 	m.Tool.Track([]core.ToolCall{{ID: "tc-1", Name: "Read"}, {ID: "tc-2", Name: "Read"}, {ID: "tc-3", Name: "Read"}})
-	rt := &postToolUpdateDeps{}
+	spy := &stepSpy{}
 	for i, id := range []string{"tc-3", "tc-3", "tc-1", "tc-2"} {
-		applyPostTool(rt, &m, core.ToolResult{ToolCallID: id, ToolName: "Read"}, nil)
+		applyPostTool(spy, &m, core.ToolResult{ToolCallID: id, ToolName: "Read"}, nil)
 		wantDrains := 0
 		if i == 3 {
 			wantDrains = 1
 		}
-		if rt.drainCalls != wantDrains {
-			t.Fatalf("after result %d (%s): drained %d times, want %d", i, id, rt.drainCalls, wantDrains)
+		if spy.drainCalls != wantDrains {
+			t.Fatalf("after result %d (%s): drained %d times, want %d", i, id, spy.drainCalls, wantDrains)
 		}
 	}
 	if len(m.Messages) != 3 || m.Tool.PendingCalls != nil {

@@ -61,7 +61,7 @@ func newBaseModel() model {
 	environment := newEnv(svc.LLM, appCwd, svc.Setting.IsGitRepo(appCwd))
 	applyStartupSettings(&environment, svc.Setting.Snapshot(), appCwd, svc.Setting.AllowBypass(), svc.Hook)
 	m := model{
-		userInput:        input.New(appCwd, defaultWidth, commandSuggestionMatcher(svc.Command, svc.Flow), selectorDeps(svc, learnedStores)),
+		userInput:        input.New(appCwd, defaultWidth, commandSuggestionMatcher(svc.Command, svc.Flow), selectorServices(svc, learnedStores)),
 		conv:             chat.NewModel(defaultWidth),
 		mainNotices:      make(chan mainNotice, 64),
 		flowMain:         newFlowMainBridge(),
@@ -79,13 +79,13 @@ func newBaseModel() model {
 	return m
 }
 
-func selectorDeps(svc services, learnedStores *learnedStoreContext) input.SelectorDeps {
-	return input.SelectorDeps{
+func selectorServices(svc services, learnedStores *learnedStoreContext) input.SelectorServices {
+	return input.SelectorServices{
 		AgentRegistry: svc.Subagent, PersonaRegistry: svc.Persona, SkillRegistry: svc.Skill,
 		MCPRegistry: svc.MCP, PluginRegistry: svc.Plugin, Setting: svc.Setting,
 		LoadDisabled: svc.Setting.DisabledToolsAt, UpdateDisabled: svc.Setting.UpdateDisabledToolAt,
 		HeldOn: toolsHeldOn,
-		Reflection: input.ReflectionDeps{
+		Reflection: input.ReflectionSources{
 			Workspace: learnedStores.Snapshot,
 			Learned:   newLearnedSkillStore(learnedStores.Snapshot),
 		},

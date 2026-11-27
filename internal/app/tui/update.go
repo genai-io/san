@@ -652,7 +652,7 @@ func (m *model) routeToSubModel(msg tea.Msg) (tea.Cmd, bool) {
 	if cmd, ok := m.updateMode(msg); ok {
 		return cmd, true
 	}
-	if cmd, ok := input.Update(m.overlayDeps(), msg); ok {
+	if cmd, ok := input.Update(m.overlayContext(), msg); ok {
 		return cmd, true
 	}
 	switch msg.(type) {

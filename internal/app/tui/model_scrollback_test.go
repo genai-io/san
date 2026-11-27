@@ -669,7 +669,7 @@ func TestConsecutiveToolCommitsStayOutOfManagedFrameAndPrintOnceInOrder(t *testi
 	m := &model{
 		env:       env{Width: 100, Height: 24},
 		conv:      chat.NewModel(100),
-		userInput: input.New("", 100, nil, input.SelectorDeps{}),
+		userInput: input.New("", 100, nil, input.SelectorServices{}),
 		services: services{
 			Subagent: subagent.NewRegistry(),
 			Tracker:  todo.NewStore(),

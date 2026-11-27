@@ -114,7 +114,7 @@ func (img *ImageState) RemoveAt(idx int) {
 	}
 }
 
-type SelectorDeps struct {
+type SelectorServices struct {
 	AgentRegistry   *subagent.Registry
 	PersonaRegistry *corepersona.Registry
 	SkillRegistry   *coreskill.Registry
@@ -125,10 +125,10 @@ type SelectorDeps struct {
 	UpdateDisabled  func(name string, disabled *bool, scope setting.Scope) error
 	// HeldOn names the tools the session keeps on over the settings, and why.
 	HeldOn     func() map[string]string
-	Reflection ReflectionDeps
+	Reflection ReflectionSources
 }
 
-func New(cwd string, width int, matchFunc suggest.Matcher, deps SelectorDeps) Model {
+func New(cwd string, width int, matchFunc suggest.Matcher, services SelectorServices) Model {
 	suggestions := suggest.NewState(matchFunc)
 	suggestions.SetCwd(cwd)
 	return Model{
@@ -139,19 +139,19 @@ func New(cwd string, width int, matchFunc suggest.Matcher, deps SelectorDeps) Mo
 
 		Approval:   NewApproval(),
 		Secret:     NewSecretPrompt(),
-		Agent:      NewAgentSelector(deps.AgentRegistry),
-		Persona:    NewPersonaSelector(deps.PersonaRegistry, deps.Setting),
-		Search:     NewSearchSelector(deps.Setting),
-		Skill:      SkillState{Selector: NewSkillSelector(deps.SkillRegistry)},
+		Agent:      NewAgentSelector(services.AgentRegistry),
+		Persona:    NewPersonaSelector(services.PersonaRegistry, services.Setting),
+		Search:     NewSearchSelector(services.Setting),
+		Skill:      SkillState{Selector: NewSkillSelector(services.SkillRegistry)},
 		Session:    SessionState{Selector: NewSessionSelector()},
 		Memory:     MemoryState{Selector: NewMemorySelector()},
-		MCP:        MCPState{Selector: NewMCPSelector(deps.MCPRegistry)},
-		Plugin:     NewPluginSelector(deps.PluginRegistry),
+		MCP:        MCPState{Selector: NewMCPSelector(services.MCPRegistry)},
+		Plugin:     NewPluginSelector(services.PluginRegistry),
 		Provider:   ProviderState{Selector: NewProviderSelector()},
-		Tool:       NewToolSelector(deps.LoadDisabled, deps.UpdateDisabled, deps.HeldOn),
-		Settings:   NewSettingsSelector(deps.Setting),
+		Tool:       NewToolSelector(services.LoadDisabled, services.UpdateDisabled, services.HeldOn),
+		Settings:   NewSettingsSelector(services.Setting),
 		Autopilot:  NewAutopilotSelector(),
-		Reflection: NewReflectionSelector(deps.Reflection),
+		Reflection: NewReflectionSelector(services.Reflection),
 	}
 }
 

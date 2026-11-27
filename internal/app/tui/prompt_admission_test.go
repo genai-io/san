@@ -31,7 +31,7 @@ func TestPromptAdmissionBlocksDirectAndIdleQueuedBeforeSlash(t *testing.T) {
 	for _, queued := range []bool{false, true} {
 		t.Run(map[bool]string{false: "direct", true: "idle queue"}[queued], func(t *testing.T) {
 			m, _ := textOnlyModel(t)
-			m.userInput = input.New("", 80, nil, input.SelectorDeps{})
+			m.userInput = input.New("", 80, nil, input.SelectorServices{})
 			calls := installBlockingPromptHook(t, m)
 			if queued {
 				m.userInput.Textarea.SetValue("unrelated draft")

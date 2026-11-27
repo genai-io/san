@@ -34,7 +34,7 @@ func commitTestModel(msgs ...core.ChatMessage) *model {
 	m := &model{
 		env:       env{Width: 80, Height: 24},
 		conv:      chat.NewModel(80),
-		userInput: input.New("", 80, nil, input.SelectorDeps{}),
+		userInput: input.New("", 80, nil, input.SelectorServices{}),
 		services:  services{Tracker: todo.NewStore(), Subagent: subagent.NewRegistry()},
 	}
 	m.conv.Messages = msgs

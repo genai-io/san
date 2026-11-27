@@ -54,7 +54,7 @@ func TestSubmitDuringCompactionQueuesInput(t *testing.T) {
 func compactQueueModel(t *testing.T) (*model, *textOnlyStubProvider) {
 	t.Helper()
 	m, _ := resumedModel(t, parallelResultChain())
-	m.userInput = input.New(m.env.CWD, 80, nil, input.SelectorDeps{Setting: m.services.Setting})
+	m.userInput = input.New(m.env.CWD, 80, nil, input.SelectorServices{Setting: m.services.Setting})
 	provider := &textOnlyStubProvider{restartStubProvider{requests: make(chan []core.Message, 2)}}
 	m.env.LLMProvider = provider
 	if err := m.services.Agent.Start(runtime.BuildParams{Provider: provider, ModelID: "m", Recording: m.services.Session, PermissionRules: (runtime.PermissionPolicy{}).Decide}, m.services.Agent.Messages()); err != nil {

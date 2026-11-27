@@ -47,7 +47,7 @@ func TestManualCompactionCancelsHTTP(t *testing.T) {
 	for _, action := range []string{"escape", "ctrl-c", "reset", "stop", "replace", "quit"} {
 		t.Run(action, func(t *testing.T) {
 			m, store := resumedModel(t, parallelResultChain())
-			m.userInput = input.New(m.env.CWD, 80, nil, input.SelectorDeps{Setting: m.services.Setting})
+			m.userInput = input.New(m.env.CWD, 80, nil, input.SelectorServices{Setting: m.services.Setting})
 			entered, aborted := make(chan struct{}), make(chan struct{})
 			server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 				_, _ = io.Copy(io.Discard, r.Body)
