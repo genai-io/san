@@ -118,7 +118,7 @@ type PluginSelector struct {
 	browseMarketplaceID string
 	browsePlugins       []pluginDiscoverItem
 
-	marketplaceManager *coreplugin.MarketplaceManager
+	marketplaceSources *coreplugin.Marketplaces
 	installer          *coreplugin.Installer
 }
 
@@ -131,7 +131,7 @@ func NewPluginSelector(reg *coreplugin.Registry) PluginSelector {
 		maxVisible:         15,
 		activeTab:          pluginTabInstalled,
 		installedPlugins:   make(map[coreplugin.Scope][]pluginItem),
-		marketplaceManager: coreplugin.NewMarketplaceManager(cwd),
+		marketplaceSources: coreplugin.NewMarketplaces(cwd),
 		installer:          coreplugin.NewInstaller(reg, cwd),
 	}
 }

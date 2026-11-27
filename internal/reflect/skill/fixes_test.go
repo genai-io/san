@@ -7,12 +7,12 @@ import "testing"
 // name carrying a path separator or "..". Before the fix only Create
 // validated the name, so a crafted name flowed straight into filepath.Join.
 func TestResolveRejectsTraversalNames(t *testing.T) {
-	mgr, _ := newTestSkillManager(t)
+	editor, _ := newTestEditor(t)
 	for _, bad := range []string{"../escape", "has/slash", "..", "foo/../bar", `a\b`} {
-		if _, err := mgr.patch(bad, "x", "y", parsed{}); err == nil {
+		if _, err := editor.patch(bad, "x", "y", parsed{}); err == nil {
 			t.Errorf("patch(%q) should be rejected", bad)
 		}
-		if _, err := mgr.Delete(bad); err == nil {
+		if _, err := editor.Delete(bad); err == nil {
 			t.Errorf("Delete(%q) should be rejected", bad)
 		}
 	}
@@ -25,7 +25,7 @@ func TestResolveRejectsTraversalNames(t *testing.T) {
 // leaving the skill permanently un-editable. The description must now
 // round-trip through both parseSkill and Inventory.
 func TestCreateDescriptionRoundTrips(t *testing.T) {
-	mgr, _ := newTestSkillManager(t)
+	editor, _ := newTestEditor(t)
 	cases := []struct{ name, desc string }{
 		{"brackets", "[draft] release note"},
 		{"braces", "{tip} use this"},
@@ -35,15 +35,15 @@ func TestCreateDescriptionRoundTrips(t *testing.T) {
 		{"plain", "plain text note"},
 	}
 	for _, tc := range cases {
-		if _, err := mgr.Create(tc.name, tc.desc, "body", "user"); err != nil {
+		if _, err := editor.Create(tc.name, tc.desc, "body", "user"); err != nil {
 			t.Fatalf("Create(%q): %v", tc.desc, err)
 		}
-		if _, err := mgr.parseSkill(tc.name); err != nil {
+		if _, err := editor.parseSkill(tc.name); err != nil {
 			t.Fatalf("parseSkill after desc %q: %v (frontmatter is invalid YAML)", tc.desc, err)
 		}
 		var got string
 		var found bool
-		for _, info := range mgr.Inventory() {
+		for _, info := range editor.Inventory() {
 			if info.Name == tc.name {
 				found, got = true, info.Description
 			}

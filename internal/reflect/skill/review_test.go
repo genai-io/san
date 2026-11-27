@@ -40,14 +40,14 @@ func (reviewProvider) Name() string                                        { ret
 func (reviewProvider) ListModels(context.Context) ([]llm.ModelInfo, error) { return nil, nil }
 
 func TestSideReviewOriginalSession(t *testing.T) {
-	mgr, _ := newTestSkillManagerWithPerms(t, SkillPermissions{AllowCreate: true})
+	editor, _ := newTestEditorWithPerms(t, SkillPermissions{AllowCreate: true})
 	owner := reviewRecording(t)
 	driver := aitest.New(aitest.Replies(ai.Response{
 		Content:    ai.TextContent(`{"action":"create","name":"go-table-tests","level":"project","description":"Patterns for Go tests","body":"Use named table cases.","note":"captured named test cases"}`),
 		StopReason: ai.StopEndTurn, Usage: ai.Usage{Input: 17, Output: 4},
 	}))
 	evidence := []core.Message{core.UserMessage("unrelated private history", nil), core.UserMessage("Write the tests", nil), {Role: ai.RoleAssistant, Content: ai.TextContent("Named table cases made the failure easier to locate.")}}
-	r := SideReview{Provider: reviewProvider{driver}, Model: "test", Recording: owner, Skills: mgr, Strategy: "Prefer concrete examples"}
+	r := SideReview{Provider: reviewProvider{driver}, Model: "test", Recording: owner, Skills: editor, Strategy: "Prefer concrete examples"}
 	if _, err := r.Run(t.Context(), evidence); err != nil {
 		t.Fatal(err)
 	}
@@ -59,7 +59,7 @@ func TestSideReviewOriginalSession(t *testing.T) {
 	if strings.Contains(text, "unrelated private history") || !strings.Contains(text, "Prefer concrete examples") || !strings.Contains(text, "Write the tests") {
 		t.Fatalf("review evidence: %s", text)
 	}
-	got, err := mgr.Read("go-table-tests")
+	got, err := editor.Read("go-table-tests")
 	if err != nil || !strings.Contains(got, "origin: agent-created") {
 		t.Fatalf("skill=%q err=%v", got, err)
 	}
@@ -89,9 +89,9 @@ func TestSideReviewOriginalSession(t *testing.T) {
 }
 
 func TestSideReviewRequiresUserEvidence(t *testing.T) {
-	mgr, _ := newTestSkillManagerWithPerms(t, SkillPermissions{AllowCreate: true})
+	editor, _ := newTestEditorWithPerms(t, SkillPermissions{AllowCreate: true})
 	driver := aitest.New(aitest.Says(`{"action":"none"}`))
-	r := SideReview{Provider: reviewProvider{driver}, Model: "test", Recording: reviewRecording(t), Skills: mgr}
+	r := SideReview{Provider: reviewProvider{driver}, Model: "test", Recording: reviewRecording(t), Skills: editor}
 	evidence := []core.Message{core.UserMessage("<system-reminder>scheduled task</system-reminder>", nil), {Role: ai.RoleAssistant, Content: ai.TextContent("Assistant-only claim.")}}
 	if notice, err := r.Run(t.Context(), evidence); notice != "" || err != nil || driver.Calls() != 0 {
 		t.Fatalf("reminder-only turn reviewed: notice=%q err=%v calls=%d", notice, err, driver.Calls())
@@ -108,12 +108,12 @@ func TestSideReviewDeletesOversizedUsedSkill(t *testing.T) {
 			label = "tail changed during review"
 		}
 		t.Run(label, func(t *testing.T) {
-			mgr, cwd := newTestSkillManagerWithPerms(t, SkillPermissions{AllowDelete: true})
-			creator := NewSkillManager(cwd, SkillPermissions{AllowCreate: true})
+			editor, cwd := newTestEditorWithPerms(t, SkillPermissions{AllowDelete: true})
+			creator := NewEditor(cwd, SkillPermissions{AllowCreate: true})
 			if _, err := creator.Create(name, "Old test procedure", prefix+"é\nold tail", "project"); err != nil {
 				t.Fatal(err)
 			}
-			p, err := mgr.requireAgentOwned(name)
+			p, err := editor.requireAgentOwned(name)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -132,7 +132,7 @@ func TestSideReviewDeletesOversizedUsedSkill(t *testing.T) {
 				core.AssistantMessage("", "", []core.ToolCall{{ID: "used", Name: "Skill", Input: `{"skill":"oversized-skill"}`}}),
 				core.ToolResultMessage(core.ToolResult{ToolCallID: "used", Content: ai.TextContent("loaded")}),
 			}
-			r := SideReview{Provider: reviewProvider{driver}, Recording: reviewRecording(t), Skills: mgr}
+			r := SideReview{Provider: reviewProvider{driver}, Recording: reviewRecording(t), Skills: editor}
 			summary, err := r.Run(t.Context(), evidence)
 			if driver.Calls() != 1 {
 				t.Fatalf("review calls = %d, want 1 (err = %v)", driver.Calls(), err)
@@ -166,14 +166,14 @@ func TestSideReviewDeletesOversizedUsedSkill(t *testing.T) {
 }
 
 func TestSideReviewDefaultStrategyAndToolResultExclusion(t *testing.T) {
-	mgr, _ := newTestSkillManagerWithPerms(t, SkillPermissions{AllowCreate: true})
+	editor, _ := newTestEditorWithPerms(t, SkillPermissions{AllowCreate: true})
 	driver := aitest.New(aitest.Says(`{"action":"none"}`))
 	evidence := []core.Message{
 		core.UserMessage("Write the tests", nil),
 		core.AssistantMessage("Done", "", nil),
 		core.ToolResultMessage(core.ToolResult{Content: ai.TextContent("private tool output")}),
 	}
-	r := SideReview{Provider: reviewProvider{driver}, Recording: reviewRecording(t), Skills: mgr}
+	r := SideReview{Provider: reviewProvider{driver}, Recording: reviewRecording(t), Skills: editor}
 	if _, err := r.Run(t.Context(), evidence); err != nil {
 		t.Fatal(err)
 	}
@@ -192,9 +192,9 @@ func TestSideReviewClosedOwnerDoesNotDispatch(t *testing.T) {
 	if err := owner.Close(); err != nil {
 		t.Fatal(err)
 	}
-	mgr, _ := newTestSkillManagerWithPerms(t, SkillPermissions{AllowCreate: true})
+	editor, _ := newTestEditorWithPerms(t, SkillPermissions{AllowCreate: true})
 	driver := aitest.New(aitest.Says(`{"action":"none"}`))
-	_, err := (SideReview{Provider: reviewProvider{driver}, Recording: owner, Skills: mgr}).Run(t.Context(), []core.Message{core.UserMessage("Run the tests", nil)})
+	_, err := (SideReview{Provider: reviewProvider{driver}, Recording: owner, Skills: editor}).Run(t.Context(), []core.Message{core.UserMessage("Run the tests", nil)})
 	if !errors.Is(err, session.ErrClosed) || driver.Calls() != 0 {
 		t.Fatalf("err=%v calls=%d", err, driver.Calls())
 	}

@@ -386,7 +386,7 @@ func TestInstaller_InstallAndUninstall_FromMarketplaceDirectory(t *testing.T) {
 
 	registry := NewRegistry()
 	installer := NewInstaller(registry, cwd)
-	if err := installer.marketplaceManager.AddDirectory("local-market", marketRoot); err != nil {
+	if err := installer.marketplaceSources.AddDirectory("local-market", marketRoot); err != nil {
 		t.Fatalf("AddDirectory() error: %v", err)
 	}
 	if err := installer.LoadMarketplaces(); err != nil {
@@ -462,8 +462,8 @@ func TestInstall_LoadsMarketplacesAndInstalls(t *testing.T) {
 
 	// Persist the marketplace to disk so the installer that Install() builds
 	// internally rediscovers it through LoadMarketplaces.
-	mgr := NewMarketplaceManager(cwd)
-	if err := mgr.AddDirectory("local-market", marketRoot); err != nil {
+	marketplaces := NewMarketplaces(cwd)
+	if err := marketplaces.AddDirectory("local-market", marketRoot); err != nil {
 		t.Fatalf("AddDirectory() error: %v", err)
 	}
 
@@ -485,7 +485,7 @@ func TestSyncOrPrune(t *testing.T) {
 	t.Run("prunes a broken github source when the local clone is gone", func(t *testing.T) {
 		tmp := t.TempDir()
 		t.Setenv("HOME", tmp)
-		m := NewMarketplaceManager(tmp)
+		m := NewMarketplaces(tmp)
 
 		if err := m.Add("ghost", MarketplaceEntry{
 			Source:          MarketplaceSourceInfo{Source: "github", Repo: "owner/repo"},
@@ -510,7 +510,7 @@ func TestSyncOrPrune(t *testing.T) {
 	t.Run("does not prune a non-github source on sync failure", func(t *testing.T) {
 		tmp := t.TempDir()
 		t.Setenv("HOME", tmp)
-		m := NewMarketplaceManager(tmp)
+		m := NewMarketplaces(tmp)
 
 		if err := m.Add("weird", MarketplaceEntry{
 			Source: MarketplaceSourceInfo{Source: "mystery"},

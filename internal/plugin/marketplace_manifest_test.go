@@ -88,7 +88,7 @@ func TestMarketplacePlugins_ManifestFirst(t *testing.T) {
 		]
 	}`)
 
-	m := NewMarketplaceManager(tmp)
+	m := NewMarketplaces(tmp)
 	if err := m.Add("mixed", MarketplaceEntry{Source: MarketplaceSourceInfo{Source: "directory", Path: marketRoot}}); err != nil {
 		t.Fatalf("Add: %v", err)
 	}
@@ -125,7 +125,7 @@ func TestMarketplacePlugins_DirScanFallback(t *testing.T) {
 	marketRoot := filepath.Join(t.TempDir(), "market")
 	writeTestPlugin(t, filepath.Join(marketRoot, "plugins", "alpha"), "alpha", "1.0.0", "Alpha", nil)
 
-	m := NewMarketplaceManager(tmp)
+	m := NewMarketplaces(tmp)
 	if err := m.Add("scan", MarketplaceEntry{Source: MarketplaceSourceInfo{Source: "directory", Path: marketRoot}}); err != nil {
 		t.Fatalf("Add: %v", err)
 	}
@@ -161,8 +161,8 @@ func TestInstall_RelativePathSourceFromManifest(t *testing.T) {
 		]
 	}`)
 
-	mgr := NewMarketplaceManager(cwd)
-	if err := mgr.Add("local-market", MarketplaceEntry{Source: MarketplaceSourceInfo{Source: "directory", Path: marketRoot}}); err != nil {
+	marketplaces := NewMarketplaces(cwd)
+	if err := marketplaces.Add("local-market", MarketplaceEntry{Source: MarketplaceSourceInfo{Source: "directory", Path: marketRoot}}); err != nil {
 		t.Fatalf("Add: %v", err)
 	}
 

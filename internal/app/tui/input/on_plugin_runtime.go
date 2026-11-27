@@ -77,7 +77,7 @@ func UpdatePlugin(panel PanelContext, state *PluginSelector, msg tea.Msg) (tea.C
 		), true
 
 	case pluginMarketplaceRemoveMsg:
-		mgr, id := state.marketplaceManager, msg.ID
+		mgr, id := state.marketplaceSources, msg.ID
 		return tea.Batch(
 			state.beginLoading("Removing "+id+"..."),
 			runPluginOp(pluginOpResultMsg{okMsg: "Removed " + id, errCtx: "remove " + id, pop: true},

@@ -14,8 +14,8 @@ import (
 	"github.com/genai-io/san/internal/infra/confdir"
 )
 
-// MarketplaceManager manages plugin marketplaces.
-type MarketplaceManager struct {
+// Marketplaces tracks configured plugin sources and syncs their local copies.
+type Marketplaces struct {
 	cwd             string
 	marketplaces    map[string]MarketplaceEntry
 	configDir       string // Directory for known_marketplaces.json
@@ -23,11 +23,11 @@ type MarketplaceManager struct {
 	marketplacesDir string
 }
 
-// NewMarketplaceManager creates a new marketplace manager.
-func NewMarketplaceManager(cwd string) *MarketplaceManager {
+// NewMarketplaces uses the default configuration directory.
+func NewMarketplaces(cwd string) *Marketplaces {
 	homeDir, _ := os.UserHomeDir()
 	configDir := filepath.Join(confdir.Dir(homeDir), "plugins")
-	return &MarketplaceManager{
+	return &Marketplaces{
 		cwd:             cwd,
 		marketplaces:    make(map[string]MarketplaceEntry),
 		configDir:       configDir,
@@ -36,10 +36,10 @@ func NewMarketplaceManager(cwd string) *MarketplaceManager {
 	}
 }
 
-// NewMarketplaceManagerWithConfig creates a marketplace manager with custom config directory.
+// NewMarketplacesWithConfig uses the supplied configuration directory.
 // Used for testing to avoid modifying user's real configuration.
-func NewMarketplaceManagerWithConfig(cwd, configDir string) *MarketplaceManager {
-	return &MarketplaceManager{
+func NewMarketplacesWithConfig(cwd, configDir string) *Marketplaces {
+	return &Marketplaces{
 		cwd:             cwd,
 		marketplaces:    make(map[string]MarketplaceEntry),
 		configDir:       configDir,
@@ -49,7 +49,7 @@ func NewMarketplaceManagerWithConfig(cwd, configDir string) *MarketplaceManager 
 }
 
 // Load loads marketplace configurations from known_marketplaces.json.
-func (m *MarketplaceManager) Load() error {
+func (m *Marketplaces) Load() error {
 	path := filepath.Join(m.configDir, "known_marketplaces.json")
 
 	data, err := os.ReadFile(path)
@@ -94,7 +94,7 @@ func (m *MarketplaceManager) Load() error {
 // dir whose path no longer exists) by pointing them at the canonical clone
 // path. Run once at load so path lookups stay a plain field read rather than
 // a stat on every call.
-func (m *MarketplaceManager) healInstallLocations() {
+func (m *Marketplaces) healInstallLocations() {
 	for id, entry := range m.marketplaces {
 		if entry.Source.Source != "github" {
 			continue
@@ -118,7 +118,7 @@ func (m *MarketplaceManager) healInstallLocations() {
 }
 
 // Save saves marketplace configurations to known_marketplaces.json.
-func (m *MarketplaceManager) Save() error {
+func (m *Marketplaces) Save() error {
 	if err := os.MkdirAll(m.configDir, 0o755); err != nil {
 		return err
 	}
@@ -128,13 +128,13 @@ func (m *MarketplaceManager) Save() error {
 }
 
 // Get returns a marketplace by ID.
-func (m *MarketplaceManager) Get(id string) (MarketplaceEntry, bool) {
+func (m *Marketplaces) Get(id string) (MarketplaceEntry, bool) {
 	entry, ok := m.marketplaces[id]
 	return entry, ok
 }
 
 // List returns all marketplace IDs.
-func (m *MarketplaceManager) List() []string {
+func (m *Marketplaces) List() []string {
 	ids := make([]string, 0, len(m.marketplaces))
 	for id := range m.marketplaces {
 		ids = append(ids, id)
@@ -143,13 +143,13 @@ func (m *MarketplaceManager) List() []string {
 }
 
 // Add adds a new marketplace.
-func (m *MarketplaceManager) Add(id string, entry MarketplaceEntry) error {
+func (m *Marketplaces) Add(id string, entry MarketplaceEntry) error {
 	m.marketplaces[id] = entry
 	return m.Save()
 }
 
 // AddGitHub adds a GitHub-based marketplace.
-func (m *MarketplaceManager) AddGitHub(id, repo string) error {
+func (m *Marketplaces) AddGitHub(id, repo string) error {
 	entry := MarketplaceEntry{
 		Source: MarketplaceSourceInfo{
 			Source: "github",
@@ -162,7 +162,7 @@ func (m *MarketplaceManager) AddGitHub(id, repo string) error {
 }
 
 // AddDirectory adds a directory-based marketplace.
-func (m *MarketplaceManager) AddDirectory(id, path string) error {
+func (m *Marketplaces) AddDirectory(id, path string) error {
 	absPath, err := filepath.Abs(path)
 	if err != nil {
 		return err
@@ -224,13 +224,13 @@ func isValidMarketplace(path string) bool {
 }
 
 // Remove removes a marketplace.
-func (m *MarketplaceManager) Remove(id string) error {
+func (m *Marketplaces) Remove(id string) error {
 	delete(m.marketplaces, id)
 	return m.Save()
 }
 
 // Sync synchronizes a marketplace (clone/update from source).
-func (m *MarketplaceManager) Sync(ctx context.Context, id string) error {
+func (m *Marketplaces) Sync(ctx context.Context, id string) error {
 	entry, ok := m.marketplaces[id]
 	if !ok {
 		return fmt.Errorf("marketplace not found: %s", id)
@@ -248,7 +248,7 @@ func (m *MarketplaceManager) Sync(ctx context.Context, id string) error {
 }
 
 // syncGitHub clones or updates a GitHub marketplace.
-func (m *MarketplaceManager) syncGitHub(ctx context.Context, id string, entry MarketplaceEntry) error {
+func (m *Marketplaces) syncGitHub(ctx context.Context, id string, entry MarketplaceEntry) error {
 	destPath := entry.InstallLocation
 	if destPath == "" {
 		destPath = filepath.Join(m.marketplacesDir, id)
@@ -287,7 +287,7 @@ func (m *MarketplaceManager) syncGitHub(ctx context.Context, id string, entry Ma
 //
 // Bulk SyncAll and install-time syncs intentionally stay on plain Sync — they
 // should not silently remove marketplaces out from under a wider operation.
-func (m *MarketplaceManager) SyncOrPrune(ctx context.Context, id string) error {
+func (m *Marketplaces) SyncOrPrune(ctx context.Context, id string) error {
 	err := m.Sync(ctx, id)
 	if err == nil {
 		return nil
@@ -301,7 +301,7 @@ func (m *MarketplaceManager) SyncOrPrune(ctx context.Context, id string) error {
 }
 
 // SyncAll synchronizes all marketplaces.
-func (m *MarketplaceManager) SyncAll(ctx context.Context) []error {
+func (m *Marketplaces) SyncAll(ctx context.Context) []error {
 	var errors []error
 	for id := range m.marketplaces {
 		if err := m.Sync(ctx, id); err != nil {
@@ -312,7 +312,7 @@ func (m *MarketplaceManager) SyncAll(ctx context.Context) []error {
 }
 
 // PluginPath returns the path to a plugin in a marketplace.
-func (m *MarketplaceManager) PluginPath(marketplaceID, pluginName string) (string, error) {
+func (m *Marketplaces) PluginPath(marketplaceID, pluginName string) (string, error) {
 	basePath, err := m.getMarketplaceBasePath(marketplaceID)
 	if err != nil {
 		return "", err
@@ -334,7 +334,7 @@ func (m *MarketplaceManager) PluginPath(marketplaceID, pluginName string) (strin
 }
 
 // getMarketplaceBasePath returns the base path for a marketplace.
-func (m *MarketplaceManager) getMarketplaceBasePath(marketplaceID string) (string, error) {
+func (m *Marketplaces) getMarketplaceBasePath(marketplaceID string) (string, error) {
 	entry, ok := m.marketplaces[marketplaceID]
 	if !ok {
 		return "", fmt.Errorf("marketplace not found: %s", marketplaceID)
@@ -360,7 +360,7 @@ func (m *MarketplaceManager) getMarketplaceBasePath(marketplaceID string) (strin
 // and each carries its own source (which may point to another repo). When a
 // marketplace has no manifest plugins[], it falls back to scanning the repo for
 // vendored plugin subdirectories so directory-style marketplaces keep working.
-func (m *MarketplaceManager) MarketplacePlugins(marketplaceID string) ([]MarketplacePlugin, error) {
+func (m *Marketplaces) MarketplacePlugins(marketplaceID string) ([]MarketplacePlugin, error) {
 	if meta, err := m.MarketplaceMetadata(marketplaceID); err == nil && len(meta.Plugins) > 0 {
 		return meta.Plugins, nil
 	}
@@ -401,7 +401,7 @@ func safeRelPath(p string) (string, error) {
 // ResolveLocalPluginPath returns the on-disk path of a plugin whose content
 // lives inside the marketplace repo: a declared relative "path" source, or —
 // as a fallback — a vendored subdirectory found by name.
-func (m *MarketplaceManager) ResolveLocalPluginPath(marketplaceID, name string, src PluginSource) (string, error) {
+func (m *Marketplaces) ResolveLocalPluginPath(marketplaceID, name string, src PluginSource) (string, error) {
 	if src.Type == SourcePath && src.Path != "" {
 		base, err := m.getMarketplaceBasePath(marketplaceID)
 		if err != nil {
@@ -422,7 +422,7 @@ func (m *MarketplaceManager) ResolveLocalPluginPath(marketplaceID, name string, 
 // ListPlugins returns the names of vendored plugin subdirectories in a
 // marketplace. It scans the repo layout and does not read marketplace.json;
 // use MarketplacePlugins for the manifest-aware, declared plugin list.
-func (m *MarketplaceManager) ListPlugins(marketplaceID string) ([]string, error) {
+func (m *Marketplaces) ListPlugins(marketplaceID string) ([]string, error) {
 	basePath, err := m.getMarketplaceBasePath(marketplaceID)
 	if err != nil {
 		return nil, err
@@ -478,7 +478,7 @@ func isValidPlugin(path string) bool {
 }
 
 // MarketplaceMetadata loads the marketplace.json metadata from a marketplace.
-func (m *MarketplaceManager) MarketplaceMetadata(marketplaceID string) (*MarketplaceMetadata, error) {
+func (m *Marketplaces) MarketplaceMetadata(marketplaceID string) (*MarketplaceMetadata, error) {
 	basePath, err := m.getMarketplaceBasePath(marketplaceID)
 	if err != nil {
 		return nil, err

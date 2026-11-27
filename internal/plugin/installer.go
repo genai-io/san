@@ -18,7 +18,7 @@ type Installer struct {
 	registry           *Registry
 	cwd                string
 	marketplaces       map[string]MarketplaceSource
-	marketplaceManager *MarketplaceManager
+	marketplaceSources *Marketplaces
 }
 
 // NewInstaller creates a new plugin installer.
@@ -33,20 +33,19 @@ func NewInstaller(registry *Registry, cwd string) *Installer {
 		registry:           registry,
 		cwd:                cwd,
 		marketplaces:       make(map[string]MarketplaceSource),
-		marketplaceManager: NewMarketplaceManager(cwd),
+		marketplaceSources: NewMarketplaces(cwd),
 	}
 }
 
 // LoadMarketplaces loads known marketplace definitions.
 func (i *Installer) LoadMarketplaces() error {
-	// Load via new marketplace manager
-	if err := i.marketplaceManager.Load(); err != nil {
+	if err := i.marketplaceSources.Load(); err != nil {
 		return err
 	}
 
-	// Sync marketplace manager data to i.marketplaces
-	for _, id := range i.marketplaceManager.List() {
-		entry, ok := i.marketplaceManager.Get(id)
+	// Index configured sources by marketplace ID.
+	for _, id := range i.marketplaceSources.List() {
+		entry, ok := i.marketplaceSources.Get(id)
 		if !ok {
 			continue
 		}
@@ -89,8 +88,8 @@ func (i *Installer) LoadMarketplaces() error {
 // resolveMarketplaceByName searches for a marketplace whose marketplace.json
 // "name" field matches the given name. Returns the marketplace ID if found.
 func (i *Installer) resolveMarketplaceByName(name string) string {
-	for _, id := range i.marketplaceManager.List() {
-		meta, err := i.marketplaceManager.MarketplaceMetadata(id)
+	for _, id := range i.marketplaceSources.List() {
+		meta, err := i.marketplaceSources.MarketplaceMetadata(id)
 		if err != nil {
 			continue
 		}
@@ -161,7 +160,7 @@ func (i *Installer) Install(ctx context.Context, ref string, scope Scope) error 
 	// its own repo.
 	psrc, declared := i.resolvePluginSource(marketplace, name)
 	if !declared && i.marketplaces[marketplace].Type == "github" {
-		if err := i.marketplaceManager.Sync(ctx, marketplace); err != nil {
+		if err := i.marketplaceSources.Sync(ctx, marketplace); err != nil {
 			return fmt.Errorf("failed to sync marketplace %s: %w", marketplace, err)
 		}
 		psrc, declared = i.resolvePluginSource(marketplace, name)
@@ -179,7 +178,7 @@ func (i *Installer) Install(ctx context.Context, ref string, scope Scope) error 
 		defer cleanup()
 		srcPath = path
 	} else {
-		path, err := i.marketplaceManager.ResolveLocalPluginPath(marketplace, name, psrc)
+		path, err := i.marketplaceSources.ResolveLocalPluginPath(marketplace, name, psrc)
 		if err != nil {
 			return fmt.Errorf("plugin %s not found in marketplace %s: %w", name, marketplace, err)
 		}
@@ -285,7 +284,7 @@ func (i *Installer) resolvePluginSource(marketplaceID, name string) (PluginSourc
 	if marketplaceID == "" {
 		return PluginSource{}, false
 	}
-	meta, err := i.marketplaceManager.MarketplaceMetadata(marketplaceID)
+	meta, err := i.marketplaceSources.MarketplaceMetadata(marketplaceID)
 	if err != nil {
 		return PluginSource{}, false
 	}
@@ -301,11 +300,11 @@ func (i *Installer) resolvePluginSource(marketplaceID, name string) (PluginSourc
 // with the given name — either declared in its marketplace.json or vendored as
 // a subdirectory.
 func (i *Installer) findMarketplaceFor(name string) string {
-	for _, id := range i.marketplaceManager.List() {
+	for _, id := range i.marketplaceSources.List() {
 		if _, ok := i.resolvePluginSource(id, name); ok {
 			return id
 		}
-		if _, err := i.marketplaceManager.PluginPath(id, name); err == nil {
+		if _, err := i.marketplaceSources.PluginPath(id, name); err == nil {
 			return id
 		}
 	}

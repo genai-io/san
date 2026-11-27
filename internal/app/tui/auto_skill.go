@@ -73,7 +73,7 @@ func (m *model) wireAutoSkill(params runtime.BuildParams) {
 		// Restrict the reviewer to the actions allowed for this turn.
 		notice, err := (reflectskill.SideReview{
 			Provider: provider, Model: modelID, Effort: effort,
-			Recording: owner, Skills: reflectskill.NewSkillManager(cwd, permissions), Strategy: cfg.Strategy, AuthorizeWrite: authorizeWrite,
+			Recording: owner, Skills: reflectskill.NewEditor(cwd, permissions), Strategy: cfg.Strategy, AuthorizeWrite: authorizeWrite,
 		}).Run(reviewCtx, snapshot)
 		if reviewCtx.Err() != nil {
 			return
@@ -133,14 +133,14 @@ func (m *model) notifyAutoSkillOverride(msg input.ConfigSavedMsg) {
 // user-initiated operations aren't subject to the reviewer's permissions, but
 // only agent-created skills are shown or editable.
 func newLearnedSkillStore(source func() (string, *setting.Settings)) input.LearnedSkillStore {
-	mgr := func() *reflectskill.SkillManager {
+	editor := func() *reflectskill.Editor {
 		cwd, _ := source()
-		return reflectskill.NewSkillManager(cwd, reflectskill.AllowAllSkillActions())
+		return reflectskill.NewEditor(cwd, reflectskill.AllowAllSkillActions())
 	}
 	return input.LearnedSkillStore{
 		List: func() []reflectskill.SkillInfo {
 			var out []reflectskill.SkillInfo
-			for _, s := range mgr().Inventory() {
+			for _, s := range editor().Inventory() {
 				if s.Editable() {
 					out = append(out, s)
 				}
@@ -148,10 +148,10 @@ func newLearnedSkillStore(source func() (string, *setting.Settings)) input.Learn
 			return out
 		},
 		Read: func(name string) (string, error) {
-			return mgr().Read(name)
+			return editor().Read(name)
 		},
 		Delete: func(name string) error {
-			_, err := mgr().Delete(name)
+			_, err := editor().Delete(name)
 			return err
 		},
 	}

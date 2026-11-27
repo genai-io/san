@@ -22,13 +22,13 @@ const sideReviewPrompt = `You are the Auto Skill reviewer. Propose at most one d
 {"action":"delete","name":"used-skill","note":"short reason the skill is obsolete"}
 Patch or delete only an editable skill used in this turn and listed in editable_used_skills. Listed bodies may be clipped. Never duplicate an existing skill.`
 
-// SideReview proposes one change without tools and applies it through SkillManager.
+// SideReview proposes one change without tools and applies it through Editor.
 // Recording belongs to the original conversation; the proposal is not conversation input.
 type SideReview struct {
 	Provider       llm.Provider
 	Model, Effort  string
 	Recording      *session.Session
-	Skills         *SkillManager
+	Skills         *Editor
 	Strategy       string
 	AuthorizeWrite func() bool // Recheck live authorization before writing.
 }
@@ -46,7 +46,7 @@ type skillProposal struct {
 
 func (r SideReview) Run(ctx context.Context, snapshot []core.Message) (string, error) {
 	if r.Recording == nil || r.Provider == nil || r.Skills == nil {
-		return "", errors.New("Auto Skill requires a session, model provider and skill manager")
+		return "", errors.New("Auto Skill requires a session, model provider and skill editor")
 	}
 	ctx, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()

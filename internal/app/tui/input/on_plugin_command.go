@@ -299,12 +299,12 @@ func pluginHandleMarketplace(ctx context.Context, cwd string, args []string) (st
 
 // pluginHandleMarketplaceList shows configured plugin marketplaces.
 func pluginHandleMarketplaceList(cwd string) (string, error) {
-	manager := coreplugin.NewMarketplaceManager(cwd)
-	if err := manager.Load(); err != nil {
+	marketplaces := coreplugin.NewMarketplaces(cwd)
+	if err := marketplaces.Load(); err != nil {
 		return fmt.Sprintf("Failed to load marketplaces: %v", err), nil
 	}
 
-	ids := manager.List()
+	ids := marketplaces.List()
 	sort.Strings(ids)
 	if len(ids) == 0 {
 		return "No marketplaces configured.\n\nAdd one with: /plugin marketplace add <owner/repo|path> [marketplace-id]", nil
@@ -313,7 +313,7 @@ func pluginHandleMarketplaceList(cwd string) (string, error) {
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "Marketplaces (%d configured):\n\n", len(ids))
 	for _, id := range ids {
-		entry, ok := manager.Get(id)
+		entry, ok := marketplaces.Get(id)
 		if !ok {
 			continue
 		}
@@ -352,11 +352,11 @@ func pluginHandleMarketplaceAdd(cwd string, args []string) (string, error) {
 		return err.Error(), nil
 	}
 
-	manager := coreplugin.NewMarketplaceManager(cwd)
-	if err := manager.Load(); err != nil {
+	marketplaces := coreplugin.NewMarketplaces(cwd)
+	if err := marketplaces.Load(); err != nil {
 		return fmt.Sprintf("Failed to load marketplaces: %v", err), nil
 	}
-	if err := addFn(manager, id); err != nil {
+	if err := addFn(marketplaces, id); err != nil {
 		return fmt.Sprintf("Failed to add marketplace: %v", err), nil
 	}
 
@@ -374,16 +374,16 @@ func pluginHandleMarketplaceRemove(cwd string, args []string) (string, error) {
 		return "Usage: /plugin marketplace remove <marketplace-id>", nil
 	}
 
-	manager := coreplugin.NewMarketplaceManager(cwd)
-	if err := manager.Load(); err != nil {
+	marketplaces := coreplugin.NewMarketplaces(cwd)
+	if err := marketplaces.Load(); err != nil {
 		return fmt.Sprintf("Failed to load marketplaces: %v", err), nil
 	}
 
 	id := strings.TrimSpace(args[0])
-	if _, ok := manager.Get(id); !ok {
+	if _, ok := marketplaces.Get(id); !ok {
 		return fmt.Sprintf("Marketplace not found: %s", id), nil
 	}
-	if err := manager.Remove(id); err != nil {
+	if err := marketplaces.Remove(id); err != nil {
 		return fmt.Sprintf("Failed to remove marketplace '%s': %v", id, err), nil
 	}
 
@@ -396,14 +396,14 @@ func pluginHandleMarketplaceSync(ctx context.Context, cwd string, args []string)
 		return "Usage: /plugin marketplace sync <marketplace-id|all>", nil
 	}
 
-	manager := coreplugin.NewMarketplaceManager(cwd)
-	if err := manager.Load(); err != nil {
+	marketplaces := coreplugin.NewMarketplaces(cwd)
+	if err := marketplaces.Load(); err != nil {
 		return fmt.Sprintf("Failed to load marketplaces: %v", err), nil
 	}
 
 	target := strings.TrimSpace(args[0])
 	if target == "all" {
-		errs := manager.SyncAll(ctx)
+		errs := marketplaces.SyncAll(ctx)
 		if len(errs) == 0 {
 			return "Synced all marketplaces.", nil
 		}
@@ -415,7 +415,7 @@ func pluginHandleMarketplaceSync(ctx context.Context, cwd string, args []string)
 		return strings.TrimRight(sb.String(), "\n"), nil
 	}
 
-	if err := manager.SyncOrPrune(ctx, target); err != nil {
+	if err := marketplaces.SyncOrPrune(ctx, target); err != nil {
 		return fmt.Sprintf("Failed to sync marketplace '%s': %v", target, err), nil
 	}
 	return fmt.Sprintf("Synced marketplace '%s'.", target), nil
@@ -434,7 +434,7 @@ func pluginParseScopeArg(raw string) (coreplugin.Scope, error) {
 	}
 }
 
-func pluginParseMarketplaceSource(source, explicitID string) (id, normalizedSource string, addFn func(*coreplugin.MarketplaceManager, string) error, err error) {
+func pluginParseMarketplaceSource(source, explicitID string) (id, normalizedSource string, addFn func(*coreplugin.Marketplaces, string) error, err error) {
 	source = strings.TrimSpace(strings.TrimPrefix(strings.TrimSuffix(source, "]"), "["))
 	if source == "" {
 		return "", "", nil, fmt.Errorf("usage: /plugin marketplace add <owner/repo|path> [marketplace-id]")
@@ -449,8 +449,8 @@ func pluginParseMarketplaceSource(source, explicitID string) (id, normalizedSour
 		if id == "" {
 			id = filepath.Base(absPath)
 		}
-		return id, absPath, func(manager *coreplugin.MarketplaceManager, id string) error {
-			return manager.AddDirectory(id, absPath)
+		return id, absPath, func(marketplaces *coreplugin.Marketplaces, id string) error {
+			return marketplaces.AddDirectory(id, absPath)
 		}, nil
 	}
 
@@ -468,7 +468,7 @@ func pluginParseMarketplaceSource(source, explicitID string) (id, normalizedSour
 	return "", "", nil, fmt.Errorf("invalid source format. Use owner/repo, https://github.com/owner/repo, or ./path")
 }
 
-func pluginParseGitHubMarketplace(repo, explicitID string) (id, normalizedSource string, addFn func(*coreplugin.MarketplaceManager, string) error, err error) {
+func pluginParseGitHubMarketplace(repo, explicitID string) (id, normalizedSource string, addFn func(*coreplugin.Marketplaces, string) error, err error) {
 	parts := strings.Split(repo, "/")
 	if len(parts) < 2 {
 		return "", "", nil, fmt.Errorf("invalid GitHub repository: %s", repo)
@@ -479,8 +479,8 @@ func pluginParseGitHubMarketplace(repo, explicitID string) (id, normalizedSource
 		id = parts[len(parts)-1]
 	}
 
-	return id, repo, func(manager *coreplugin.MarketplaceManager, id string) error {
-		return manager.AddGitHub(id, repo)
+	return id, repo, func(marketplaces *coreplugin.Marketplaces, id string) error {
+		return marketplaces.AddGitHub(id, repo)
 	}, nil
 }
 
