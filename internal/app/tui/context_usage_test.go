@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/genai-io/san/internal/agent/reminder"
+	"github.com/genai-io/san/internal/runtime/reminder"
 	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/core"
 )

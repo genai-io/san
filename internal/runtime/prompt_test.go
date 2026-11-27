@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/genai-io/san/internal/agent/reminder"
+	"github.com/genai-io/san/internal/runtime/reminder"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/setting"

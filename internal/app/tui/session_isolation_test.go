@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/genai-io/san/internal/agent/mail"
+	"github.com/genai-io/san/internal/runtime/mail"
 	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/group"

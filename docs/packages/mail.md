@@ -1,5 +1,5 @@
 ---
-package: github.com/genai-io/san/internal/agent/mail
+package: github.com/genai-io/san/internal/runtime/mail
 layer: feature
 ---
 
@@ -108,9 +108,9 @@ again, using its existing task-ID address.
 
 ## Tests
 
-- `internal/agent/mail/completion_test.go` — retention, ordering, deduplication,
+- `internal/runtime/mail/completion_test.go` — retention, ordering, deduplication,
   replacement and cleanup.
-- `internal/agent/mail/wake_test.go` — room recovery, wakes during an in-flight
+- `internal/runtime/mail/wake_test.go` — room recovery, wakes during an in-flight
   rejection, reentrancy, `Reset`, and no fallback, startup or ordinary delivery.
 
 ## See Also

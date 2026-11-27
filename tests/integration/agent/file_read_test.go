@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/genai-io/san/internal/agent/mail"
+	"github.com/genai-io/san/internal/runtime/mail"
 	"github.com/genai-io/san/internal/infra/proc"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/task"

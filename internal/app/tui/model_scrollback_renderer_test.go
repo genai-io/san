@@ -14,7 +14,7 @@ import (
 	"github.com/ActiveState/vt10x"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/genai-io/san/internal/agent/reminder"
+	"github.com/genai-io/san/internal/runtime/reminder"
 	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/app/tui/widgets/suggest"
 	"github.com/genai-io/san/internal/core"

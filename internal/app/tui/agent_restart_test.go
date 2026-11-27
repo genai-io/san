@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/genai-io/san/internal/agent/reminder"
+	"github.com/genai-io/san/internal/runtime/reminder"
 	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/infra/filecache"
@@ -65,7 +65,7 @@ func TestStopAgentRuntimePreservesLiveChainForRestart(t *testing.T) {
 	provider := &restartStubProvider{requests: make(chan []core.Message, 1)}
 	inferences := make(chan []string, 1)
 	live := []core.Message{
-		{ID: "u1", Role: ai.RoleUser, Content: ai.TextContent("survey internal/agent/mail")},
+		{ID: "u1", Role: ai.RoleUser, Content: ai.TextContent("survey internal/runtime/mail")},
 		{ID: "a1", Role: ai.RoleAssistant, Content: ai.TextContent("foreground result")},
 	}
 	if err := sess.Start(agentruntime.BuildParams{Provider: provider, ModelID: "m"}, live); err != nil {

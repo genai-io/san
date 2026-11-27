@@ -66,7 +66,7 @@ events that mutate the TUI model.
 ```
 
 - Source 1 routes through `internal/app/tui/input/`.
-- Source 2 (agents → main) routes through `internal/agent/mail/` (the shared message queue).
+- Source 2 (agents → main) routes through `internal/runtime/mail/` (the shared message queue).
 - Source 3 is handled directly by `internal/app/tui/`, which polls cron and async hooks.
 - Output side renders through `internal/app/tui/chat/`.
 
@@ -91,7 +91,7 @@ cmd  →  app  →  feature  →  core  →  infrastructure
 | --- | --- |
 | `cmd` | `cmd/*` |
 | `app` | Packages beneath `internal/app` (no root package) |
-| `feature` | Business-domain packages (agent, hook, skill, plugin, mcp, llm, tool, task, subagent, session, command, cron, persona, search, worktree, setting, agent/reminder, aside, reflect/{memory,skill,recap}, image, upgrade) |
+| `feature` | Business-domain packages (runtime, hook, skill, plugin, mcp, llm, tool, task, subagent, session, command, cron, persona, search, worktree, setting, runtime/mail, runtime/reminder, aside, reflect/{memory,skill,recap}, image, upgrade) |
 | `core` | `internal/core` |
 | `infrastructure` | `internal/infra/{atomicfile,confdir,filecache,log,markdown,proc,secret}` |
 

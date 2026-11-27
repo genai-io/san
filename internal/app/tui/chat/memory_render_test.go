@@ -12,7 +12,7 @@ import (
 	xansi "github.com/charmbracelet/x/ansi"
 	"github.com/genai-io/sdk-go/pkg/ai"
 
-	"github.com/genai-io/san/internal/agent/reminder"
+	"github.com/genai-io/san/internal/runtime/reminder"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/core/system"
 )

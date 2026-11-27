@@ -9,7 +9,7 @@ import (
 
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 
-	"github.com/genai-io/san/internal/agent/mail"
+	"github.com/genai-io/san/internal/runtime/mail"
 	"github.com/genai-io/san/internal/tool"
 )
 
