@@ -106,22 +106,22 @@ func TestAMemberNoticesBeingKickedOrDisbanded(t *testing.T) {
 	if _, err := Join("shop", Member{Name: "api"}); err != nil {
 		t.Fatal(err)
 	}
-	if Check() != Joined {
+	if CheckMembership() != Joined {
 		t.Fatal("a fresh member does not read as joined")
 	}
 	if runtime.GOOS != "windows" { // a read that fails for another reason is not a kick
 		_ = os.Chmod(memberFile("shop", "api"), 0)
-		if Check() != Joined {
-			t.Errorf("Check on an unreadable member file = %v, want Joined until it is gone", Check())
+		if CheckMembership() != Joined {
+			t.Errorf("CheckMembership on an unreadable member file = %v, want Joined until it is gone", CheckMembership())
 		}
 	}
 	_ = os.Remove(memberFile("shop", "api")) // another session ran /group kick api
-	if Check() != Removed {
-		t.Errorf("Check after kick = %v, want Removed", Check())
+	if CheckMembership() != Removed {
+		t.Errorf("CheckMembership after kick = %v, want Removed", CheckMembership())
 	}
 	_ = os.RemoveAll(groupDir("shop")) // another session ran /group disband shop
-	if Check() != Disbanded {
-		t.Errorf("Check after disband = %v, want Disbanded", Check())
+	if CheckMembership() != Disbanded {
+		t.Errorf("CheckMembership after disband = %v, want Disbanded", CheckMembership())
 	}
 }
 
@@ -223,8 +223,8 @@ func TestARenameKeepsTheMembershipAndItsMessages(t *testing.T) {
 	if err := Rename("后端"); err != nil {
 		t.Fatal(err)
 	}
-	if _, self := Current(); self.Name != "后端" || Check() != Joined {
-		t.Fatalf("after rename: %+v, %v", self, Check())
+	if _, self := Current(); self.Name != "后端" || CheckMembership() != Joined {
+		t.Fatalf("after rename: %+v, %v", self, CheckMembership())
 	}
 	if got := Inbox(); len(got) != 1 || got[0].Content != "rebased" {
 		t.Errorf("Inbox after rename = %+v, want the waiting message", got)

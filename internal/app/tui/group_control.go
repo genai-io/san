@@ -119,7 +119,7 @@ func (m *model) handleGroupControl(msg groupControlMsg) string {
 	}
 	m.grp.control = nil
 	r.cancel()
-	status := group.Check()
+	status := group.CheckMembership()
 	if r.session != m.sessionID() || r.membership != currentMembership() || status == group.Removed || status == group.Disbanded {
 		return "Group request discarded because the session or membership changed."
 	}

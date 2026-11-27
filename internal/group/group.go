@@ -300,7 +300,7 @@ func Release() {
 	if g == "" {
 		return
 	}
-	stillMember := Check() == Joined
+	stillMember := CheckMembership() == Joined
 	setCurrent("", Member{})
 	if !stillMember {
 		return
@@ -414,10 +414,10 @@ func updateSelf(change func(*Member)) error {
 	return nil
 }
 
-// Check reports how this process's membership stands on disk, so a member
+// CheckMembership reports how this process's membership stands on disk, so a member
 // that was kicked or whose group was disbanded can notice. Only a missing or
 // taken-over file counts: any other read error is retried on the next poll.
-func Check() Status {
+func CheckMembership() Status {
 	g, self := Current()
 	if g == "" {
 		return NotJoined

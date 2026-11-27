@@ -79,7 +79,7 @@ type groupJoinOptions struct {
 // the second missed a change.
 func groupTick(stamp, fullRead time.Time, known map[string]rosterEntry) tea.Cmd {
 	return tea.Tick(time.Second, func(time.Time) tea.Msg {
-		msg := memberMsg{status: group.Check(), stamp: stamp, fullRead: fullRead}
+		msg := memberMsg{status: group.CheckMembership(), stamp: stamp, fullRead: fullRead}
 		if msg.status != group.Joined {
 			return msg
 		}
