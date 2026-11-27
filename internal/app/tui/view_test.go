@@ -12,7 +12,6 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/agent/reminder"
 	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/app/tui/input"
@@ -22,6 +21,7 @@ import (
 	"github.com/genai-io/san/internal/flow"
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/runtime"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/subagent"
 	"github.com/genai-io/san/internal/task"
@@ -334,7 +334,7 @@ func TestFirstTurnKeepsMessageRowsAcrossCommit(t *testing.T) {
 		t.Run(fmt.Sprintf("height %d", height), func(t *testing.T) {
 			m := fixedComposerModel(80, height)
 			attachTurnSession(t, m)
-			m.services.Agent = &agent.Runtime{}
+			m.services.Agent = &runtime.Runtime{}
 			m.welcomePending = true
 			deliver := func(event core.Event) {
 				chat.Update(m, &m.conv, chat.AgentOutboxMsg{Event: event})
@@ -488,8 +488,8 @@ func TestPendingMessagesStayAboveTasksDuringInference(t *testing.T) {
 func TestSubmissionShowsSpinnerBeforeAgentEvents(t *testing.T) {
 	m := fixedComposerModel(80, 24)
 	provider := &restartStubProvider{requests: make(chan []core.Message, 1)}
-	m.services.Agent = &agent.Runtime{}
-	if err := m.services.Agent.Start(agent.BuildParams{Provider: provider, ModelID: "test"}, nil); err != nil {
+	m.services.Agent = &runtime.Runtime{}
+	if err := m.services.Agent.Start(runtime.BuildParams{Provider: provider, ModelID: "test"}, nil); err != nil {
 		t.Fatal(err)
 	}
 	defer stopRuntime(t, m.services.Agent)
@@ -524,7 +524,7 @@ func TestFailedSubmissionClearsWaitingSpinner(t *testing.T) {
 	m := fixedComposerModel(80, 24)
 	m.conv.Append(core.ChatMessage{Role: core.ChatUser, Content: "hi"})
 	m.conv.Stream = chat.StreamState{Active: true, Waiting: true}
-	m.dispatch(agentSendFailedMsg{err: agent.ErrRuntimeStopped})
+	m.dispatch(agentSendFailedMsg{err: runtime.ErrRuntimeStopped})
 	frame := ansi.Strip(m.View().Content)
 	if m.conv.Stream.Active || m.conv.Stream.Waiting || strings.Contains(frame, "Thinking...") ||
 		!strings.Contains(frame, "Failed to send message:") {
@@ -534,11 +534,11 @@ func TestFailedSubmissionClearsWaitingSpinner(t *testing.T) {
 
 func TestWaitingSubmissionCanBeCancelled(t *testing.T) {
 	m := fixedComposerModel(80, 24)
-	m.services.Agent = &agent.Runtime{}
+	m.services.Agent = &runtime.Runtime{}
 	m.services.Reminder = reminder.NewQueue()
 	provider := &restartStubProvider{requests: make(chan []core.Message, 2)}
 	started, release := make(chan struct{}), make(chan struct{})
-	if err := m.services.Agent.Start(agent.BuildParams{
+	if err := m.services.Agent.Start(runtime.BuildParams{
 		Provider: provider, ModelID: "test",
 		OnEvent: func(event core.Event) {
 			if _, ok := event.(core.AgentStarted); ok {
@@ -821,13 +821,13 @@ func TestDockedModalDoesNotShowTheGatedCallAsRunning(t *testing.T) {
 // of the call it gates — the whole point of routing it through the modal.
 func TestHandlePermGateMarksTheCallItAsksAbout(t *testing.T) {
 	m := dockedModalModel(t, "about to check the disk")
-	m.services.Agent = &agent.Runtime{}
+	m.services.Agent = &runtime.Runtime{}
 	m.services.Session = nil
 	m.env.SessionPermissions = setting.NewSessionPermissions()
 	m.userInput.Approval.Hide()
 	m.conv.Tool.ClearAwaitingApproval()
 
-	m.HandlePermGate(&agent.PermGateRequest{
+	m.HandlePermGate(&runtime.PermGateRequest{
 		RequestID:   "req-1",
 		ToolCallID:  "bash-1",
 		ToolName:    "Bash",
@@ -847,12 +847,12 @@ func TestHandlePermGateMarksTheCallItAsksAbout(t *testing.T) {
 // seam that would degrade first.
 func TestHandlePermGateWithoutCallIDFallsBackToTheModalFreeze(t *testing.T) {
 	m := dockedModalModel(t, "about to check the disk")
-	m.services.Agent = &agent.Runtime{}
+	m.services.Agent = &runtime.Runtime{}
 	m.services.Session = nil
 	m.env.SessionPermissions = setting.NewSessionPermissions()
 	m.userInput.Approval.Hide()
 
-	m.HandlePermGate(&agent.PermGateRequest{
+	m.HandlePermGate(&runtime.PermGateRequest{
 		RequestID:   "req-1",
 		ToolName:    "Bash",
 		Description: "check disk",

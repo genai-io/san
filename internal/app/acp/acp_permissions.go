@@ -1,7 +1,7 @@
 package acp
 
 import (
-	"github.com/genai-io/san/internal/agent"
+	"github.com/genai-io/san/internal/runtime"
 	"github.com/genai-io/san/internal/setting"
 )
 
@@ -11,8 +11,8 @@ type acpPermissions struct {
 	settings *setting.Data
 }
 
-func (p *acpPermissions) ForDirectory(cwd string) agent.PermissionPolicy {
-	return agent.PermissionPolicy{
+func (p *acpPermissions) ForDirectory(cwd string) runtime.PermissionPolicy {
+	return runtime.PermissionPolicy{
 		Settings: setting.ScopedPermissions{Data: p.settings, CWD: cwd},
 		Session:  p.SessionPermissions,
 	}

@@ -13,11 +13,11 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/infra/log"
 	"github.com/genai-io/san/internal/llm"
+	agentruntime "github.com/genai-io/san/internal/runtime"
 	"github.com/genai-io/san/internal/todo"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/sdk-go/pkg/ai"
@@ -86,7 +86,7 @@ func (m *model) OnToolResult(tr core.ToolResult) *core.ToolResult {
 	}
 
 	sideEffect := m.services.Tool.PopSideEffect(tr.ToolCallID)
-	agent.PostTool(tr, sideEffect, m.services.Hook, agent.WorkspaceCallbacks{
+	agentruntime.PostTool(tr, sideEffect, m.services.Hook, agentruntime.WorkspaceCallbacks{
 		ChangeCwd:      m.changeCwd,
 		ReloadPersonas: m.reloadPersonasIfChanged,
 		TouchFile: func(path string) {
@@ -183,7 +183,7 @@ func (m *model) OnTurnEnd(result core.Result) tea.Cmd {
 	}
 
 	// Normal completion never broadens the cancellation-only receipt contract.
-	_ = agent.EndTurn(agent.TurnCallbacks{
+	_ = agentruntime.EndTurn(agentruntime.TurnCallbacks{
 		RecordState: m.appendTurnState,
 		NextInput: func() bool {
 			cmd, found := m.drainTurnQueues()

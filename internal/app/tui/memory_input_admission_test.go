@@ -4,9 +4,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/flow"
+	"github.com/genai-io/san/internal/runtime"
 )
 
 func TestTUIMemoryLanguageReachesMain(t *testing.T) {
@@ -66,7 +66,7 @@ func TestCancelledMemoryRecallDoesNotAdmitLateResult(t *testing.T) {
 	m.prepareMemoryInput(head)
 	request := m.memoryInput
 	m.handleStreamCancel()
-	cmd := m.onMemoryInput(memoryInputMsg{input: request, result: agent.PreparedMemory{Message: head.Message}})
+	cmd := m.onMemoryInput(memoryInputMsg{input: request, result: runtime.PreparedMemory{Message: head.Message}})
 	if cmd != nil || m.memoryInput != nil || !m.pendingMessages.Held() || m.pendingMessages.Len() != 1 || m.pendingMessages.First().MemoryReady {
 		t.Fatal("late recall result changed the held queue")
 	}
@@ -83,7 +83,7 @@ func TestMemoryRecallCarriesWaitIntoSubmission(t *testing.T) {
 	m.pendingMessages.Enqueue(head)
 	m.prepareMemoryInput(head)
 	request := m.memoryInput
-	m.onMemoryInput(memoryInputMsg{input: request, result: agent.PreparedMemory{Message: head.Message}})
+	m.onMemoryInput(memoryInputMsg{input: request, result: runtime.PreparedMemory{Message: head.Message}})
 	if m.memoryInput != nil || !m.conv.Stream.Waiting || m.conv.Stream.StartedAt != request.startedAt {
 		t.Fatal("recall did not hand the wait clock to the main turn")
 	}

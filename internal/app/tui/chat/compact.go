@@ -7,14 +7,14 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/tui/widgets"
+	"github.com/genai-io/san/internal/runtime"
 )
 
 // CompactResultMsg carries the caller context as the exact request identity.
 // A cancelled request may still complete; the app must fence it before effects.
 type CompactResultMsg struct {
-	agent.CompactResult
+	runtime.CompactResult
 	Context context.Context
 }
 
@@ -78,6 +78,6 @@ func RenderCompactStatus(width, frame int, state CompactState) string {
 	}
 }
 
-func CompactCmd(req agent.CompactRequest) tea.Cmd {
+func CompactCmd(req runtime.CompactRequest) tea.Cmd {
 	return func() tea.Msg { return CompactResultMsg{CompactResult: req.Run(), Context: req.Ctx} }
 }

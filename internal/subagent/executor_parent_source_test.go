@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	agentruntime "github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/core"
+	agentruntime "github.com/genai-io/san/internal/runtime"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/tool"
@@ -53,7 +53,7 @@ func TestParentBuildSendMessageContinuesOriginalChildWithNativeSource(t *testing
 		return agentruntime.PermDecisionResult{Decision: perm.Permit, By: session.ByConfig}
 	}}
 	// The build closure must replace inherited provenance with this actual call.
-	_, err = agentruntime.RunOnce(tool.WithMessageSource(ctx, "stale-source", 999), params, core.UserMessage("send a follow-up", nil), nil)
+	_, err = agentruntime.RunHeadless(tool.WithMessageSource(ctx, "stale-source", 999), params, core.UserMessage("send a follow-up", nil), nil)
 	if err != nil {
 		t.Fatal(err)
 	}

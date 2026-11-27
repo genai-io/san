@@ -8,10 +8,10 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/app/tui/input"
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/runtime"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/sdk-go/pkg/ai"
 	"github.com/genai-io/sdk-go/pkg/ai/aitest"
@@ -55,7 +55,7 @@ func TestCancelledTurnFinalizationConsumerAndSession(t *testing.T) {
 			opened := m.services.Session
 			m.agentSession = opened
 			p := &finalizationProvider{client: llm.Client()}
-			if err := m.services.Agent.Start(agent.BuildParams{Provider: p, ModelID: "m", Recording: opened, PermissionRules: (agent.PermissionPolicy{}).Decide, OnEvent: func(ev core.Event) {
+			if err := m.services.Agent.Start(runtime.BuildParams{Provider: p, ModelID: "m", Recording: opened, PermissionRules: (runtime.PermissionPolicy{}).Decide, OnEvent: func(ev core.Event) {
 				if _, ok := ev.(core.TurnEnded); ok && mode == "natural" {
 					close(naturalEnd)
 				}

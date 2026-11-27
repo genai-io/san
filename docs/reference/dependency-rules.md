@@ -12,7 +12,7 @@ assignment for each package.
 | --- | --- | --- |
 | `cmd` | `cmd/*` | Process entrypoints, flag parsing, host dispatch and service wiring. |
 | `app` | Packages beneath `internal/app` (directory only) | `tui` owns the interactive shell, `cli` print execution and `acp` the protocol host. |
-| `feature` | Business-domain packages: agent (including agent/mail and agent/reminder), autopilot (including autopilot/judge), aside, reflect/{memory,skill,recap}, group, llm, tool, session, task, todo, subagent, flow, cron, command, skill, plugin, mcp, hook, setting, persona, search, image, upgrade | Cohesive product capabilities with their own state and lifecycle. |
+| `feature` | Business-domain packages: runtime, agent/mail, agent/reminder, autopilot (including autopilot/judge), aside, reflect/{memory,skill,recap}, group, llm, tool, session, task, todo, subagent, flow, cron, command, skill, plugin, mcp, hook, setting, persona, search, image, upgrade | Cohesive product capabilities with their own state and lifecycle. |
 | `core` | `internal/core` | Stable contracts shared across feature packages. |
 | `infrastructure` | `internal/infra/{atomicfile,confdir,filecache,log,markdown,proc,secret}` | Stateless helpers usable by any layer above. |
 
@@ -73,7 +73,7 @@ not by lower layers importing higher layers.
 
 10. Hosts and reminder block consumers import `internal/agent/reminder`. It owns
     provider registration, queueing, input preparation and the block format,
-    and must not import its parent `internal/agent`.
+    and must not depend on the foreground `internal/runtime` package.
 
 `devtools/layercheck` applies these rules to production, internal-test, and
 external-test imports. It also rejects repository packages that have no entry

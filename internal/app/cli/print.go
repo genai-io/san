@@ -7,11 +7,11 @@ import (
 	"os"
 	"strings"
 
-	agentpkg "github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/persona"
+	"github.com/genai-io/san/internal/runtime"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/task"
 )
@@ -64,16 +64,16 @@ func Print(userMessage, personaName string) (err error) {
 	return nil
 }
 
-func buildPrintParams(cwd, personaName string) (agentpkg.BuildParams, error) {
+func buildPrintParams(cwd, personaName string) (runtime.BuildParams, error) {
 	settings, err := setting.LoadForCwd(cwd)
 	if err != nil {
-		return agentpkg.BuildParams{}, err
+		return runtime.BuildParams{}, err
 	}
 	var parts system.Persona
 	if personaName != "" {
 		p, ok := persona.Default().Get(personaName)
 		if !ok {
-			return agentpkg.BuildParams{}, fmt.Errorf("unknown persona %q", personaName)
+			return runtime.BuildParams{}, fmt.Errorf("unknown persona %q", personaName)
 		}
 		if p.Settings != nil {
 			settings = setting.ApplyPersonaOverlay(settings, &p.Settings.Data)
@@ -85,9 +85,9 @@ func buildPrintParams(cwd, personaName string) (agentpkg.BuildParams, error) {
 	if setting.New(settings).AutoMemory() {
 		memory = setting.MemoryStoreFor(cwd)
 	}
-	policy := agentpkg.PermissionPolicy{Settings: settings, Session: permissions}
-	return agentpkg.BuildParams{
-		AutoMemory:    agentpkg.AutoMemoryConfig{Store: memory, Recall: settings.MemoryRecall(), IndexLimits: settings.MemoryPreview()},
+	policy := runtime.PermissionPolicy{Settings: settings, Session: permissions}
+	return runtime.BuildParams{
+		AutoMemory:    runtime.AutoMemoryConfig{Store: memory, Recall: settings.MemoryRecall(), IndexLimits: settings.MemoryPreview()},
 		ModelID:       settings.Model,
 		MaxTokens:     setting.DefaultMaxTokens,
 		CWD:           cwd,

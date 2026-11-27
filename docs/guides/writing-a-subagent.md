@@ -177,7 +177,7 @@ A background subagent registers with the broker while running:
   how the main conversation and its subagents message each other.
 - [`packages/subagent.md`](../packages/subagent.md) — registry +
   executor design.
-- [`packages/agent.md`](../packages/agent.md) — foreground agent
+- [`packages/runtime.md`](../packages/runtime.md) — foreground agent
   lifecycle.
 - [`concepts/extension-model.md`](../concepts/extension-model.md).
 - [`concepts/permission-model.md`](../concepts/permission-model.md).

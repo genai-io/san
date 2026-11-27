@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/ask"
 	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/runtime"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/tool"
@@ -103,7 +103,7 @@ func TestWorkerResolverPreservesPolicyAuthorityAndLiveGrants(t *testing.T) {
 		{"Write", map[string]any{"file_path": "a"}},
 		{"Bash", map[string]any{"command": "go test ./..."}},
 	} {
-		expected := (agent.PermissionPolicy{Settings: settings, Session: grants}).Decide(tc.name, tc.input)
+		expected := (runtime.PermissionPolicy{Settings: settings, Session: grants}).Decide(tc.name, tc.input)
 		got := resolver.Resolve(t.Context(), tc.name, tc.input, false, "")
 		decision := "deny"
 		if expected.Decision == perm.Permit {

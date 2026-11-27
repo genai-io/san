@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/runtime"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/perm"
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
@@ -15,16 +15,16 @@ import (
 )
 
 func permissionRequest(ctx context.Context, owner Owner) (*Request, *perm.PermissionRequest) {
-	return &Request{Context: ctx, Owner: owner, Permission: &agent.PermGateRequest{
+	return &Request{Context: ctx, Owner: owner, Permission: &runtime.PermGateRequest{
 		Context: ctx, RequestID: "approval-1", ToolName: "Write",
-		Input: map[string]any{"file_path": "fixture"}, Response: make(chan agent.PermGateResponse, 1),
+		Input: map[string]any{"file_path": "fixture"}, Response: make(chan runtime.PermGateResponse, 1),
 	}}, &perm.PermissionRequest{ID: "approval-1", ToolName: "Write", AllowRules: []string{"Write(fixture)"}}
 }
 
 func TestShownQuestionSurvivesCancellation(t *testing.T) {
 	owner := &testOwner{}
-	gate := agent.NewPermissionGate(func(string, map[string]any) agent.PermDecisionResult {
-		return agent.PermDecisionResult{Decision: perm.Prompt}
+	gate := runtime.NewPermissionGate(func(string, map[string]any) runtime.PermDecisionResult {
+		return runtime.PermDecisionResult{Decision: perm.Prompt}
 	})
 	defer gate.Close()
 	ctx, cancel := context.WithCancel(t.Context())
@@ -162,8 +162,8 @@ func TestPermissionRejectsStaleAndUnsupportedReplies(t *testing.T) {
 }
 
 func TestPermissionHookGateCancellationAndSuccessor(t *testing.T) {
-	gate := agent.NewPermissionGate(func(string, map[string]any) agent.PermDecisionResult {
-		return agent.PermDecisionResult{Decision: perm.Prompt, RequestID: "gate-request"}
+	gate := runtime.NewPermissionGate(func(string, map[string]any) runtime.PermDecisionResult {
+		return runtime.PermDecisionResult{Decision: perm.Prompt, RequestID: "gate-request"}
 	})
 	defer gate.Close()
 	owner := &testOwner{}

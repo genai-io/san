@@ -9,13 +9,13 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/genai-io/san/internal/agent"
 	apphook "github.com/genai-io/san/internal/app/hook"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/plugin"
+	"github.com/genai-io/san/internal/runtime"
 	"github.com/genai-io/san/internal/session"
 )
 
@@ -60,7 +60,7 @@ type stopHookResultMsg struct {
 func (m *model) fireIdleHooksCmd(result core.Result) tea.Cmd {
 	pending := &pendingStopHook{session: m.services.Session, outbox: m.AgentOutbox()}
 	m.pendingStopHook = pending
-	check := agent.NewStopCheck(m.services.Hook, core.LastAssistantChatContent(m.conv.Messages))
+	check := runtime.NewStopCheck(m.services.Hook, core.LastAssistantChatContent(m.conv.Messages))
 	return func() tea.Msg {
 		decision := check.Run(context.Background())
 		return stopHookResultMsg{pending: pending, Blocked: decision.Blocked, Reason: decision.Reason, Err: decision.Err, Result: result}
@@ -100,7 +100,7 @@ func (m *model) checkPromptHook(ctx context.Context, prompt string) (bool, strin
 	ctx, cancel := context.WithTimeout(ctx, m.uiHookBudget())
 	defer cancel()
 
-	return agent.CheckPrompt(ctx, prompt, m.services.Hook, m.services.Reminder)
+	return runtime.CheckPrompt(ctx, prompt, m.services.Hook, m.services.Reminder)
 }
 
 func (m *model) switchProvider(p llm.Provider) {

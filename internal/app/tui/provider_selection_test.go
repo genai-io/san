@@ -6,10 +6,10 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/tui/input"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/runtime"
 	"github.com/genai-io/san/internal/skill"
 	"github.com/genai-io/san/internal/tool"
 )
@@ -44,14 +44,14 @@ func TestProviderSelectionStopTimeoutPreservesSelection(t *testing.T) {
 	m.services.LLM.SetProvider(previous)
 	m.env.CurrentModel, m.env.LLMProvider = old, previous
 	m.env.store, m.env.ThinkingEffort = store, "low"
-	sess := &agent.Runtime{}
+	sess := &runtime.Runtime{}
 	m.services.Agent = sess
 	started, release := make(chan struct{}), make(chan struct{})
 	var once sync.Once
 	unblock := func() { once.Do(func() { close(release) }) }
 	defer stopRuntime(t, sess)
 	defer unblock()
-	if err := sess.Start(agent.BuildParams{Provider: previous, ModelID: "old", OnEvent: func(ev core.Event) {
+	if err := sess.Start(runtime.BuildParams{Provider: previous, ModelID: "old", OnEvent: func(ev core.Event) {
 		if _, ok := ev.(core.AgentStarted); ok {
 			close(started)
 			<-release

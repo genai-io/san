@@ -6,9 +6,9 @@ import (
 
 	"time"
 
-	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/ask"
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/runtime"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/perm"
@@ -18,7 +18,7 @@ import (
 
 // Permissions are deliberately once-only. No transport response can change
 // native deny/ask precedence or install a persistent grant.
-func (s *acpSession) handlePermissionRequests(ctx context.Context, turn *acp.Turn, gate *agent.PermissionGate, done chan<- struct{}) {
+func (s *acpSession) handlePermissionRequests(ctx context.Context, turn *acp.Turn, gate *runtime.PermissionGate, done chan<- struct{}) {
 	defer close(done)
 	for {
 		req, ok := gate.WaitRequest(ctx)
@@ -34,7 +34,7 @@ func (s *acpSession) handlePermissionRequests(ctx context.Context, turn *acp.Tur
 			decision := s.runtimeBuildParams.PermissionRules(req.ToolName, req.Input)
 			if decision.Decision == perm.Reject {
 				select {
-				case req.Response <- agent.PermGateResponse{Reason: decision.Reason, By: decision.By, Scope: decision.Scope}:
+				case req.Response <- runtime.PermGateResponse{Reason: decision.Reason, By: decision.By, Scope: decision.Scope}:
 				case <-req.Context.Done():
 				}
 				continue
@@ -46,7 +46,7 @@ func (s *acpSession) handlePermissionRequests(ctx context.Context, turn *acp.Tur
 			view, prepareErr := ask.PreparePermission(req, s.runtimeBuildParams.CWD, s.permissions.CurrentMode().PersistenceName(), setting.New(s.permissions.settings), s.permissions.SessionPermissions)
 			if prepareErr != nil {
 				select {
-				case req.Response <- agent.PermGateResponse{Reason: prepareErr.Error()}:
+				case req.Response <- runtime.PermGateResponse{Reason: prepareErr.Error()}:
 				case <-req.Context.Done():
 				}
 				continue
@@ -80,7 +80,7 @@ func (s *acpSession) handlePermissionRequests(ctx context.Context, turn *acp.Tur
 			s.runtime.Cancel()
 		}
 		select {
-		case req.Response <- agent.PermGateResponse{Allow: allow, Reason: reason, By: "user", Scope: "once", Asked: &asked, Cancelled: err != nil || req.Context.Err() != nil}:
+		case req.Response <- runtime.PermGateResponse{Allow: allow, Reason: reason, By: "user", Scope: "once", Asked: &asked, Cancelled: err != nil || req.Context.Err() != nil}:
 		case <-req.Context.Done():
 		}
 	}

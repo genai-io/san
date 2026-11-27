@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 
-	"github.com/genai-io/san/internal/agent"
 	apphook "github.com/genai-io/san/internal/app/hook"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/hook"
+	"github.com/genai-io/san/internal/runtime"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/skill"
 	"github.com/genai-io/san/internal/task"
@@ -16,7 +16,7 @@ import (
 
 // runRecordedPrint owns persistence until the one-shot runtime, tasks and hooks
 // have drained. No model call or tool admission precedes the durable identity.
-func runRecordedPrint(ctx context.Context, params agent.BuildParams, message core.Message, onText func(string)) (result *core.Result, err error) {
+func runRecordedPrint(ctx context.Context, params runtime.BuildParams, message core.Message, onText func(string)) (result *core.Result, err error) {
 	store, err := session.OpenStore(ctx, params.CWD)
 	if err != nil {
 		return nil, err
@@ -34,7 +34,7 @@ func runRecordedPrint(ctx context.Context, params agent.BuildParams, message cor
 		params.Skills.SetStateChangeObserver(session.NewRecorder(owner, params.Provider.Name()).RecordSkillStateChange)
 		defer params.Skills.SetStateChangeObserver(nil)
 	}
-	params.ResultFilter = agent.ResultPager{Store: store, SessionID: owner.ID()}.Filter
+	params.ResultFilter = runtime.ResultPager{Store: store, SessionID: owner.ID()}.Filter
 	if params.Tasks == nil {
 		params.Tasks = task.Default()
 	}
@@ -61,5 +61,5 @@ func runRecordedPrint(ctx context.Context, params agent.BuildParams, message cor
 		}
 		err = errors.Join(err, owner.Err(), owner.Close())
 	}()
-	return agent.RunOnce(ctx, params, message, onText)
+	return runtime.RunHeadless(ctx, params, message, onText)
 }

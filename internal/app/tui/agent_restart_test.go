@@ -12,16 +12,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/agent/reminder"
 	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/infra/filecache"
 	"github.com/genai-io/san/internal/llm"
+	agentruntime "github.com/genai-io/san/internal/runtime"
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 )
 
-func stopRuntime(t *testing.T, runtime *agent.Runtime) {
+func stopRuntime(t *testing.T, runtime *agentruntime.Runtime) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
@@ -61,14 +61,14 @@ func (*restartStubProvider) Name() string                                       
 // agent toggle or a terminal outbox event). The live core chain must survive
 // that gap and win over the UI rendering model when the replacement is seeded.
 func TestStopAgentRuntimePreservesLiveChainForRestart(t *testing.T) {
-	sess := &agent.Runtime{}
+	sess := &agentruntime.Runtime{}
 	provider := &restartStubProvider{requests: make(chan []core.Message, 1)}
 	inferences := make(chan []string, 1)
 	live := []core.Message{
 		{ID: "u1", Role: ai.RoleUser, Content: ai.TextContent("survey internal/agent/mail")},
 		{ID: "a1", Role: ai.RoleAssistant, Content: ai.TextContent("foreground result")},
 	}
-	if err := sess.Start(agent.BuildParams{Provider: provider, ModelID: "m"}, live); err != nil {
+	if err := sess.Start(agentruntime.BuildParams{Provider: provider, ModelID: "m"}, live); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
 
@@ -97,7 +97,7 @@ func TestStopAgentRuntimePreservesLiveChainForRestart(t *testing.T) {
 		}
 	}
 
-	if err := sess.Start(agent.BuildParams{
+	if err := sess.Start(agentruntime.BuildParams{
 		Provider: provider,
 		ModelID:  "m",
 		OnEvent: func(event core.Event) {
@@ -162,7 +162,7 @@ func TestStopAgentRuntimePreservesLiveChainForRestart(t *testing.T) {
 func TestResetAgentRuntimeDiscardsRestartChain(t *testing.T) {
 	m := model{
 		env:      env{FileCache: filecache.New()},
-		services: services{Agent: &agent.Runtime{}, Reminder: reminder.NewQueue()},
+		services: services{Agent: &agentruntime.Runtime{}, Reminder: reminder.NewQueue()},
 		conv:     chat.NewModel(80),
 	}
 	m.services.Agent.SetMessages([]core.Message{{ID: "old-u1", Role: ai.RoleUser, Content: ai.TextContent("old session")}})
@@ -179,10 +179,10 @@ func TestResetAgentRuntimeDiscardsRestartChain(t *testing.T) {
 // Skills/memory reminders ride on a conversation's first message only;
 // replacing the conversation drops old notices and sends them again.
 func TestResetAgentRuntimeFailurePreservesConversationState(t *testing.T) {
-	sess := &agent.Runtime{}
+	sess := &agentruntime.Runtime{}
 	started, release := make(chan struct{}), make(chan struct{})
 	seed := []core.Message{withID("old-user", core.UserMessage("old conversation", nil))}
-	if err := sess.Start(agent.BuildParams{
+	if err := sess.Start(agentruntime.BuildParams{
 		Provider: &restartStubProvider{}, ModelID: "m",
 		OnEvent: func(ev core.Event) {
 			if _, ok := ev.(core.AgentStarted); ok {
@@ -215,7 +215,7 @@ func TestResetAgentRuntimeFailurePreservesConversationState(t *testing.T) {
 }
 
 func TestSystemRemindersOncePerConversation(t *testing.T) {
-	m := model{env: env{FileCache: filecache.New()}, services: services{Agent: &agent.Runtime{}, Reminder: reminder.NewQueue()}}
+	m := model{env: env{FileCache: filecache.New()}, services: services{Agent: &agentruntime.Runtime{}, Reminder: reminder.NewQueue()}}
 	m.services.Reminder.Register(reminder.ProviderSkillsDirectory, func() string { return "skills" })
 	send := func(text string) string {
 		return m.attachPendingReminders(core.Message{Role: ai.RoleUser, Content: ai.TextContent(text)}).Text()
@@ -259,7 +259,7 @@ func chainWithImage() []core.Message {
 // rejects on every later turn. Only inference input should drop them.
 func TestRuntimeMessagesKeepNativeImagesForTextOnlyModel(t *testing.T) {
 	original := chainWithImage()
-	m := model{conv: chat.NewModel(80), services: services{Agent: &agent.Runtime{}}}
+	m := model{conv: chat.NewModel(80), services: services{Agent: &agentruntime.Runtime{}}}
 	m.services.Agent.SetMessages(chainWithImage())
 	m.env.LLMProvider = &textOnlyStubProvider{}
 
@@ -282,7 +282,7 @@ func TestRuntimeMessagesKeepNativeImagesForTextOnlyModel(t *testing.T) {
 
 // Vision-capable providers are the common case and must see the chain untouched.
 func TestRuntimeMessagesKeepImagesForVisionModel(t *testing.T) {
-	m := model{conv: chat.NewModel(80), services: services{Agent: &agent.Runtime{}}}
+	m := model{conv: chat.NewModel(80), services: services{Agent: &agentruntime.Runtime{}}}
 	m.services.Agent.SetMessages(chainWithImage())
 	m.env.LLMProvider = &restartStubProvider{}
 
@@ -310,9 +310,9 @@ func imageBlocks(m core.Message) int {
 // A rebuild stops the old agent and starts a new one; the old agent's stop
 // event reaches the UI afterwards. It must not stop its replacement.
 func TestAReplacedAgentsLateStopLeavesTheNewOneRunning(t *testing.T) {
-	sess := &agent.Runtime{}
+	sess := &agentruntime.Runtime{}
 	provider := &restartStubProvider{requests: make(chan []core.Message, 1)}
-	if err := sess.Start(agent.BuildParams{Provider: provider, ModelID: "m"}, nil); err != nil {
+	if err := sess.Start(agentruntime.BuildParams{Provider: provider, ModelID: "m"}, nil); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
 	defer stopRuntime(t, sess)

@@ -8,10 +8,10 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/app/tui/input"
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/runtime"
 	"github.com/genai-io/san/internal/session"
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 	"github.com/genai-io/sdk-go/pkg/ai"
@@ -57,7 +57,7 @@ func compactQueueModel(t *testing.T) (*model, *textOnlyStubProvider) {
 	m.userInput = input.New(m.env.CWD, 80, nil, input.SelectorDeps{Setting: m.services.Setting})
 	provider := &textOnlyStubProvider{restartStubProvider{requests: make(chan []core.Message, 2)}}
 	m.env.LLMProvider = provider
-	if err := m.services.Agent.Start(agent.BuildParams{Provider: provider, ModelID: "m", Recording: m.services.Session, PermissionRules: (agent.PermissionPolicy{}).Decide}, m.services.Agent.Messages()); err != nil {
+	if err := m.services.Agent.Start(runtime.BuildParams{Provider: provider, ModelID: "m", Recording: m.services.Session, PermissionRules: (runtime.PermissionPolicy{}).Decide}, m.services.Agent.Messages()); err != nil {
 		t.Fatal(err)
 	}
 	m.agentReviewCaps = m.autoSkillCapabilities()
@@ -72,9 +72,9 @@ func TestCompactionReleasesOneQueuedInput(t *testing.T) {
 			m, provider := compactQueueModel(t)
 			const summary = "both files read"
 			m.env.LLMProvider = &compactHTTPProvider{client: aitest.New(aitest.Says(summary)).Client()}
-			var request agent.CompactRequest
+			var request runtime.CompactRequest
 			if trigger == "auto" {
-				request = agent.CompactRequest{Ctx: t.Context(), Client: m.buildLLMClient(), Messages: m.services.Agent.Messages(), Completion: m.services.Session.Completion(session.PurposeCompaction), Trigger: "auto"}
+				request = runtime.CompactRequest{Ctx: t.Context(), Client: m.buildLLMClient(), Messages: m.services.Agent.Messages(), Completion: m.services.Session.Completion(session.PurposeCompaction), Trigger: "auto"}
 			} else {
 				request = m.BuildCompactRequest("", "manual")
 			}
@@ -130,7 +130,7 @@ func TestCompactionReleasesOneQueuedInput(t *testing.T) {
 			case "nothing":
 				request.Messages = nil
 				msg := chat.CompactCmd(request)().(chat.CompactResultMsg)
-				if !errors.Is(msg.Err, agent.ErrNothingToCompact) {
+				if !errors.Is(msg.Err, runtime.ErrNothingToCompact) {
 					t.Fatalf("expected short-input rejection: %v", msg.Err)
 				}
 				m.HandleCompactResult(msg)
@@ -172,7 +172,7 @@ func TestCompactionQueueEditWaitsForBothCompletionAndEditExit(t *testing.T) {
 		t.Run(order, func(t *testing.T) {
 			m, provider := compactQueueModel(t)
 			m.env.LLMProvider = &compactHTTPProvider{client: aitest.New(aitest.Says("summary")).Client()}
-			request := agent.CompactRequest{Ctx: t.Context(), Client: m.buildLLMClient(), Messages: m.services.Agent.Messages(), Completion: m.services.Session.Completion(session.PurposeCompaction), Trigger: "auto"}
+			request := runtime.CompactRequest{Ctx: t.Context(), Client: m.buildLLMClient(), Messages: m.services.Agent.Messages(), Completion: m.services.Session.Completion(session.PurposeCompaction), Trigger: "auto"}
 			m.env.LLMProvider = provider
 			m.OnCompactStart(3)
 			m.userInput.Textarea.SetValue("queued input")

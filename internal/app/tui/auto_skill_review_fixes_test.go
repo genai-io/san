@@ -10,11 +10,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/app/tui/input"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/hook"
+	"github.com/genai-io/san/internal/runtime"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/tool"
@@ -103,8 +103,8 @@ func TestAutoSkillRechecksAuthorizationBeforeWriting(t *testing.T) {
 			return aitest.Fails(ctx.Err())(ctx, req)
 		}
 	})
-	params := agent.BuildParams{Provider: &finalizationProvider{client: driver.Client()}, ModelID: "m",
-		Recording: m.services.Session, PermissionRules: (agent.PermissionPolicy{}).Decide}
+	params := runtime.BuildParams{Provider: &finalizationProvider{client: driver.Client()}, ModelID: "m",
+		Recording: m.services.Session, PermissionRules: (runtime.PermissionPolicy{}).Decide}
 	if err := m.services.Agent.Start(params, nil); err != nil {
 		t.Fatal(err)
 	}

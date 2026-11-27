@@ -12,13 +12,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/agent/reminder"
 	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/app/tui/input"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/runtime"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/subagent"
@@ -33,8 +33,8 @@ func textOnlyModel(t *testing.T) (*model, *textOnlyStubProvider) {
 	t.Setenv("HOME", t.TempDir())
 
 	provider := &textOnlyStubProvider{restartStubProvider{requests: make(chan []core.Message, 2)}}
-	sess := &agent.Runtime{}
-	if err := sess.Start(agent.BuildParams{Provider: provider, ModelID: "deepseek-chat"}, nil); err != nil {
+	sess := &runtime.Runtime{}
+	if err := sess.Start(runtime.BuildParams{Provider: provider, ModelID: "deepseek-chat"}, nil); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
 	t.Cleanup(func() { stopRuntime(t, sess) })

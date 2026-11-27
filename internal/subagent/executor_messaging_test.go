@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	agentruntime "github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/agent/mail"
 	"github.com/genai-io/san/internal/core"
+	agentruntime "github.com/genai-io/san/internal/runtime"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/tool"
@@ -67,7 +67,7 @@ func TestOwnedExecutorAcceptsStartupAndRunningMessages(t *testing.T) {
 	params := agentruntime.BuildParams{Provider: continuationProvider{parentDriver}, ModelID: "aitest", CWD: t.TempDir(), SessionID: parent.ID(), Tasks: task.Default(), Recording: parent, DisabledTools: map[string]bool{tool.ToolSendMessage: false}, PermissionRules: func(string, map[string]any) agentruntime.PermDecisionResult {
 		return agentruntime.PermDecisionResult{Decision: perm.Permit, By: session.ByConfig}
 	}}
-	if _, err := agentruntime.RunOnce(tool.WithMessageSource(ctx, "stale-source", 999), params, core.UserMessage("send live instruction", nil), nil); err != nil {
+	if _, err := agentruntime.RunHeadless(tool.WithMessageSource(ctx, "stale-source", 999), params, core.UserMessage("send live instruction", nil), nil); err != nil {
 		t.Fatal(err)
 	}
 	for _, message := range parentDriver.Last().Messages {

@@ -27,26 +27,26 @@ External client ── ACP ──────┘
   scopes and audit-before-reply; see [dependency rules](../reference/dependency-rules.md#rules).
 - `internal/session`: typed storage and recording shared by TUI and ACP;
   see [session ownership](../packages/session.md).
-- `internal/agent.InputQueue`: native FIFO delivery, user-only memory recall,
+- `internal/runtime.InputQueue`: native FIFO delivery, user-only memory recall,
   retry retention, manual-stop holds and consumer-finalization admission fences.
   TUI retains compaction and queue-edit gates; explicit continuation cannot bypass cleanup.
 - [`reminder.Queue`](../packages/reminder.md): reminders and their conversation state; TUI retains lifecycle gates.
-- `internal/agent.CheckPrompt`: UserPromptSubmit decisions and additional-context
+- `internal/runtime.CheckPrompt`: UserPromptSubmit decisions and additional-context
   staging through the existing hook engine and reminder owner. Context stays pending
   even on a block; delivery, not admission, prepares reminders. TUI retains its
   fail-open hook budget, exit/slash ordering and ungated midstream queue delivery.
   Native policy and TUI prompt-admission tests cover this boundary.
-- `internal/agent.PostTool`: foreground workspace-effect dispatch and
+- `internal/runtime.PostTool`: foreground workspace-effect dispatch and
   PostToolUse/Failure payloads, scheduled after synchronous workspace callbacks.
   FileChanged is scheduled before persona reload and cache touch; detached hooks
   retain engine-owned execution/audit ordering, not completion ordering between hooks.
   TUI admits current, non-duplicate results and consumes handoffs before calling;
   worker handoffs stay run-local. Result filtering, recording and compaction are
   not moved. The ACP adapter supplies its own admission and workspace wiring.
-- `internal/agent`: shared normal-turn recording, Stop decisions and compaction
-  policy; see [agent lifecycle](../packages/agent.md#lifecycle).
-- `internal/agent.PermissionPolicy`: native rule, memory, hook-waiver and reviewer
-  authorization composition; see [execution policy](../packages/agent.md#internals).
+- `internal/runtime`: shared normal-turn recording, Stop decisions and compaction
+  policy; see [agent lifecycle](../packages/runtime.md#lifecycle).
+- `internal/runtime.PermissionPolicy`: native rule, memory, hook-waiver and reviewer
+  authorization composition; see [execution policy](../packages/runtime.md#internals).
 - Host-specific runtime assembly and presentation stay in app.
 - The ACP adapter handles negotiation, streaming, load/replay, permissions and
   supported extensions using native services.

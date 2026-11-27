@@ -1,4 +1,4 @@
-// Agent session lifecycle: building params, delegating to *agent.Runtime,
+// Agent session lifecycle: building params, delegating to *agentruntime.Runtime,
 // and wrapping channels in tea.Cmds for the TUI.
 package tui
 
@@ -14,7 +14,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"go.uber.org/zap"
 
-	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/agent/reminder"
 	"github.com/genai-io/san/internal/app/ask"
 	apphook "github.com/genai-io/san/internal/app/hook"
@@ -29,6 +28,7 @@ import (
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/mcp"
 	"github.com/genai-io/san/internal/persona"
+	agentruntime "github.com/genai-io/san/internal/runtime"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/subagent"
@@ -102,8 +102,8 @@ func (m *model) applyPersonaAgents() {
 // Both callers going through one constructor is what keeps them in step: a new
 // prompt-shaping input added here reaches the inspector for free, where a
 // second hand-written literal would silently under-report.
-func (m *model) promptParams() agent.BuildParams {
-	return agent.BuildParams{
+func (m *model) promptParams() agentruntime.BuildParams {
+	return agentruntime.BuildParams{
 		CWD:     m.env.CWD,
 		Persona: m.personaPrompt(),
 		AgentCatalog: func() string {
@@ -125,9 +125,9 @@ func (m *model) promptParams() agent.BuildParams {
 	}
 }
 
-func (m *model) buildAgentParams() (agent.BuildParams, error) {
+func (m *model) buildAgentParams() (agentruntime.BuildParams, error) {
 	if m.services.Setting == nil || m.env.SessionPermissions == nil {
-		return agent.BuildParams{}, fmt.Errorf("main-session runtime requires a permission policy")
+		return agentruntime.BuildParams{}, fmt.Errorf("main-session runtime requires a permission policy")
 	}
 	params := m.promptParams()
 
@@ -135,7 +135,7 @@ func (m *model) buildAgentParams() (agent.BuildParams, error) {
 	if err != nil {
 		return params, err
 	}
-	owner := agent.MainSession{Session: rec, Store: m.services.SessionStore}
+	owner := agentruntime.MainSession{Session: rec, Store: m.services.SessionStore}
 	if err := owner.Validate(); err != nil {
 		return params, err
 	}
@@ -205,23 +205,23 @@ func (m *model) buildAgentParams() (agent.BuildParams, error) {
 	if skills := m.services.Skill; skills != nil {
 		skills.SetStateChangeObserver(recorder.RecordSkillStateChange)
 	}
-	policy := agent.PermissionPolicy{
+	policy := agentruntime.PermissionPolicy{
 		Settings: m.services.Setting, Session: m.env.SessionPermissions,
 	}
 	params.PermissionRules = policy.Decide
 	params.CanApproveByHook = policy.CanApproveByHook
-	params.PermissionJudge = func(ctx context.Context, name string, args map[string]any, reason string) agent.PermJudgeResult {
+	params.PermissionJudge = func(ctx context.Context, name string, args map[string]any, reason string) agentruntime.PermJudgeResult {
 		rt := m.autopilot.Load()
 		if rt == nil {
-			return agent.PermJudgeResult{}
+			return agentruntime.PermJudgeResult{}
 		}
-		return policy.Judge(ctx, name, args, reason, agent.JudgeSnapshot{
+		return policy.Judge(ctx, name, args, reason, agentruntime.JudgeSnapshot{
 			Engaged: m.autopilotEngaged(), Enabled: rt.cfg.Steers.PermissionOn(),
 			CWD: rt.cwd, UnderGit: rt.underGit, Mission: rt.cfg.ActiveMission(),
 			Judge: rt.judge.Permission, Observe: m.recordDecision, Recording: rec,
 		})
 	}
-	params.ResultFilter = agent.ResultPager{Store: owner.Store, SessionID: owner.Session.ID()}.Filter
+	params.ResultFilter = agentruntime.ResultPager{Store: owner.Store, SessionID: owner.Session.ID()}.Filter
 	return params, nil
 }
 
@@ -443,7 +443,7 @@ type agentSendFailedMsg struct{ err error }
 // Defer rebuild until OnTurnEnd acknowledges its consumer receipt.
 type pendingInputReadyMsg struct{ outbox <-chan core.Event }
 
-type pendingMessage = agent.PendingInput
+type pendingMessage = agentruntime.PendingInput
 
 func (m *model) sendToAgent(p pendingMessage) tea.Cmd {
 	if m.deferFlowMainInput(p) {
@@ -600,7 +600,7 @@ func (m *model) ListenForAgentEvents() tea.Cmd {
 	return chat.DrainAgentOutbox(outbox)
 }
 
-func (m *model) HandlePermGate(req *agent.PermGateRequest) tea.Cmd {
+func (m *model) HandlePermGate(req *agentruntime.PermGateRequest) tea.Cmd {
 	if req == nil || (req.Context != nil && req.Context.Err() != nil) {
 		return chat.PollPermGate(m.services.Agent.PermissionGate())
 	}
@@ -610,7 +610,7 @@ func (m *model) HandlePermGate(req *agent.PermGateRequest) tea.Cmd {
 		// The gate owns a buffered response channel; never enqueue an invalid
 		// call or let a generic preview hide the actionable validation reason.
 		select {
-		case req.Response <- agent.PermGateResponse{Reason: fmt.Sprintf("cannot prepare %s approval: %v", req.ToolName, err)}:
+		case req.Response <- agentruntime.PermGateResponse{Reason: fmt.Sprintf("cannot prepare %s approval: %v", req.ToolName, err)}:
 		default:
 		}
 		return chat.PollPermGate(m.services.Agent.PermissionGate())
@@ -625,7 +625,7 @@ func (m *model) HandlePermGate(req *agent.PermGateRequest) tea.Cmd {
 // Agent tool configuration
 // ============================================================
 
-func (m *model) preparePermissionRequest(req *agent.PermGateRequest) (*perm.PermissionRequest, error) {
+func (m *model) preparePermissionRequest(req *agentruntime.PermGateRequest) (*perm.PermissionRequest, error) {
 	return ask.PreparePermission(req, m.env.CWD, m.env.SessionMode(), m.services.Setting, m.env.SessionPermissions)
 }
 
@@ -672,7 +672,7 @@ func (m *model) ReconfigureAgentTool() {
 	files := m.env.FileCache
 	executor.SetPostTool(func(handler hook.Handler, result core.ToolResult, effect any) error {
 		engine, _ := handler.(*hook.Engine)
-		agent.PostTool(result, effect, engine, agent.WorkspaceCallbacks{TouchFile: files.Touch})
+		agentruntime.PostTool(result, effect, engine, agentruntime.WorkspaceCallbacks{TouchFile: files.Touch})
 		return nil
 	})
 	executor.SetProjectInstructions(m.env.CachedProjectInstructions)

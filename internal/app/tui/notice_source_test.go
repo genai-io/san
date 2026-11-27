@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/agent/mail"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/group"
+	"github.com/genai-io/san/internal/runtime"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/tests/integration/testutil"
@@ -72,7 +72,7 @@ func TestChildNoticeNativeAcceptancePreservesSource(t *testing.T) {
 				source.Seq += 1000
 			}
 			provider := &restartStubProvider{requests: make(chan []core.Message, 1)}
-			if err := m.services.Agent.Start(agent.BuildParams{Provider: provider, ModelID: "m", CWD: m.env.CWD, Recording: owner, PermissionRules: (agent.PermissionPolicy{}).Decide}, nil); err != nil {
+			if err := m.services.Agent.Start(runtime.BuildParams{Provider: provider, ModelID: "m", CWD: m.env.CWD, Recording: owner, PermissionRules: (runtime.PermissionPolicy{}).Decide}, nil); err != nil {
 				t.Fatal(err)
 			}
 			m.conv.Stream.Active = true

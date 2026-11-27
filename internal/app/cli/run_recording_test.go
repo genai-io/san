@@ -7,10 +7,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/runtime"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/subagent"
@@ -28,7 +28,7 @@ func TestPrintRecordsNativeConversationAndFinalState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	params.AutoMemory = agent.AutoMemoryConfig{}
+	params.AutoMemory = runtime.AutoMemoryConfig{}
 	params.Provider = staticTestProvider{aitest.New(aitest.Says("recorded print")).Client()}
 	params.ModelID = "test"
 	params.Tasks = task.NewManager()
@@ -68,7 +68,7 @@ func TestPrintMemoryLanguageReachesMain(t *testing.T) {
 	const prompt = "remember: Prefer table tests."
 	const answer = "main response"
 	driver := aitest.New(aitest.Says(answer))
-	params := agent.BuildParams{CWD: t.TempDir(), AutoMemory: agent.AutoMemoryConfig{Store: system.MemoryStore(t.TempDir())}, Provider: staticTestProvider{driver.Client()}, ModelID: "test", MaxTokens: 64, Tasks: task.NewManager(), PermissionRules: (agent.PermissionPolicy{}).Decide}
+	params := runtime.BuildParams{CWD: t.TempDir(), AutoMemory: runtime.AutoMemoryConfig{Store: system.MemoryStore(t.TempDir())}, Provider: staticTestProvider{driver.Client()}, ModelID: "test", MaxTokens: 64, Tasks: task.NewManager(), PermissionRules: (runtime.PermissionPolicy{}).Decide}
 	var displayed strings.Builder
 	result, err := runRecordedPrint(t.Context(), params, core.UserMessage(prompt, nil), func(text string) { displayed.WriteString(text) })
 	if err != nil || result == nil || result.StopReason != core.StopEndTurn || displayed.String() != answer || driver.Calls() != 1 {
@@ -98,9 +98,9 @@ func TestPrintUpdatesProjectInstructionsWithoutMemoryUpdate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	policy := agent.PermissionPolicy{Settings: setting.NewData(), Session: &setting.SessionPermissions{Mode: setting.ModeAutoAccept, ShouldAvoidPrompts: true}}
+	policy := runtime.PermissionPolicy{Settings: setting.NewData(), Session: &setting.SessionPermissions{Mode: setting.ModeAutoAccept, ShouldAvoidPrompts: true}}
 	params.PermissionRules = policy.Decide
-	params.AutoMemory = agent.AutoMemoryConfig{Store: system.MemoryStore(notes)}
+	params.AutoMemory = runtime.AutoMemoryConfig{Store: system.MemoryStore(notes)}
 	params.Provider, params.ModelID, params.Tasks = staticTestProvider{driver.Client()}, "test", task.NewManager()
 	const prompt = "请记住：以后用 ninja 构建，更新项目的 AGENTS.md。"
 	if result, err := runRecordedPrint(t.Context(), params, core.UserMessage(prompt, nil), nil); err != nil || result == nil || result.StopReason != core.StopEndTurn {
@@ -138,7 +138,7 @@ func TestPrintRecallsBeforeInferenceWithoutTools(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	params.AutoMemory = agent.AutoMemoryConfig{
+	params.AutoMemory = runtime.AutoMemoryConfig{
 		Store:  system.MemoryStore(notes),
 		Recall: setting.MemoryRecallConfig{Mode: setting.MemoryRecallWait},
 	}
@@ -181,8 +181,8 @@ func TestPrintStorageFailurePreventsModelInvocation(t *testing.T) {
 	}
 	t.Setenv("HOME", home)
 	driver := aitest.New(aitest.Says("must not run"))
-	_, err := runRecordedPrint(t.Context(), agent.BuildParams{CWD: cwd, Provider: staticTestProvider{driver.Client()}, ModelID: "test", MaxTokens: 64, PermissionRules: func(string, map[string]any) agent.PermDecisionResult {
-		return agent.PermDecisionResult{Decision: perm.Reject, By: "config"}
+	_, err := runRecordedPrint(t.Context(), runtime.BuildParams{CWD: cwd, Provider: staticTestProvider{driver.Client()}, ModelID: "test", MaxTokens: 64, PermissionRules: func(string, map[string]any) runtime.PermDecisionResult {
+		return runtime.PermDecisionResult{Decision: perm.Reject, By: "config"}
 	}}, core.UserMessage("fail closed", nil), nil)
 	if err == nil || driver.Calls() != 0 {
 		t.Fatalf("err=%v calls=%d", err, driver.Calls())

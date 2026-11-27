@@ -7,9 +7,9 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/agent/reminder"
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/runtime"
 )
 
 func prepareText(s *reminder.Queue, text string) string {
@@ -92,17 +92,17 @@ func TestRejectedInputRetainsReminders(t *testing.T) {
 	s := reminder.NewQueue()
 	s.Register(reminder.ProviderSkillsDirectory, func() string { return "provider body" })
 	s.Enqueue("first notice")
-	var q agent.InputQueue
-	q.Enqueue(agent.PendingInput{Message: core.UserMessage("question", nil), FromUser: true})
+	var q runtime.InputQueue
+	q.Enqueue(runtime.PendingInput{Message: core.UserMessage("question", nil), FromUser: true})
 	prepare := s.PrepareInput
 	rejected := errors.New("rejected")
-	if err := q.DeliverFirst(func(agent.PendingInput) error { return rejected }, prepare); !errors.Is(err, rejected) {
+	if err := q.DeliverFirst(func(runtime.PendingInput) error { return rejected }, prepare); !errors.Is(err, rejected) {
 		t.Fatalf("DeliverFirst = %v", err)
 	}
 	s.Enqueue("later notice")
 	s.RequeueSystemReminders()
 	var got string
-	if err := q.DeliverFirst(func(msg agent.PendingInput) error { got = msg.Text(); return nil }, prepare); err != nil {
+	if err := q.DeliverFirst(func(msg runtime.PendingInput) error { got = msg.Text(); return nil }, prepare); err != nil {
 		t.Fatal(err)
 	}
 	for _, text := range []string{"question", "provider body", "first notice", "later notice"} {

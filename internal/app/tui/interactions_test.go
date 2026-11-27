@@ -7,10 +7,10 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/app/tui/input"
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/runtime"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/tool"
@@ -40,7 +40,7 @@ func userPromptApproval(m *model, ctx context.Context, id string) *chat.UserProm
 	return &chat.UserPromptRequest{
 		Context: ctx, Owner: m.conv.AgentToUI,
 		Source:         tool.AgentInteractionSource{AgentID: id, AgentName: "worker", TaskID: id, PermissionMode: "default", WorkingDirectory: "/worker/cwd", ToolCallID: "worker-call"},
-		Permission:     &agent.PermGateRequest{Context: ctx, ToolName: "Write", RequestID: id, Response: make(chan agent.PermGateResponse, 1)},
+		Permission:     &runtime.PermGateRequest{Context: ctx, ToolName: "Write", RequestID: id, Response: make(chan runtime.PermGateResponse, 1)},
 		PermissionView: &perm.PermissionRequest{ID: id, ToolName: "Write", CallerAgent: "worker", OnceOnly: true},
 	}
 }

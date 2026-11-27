@@ -7,11 +7,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/app/tui/input"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/mcp"
+	agentruntime "github.com/genai-io/san/internal/runtime"
 	"github.com/genai-io/san/internal/skill"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/sdk-go/pkg/ai/aitest"
@@ -143,7 +143,7 @@ func testFlowMainNativeRuntime(t *testing.T, warm bool) {
 	m.services.Tool = tool.NewRegistry()
 	m.services.MCP = mcp.NewManagerForTest(nil)
 	if warm {
-		if err := m.services.Agent.Start(agent.BuildParams{Provider: p, ModelID: "m", Recording: opened, PermissionRules: (agent.PermissionPolicy{}).Decide}, m.services.Agent.Messages()); err != nil {
+		if err := m.services.Agent.Start(agentruntime.BuildParams{Provider: p, ModelID: "m", Recording: opened, PermissionRules: (agentruntime.PermissionPolicy{}).Decide}, m.services.Agent.Messages()); err != nil {
 			t.Fatal(err)
 		}
 		m.agentReviewCaps = m.autoSkillCapabilities()

@@ -171,7 +171,7 @@ and the judge has no say in it:
 - `PermissionDecision.Judgeable` (`internal/setting/permission.go`) marks a
   prompt the judge may weigh.
 - The mode default and judgeable confirmation checks set it only in Autopilot mode.
-- `PermissionGate.Check` (`internal/agent/permission.go`) offers a judgeable
+- `PermissionGate.Check` (`internal/runtime/permission.go`) offers a judgeable
   prompt to the judge; `allow` short-circuits, anything else falls through to
   the human prompt.
 - The judge fails closed: `PermJudgeFunc` must return the zero value on any
@@ -228,7 +228,7 @@ terms — there is no PowerShell parser, so every judgment errs one way:
 
 - Decision gate: `internal/setting/permission.go` → `HasPermissionToUseTool`.
 - Rule parser + Bash AST: `internal/setting/bash_ast.go`.
-- Approval modal flow: `internal/agent/permission.go` (`PermissionGate`).
+- Approval modal flow: `internal/runtime/permission.go` (`PermissionGate`).
 - Gray-zone judge: `internal/autopilot/judge/`.
 - Hook-allow invariant: `internal/setting/permission.go` → `CanApproveByHook`,
   applied in `internal/tool/gate.go`.
@@ -237,5 +237,5 @@ terms — there is no PowerShell parser, so every judgment errs one way:
 
 ## See Also
 
-- Packages: [`setting`](../packages/setting.md), [`tool`](../packages/tool.md), [`agent`](../packages/agent.md), [`subagent`](../packages/subagent.md), [`hook`](../packages/hook.md)
+- Packages: [`setting`](../packages/setting.md), [`tool`](../packages/tool.md), [`runtime`](../packages/runtime.md), [`subagent`](../packages/subagent.md), [`hook`](../packages/hook.md)
 - Compatibility note for Claude Code rule files: [`reference/claude-permission-compat.md`](../reference/claude-permission-compat.md)

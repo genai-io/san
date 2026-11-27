@@ -9,11 +9,11 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
-	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/agent/reminder"
 	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/core/system"
+	"github.com/genai-io/san/internal/runtime"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/tests/integration/testutil"
@@ -47,7 +47,7 @@ func TestRecallNoticePinsToReceivingResultWhenWriterRunsAhead(t *testing.T) {
 	}
 	m := fixedComposerModel(80, 40)
 	m.conv.AutoMemoryStore = system.MemoryStore(mem)
-	m.services.Agent, m.services.Session, m.services.SessionStore = &agent.Runtime{}, rec, store
+	m.services.Agent, m.services.Session, m.services.SessionStore = &runtime.Runtime{}, rec, store
 	m.conv.OnNotice = m.recordNotice
 	m.conv.Messages = session.ChatRows(messages[:3])
 	chat.Update(m, &m.conv, chat.AgentOutboxMsg{Event: sdkagent.MessageAdded{Message: result}})
@@ -92,7 +92,7 @@ func TestMemoryReadsCommitBeforeAnswerWithoutTurnEndFooter(t *testing.T) {
 			m := fixedComposerModel(80, 40)
 			m.conv.AutoMemoryStore = system.MemoryStore(mem)
 			attachTurnSession(t, m)
-			m.services.Agent = &agent.Runtime{}
+			m.services.Agent = &runtime.Runtime{}
 			m.services.Tool = tool.NewRegistry()
 			m.pendingDecisions = &sync.Map{}
 			var notices []core.ChatMessage

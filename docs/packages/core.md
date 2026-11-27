@@ -12,7 +12,7 @@ Both foreground sessions and subagents build a `core.Agent`.
 
 Core runs a conversation one turn at a time. It does not select a session,
 open a recording, or decide when a host replaces its executor. Those decisions
-belong to the foreground [runtime](agent.md) or the [subagent](subagent.md) host.
+belong to the foreground [runtime](runtime.md) or the [subagent](subagent.md) host.
 
 ## Contract
 
@@ -185,6 +185,6 @@ internal/core/message_test.go       — message value equality and copying.
 ## See Also
 
 - Code: `internal/core/`
-- Consumer: [`packages/agent.md`](agent.md) (`internal/agent` wraps `core.Agent`)
+- Consumer: [`packages/runtime.md`](runtime.md) (`internal/runtime` wraps `core.Agent`)
 - Subsystem implementations: [`packages/tool.md`](tool.md), [`packages/llm.md`](llm.md), [`packages/subagent.md`](subagent.md)
 - Layer: `core` (see [`reference/dependency-rules.md`](../reference/dependency-rules.md))

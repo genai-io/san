@@ -10,7 +10,6 @@ import (
 
 	"github.com/genai-io/san/tests/integration/testutil"
 
-	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/agent/reminder"
 	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/core"
@@ -20,6 +19,7 @@ import (
 	"github.com/genai-io/san/internal/infra/filecache"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/mcp"
+	agentruntime "github.com/genai-io/san/internal/runtime"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/skill"
@@ -52,7 +52,7 @@ func resumedModel(t *testing.T, messages []core.Message) (*model, *session.Store
 	}
 	m := &model{
 		services: services{
-			Agent: &agent.Runtime{}, Session: opened, SessionStore: store, LLM: &llm.Conn{},
+			Agent: &agentruntime.Runtime{}, Session: opened, SessionStore: store, LLM: &llm.Conn{},
 			sessionID: opened.ID(),
 			Setting:   setting.New(setting.NewData()),
 			Tracker:   todo.NewStore(), Reminder: reminder.NewQueue(),
@@ -335,7 +335,7 @@ func TestResumedParallelResultsSurviveFailureAndRetry(t *testing.T) {
 	m, store := resumedModel(t, history)
 	w := m.services.Session
 	stopped := make(chan error, 1)
-	params := agent.BuildParams{Provider: &failedTurnProvider{}, ModelID: "m", Recording: w, PermissionRules: (agent.PermissionPolicy{}).Decide, OnEvent: func(event core.Event) {
+	params := agentruntime.BuildParams{Provider: &failedTurnProvider{}, ModelID: "m", Recording: w, PermissionRules: (agentruntime.PermissionPolicy{}).Decide, OnEvent: func(event core.Event) {
 		if event, ok := event.(core.AgentStopped); ok {
 			stopped <- event.Err
 		}
@@ -360,7 +360,7 @@ func TestResumedParallelResultsSurviveFailureAndRetry(t *testing.T) {
 		t.Fatalf("retry lost the native parallel-result chain: %+v", seed)
 	}
 	provider := &restartStubProvider{requests: make(chan []core.Message, 1)}
-	if err := m.services.Agent.Start(agent.BuildParams{Provider: provider, ModelID: "m", Recording: w, PermissionRules: (agent.PermissionPolicy{}).Decide}, seed); err != nil {
+	if err := m.services.Agent.Start(agentruntime.BuildParams{Provider: provider, ModelID: "m", Recording: w, PermissionRules: (agentruntime.PermissionPolicy{}).Decide}, seed); err != nil {
 		t.Fatal(err)
 	}
 	if err := m.services.Agent.Send(withID("retry", core.UserMessage("retry", nil))); err != nil {
@@ -407,7 +407,7 @@ func TestCompactBeforeResumedRuntimeStartsPersistsTheNativeBoundary(t *testing.T
 	}
 	w := m.services.Session
 	provider := &restartStubProvider{requests: make(chan []core.Message, 1)}
-	if err := m.services.Agent.Start(agent.BuildParams{Provider: provider, ModelID: "m", Recording: w, PermissionRules: (agent.PermissionPolicy{}).Decide}, seed); err != nil {
+	if err := m.services.Agent.Start(agentruntime.BuildParams{Provider: provider, ModelID: "m", Recording: w, PermissionRules: (agentruntime.PermissionPolicy{}).Decide}, seed); err != nil {
 		t.Fatal(err)
 	}
 	m.StopAgentRuntime()
@@ -427,7 +427,7 @@ func TestTextOnlyModelSwitchPreservesDurableImages(t *testing.T) {
 	provider := &textOnlyStubProvider{restartStubProvider{requests: make(chan []core.Message, 1)}}
 	m.env.LLMProvider = provider
 	w := m.services.Session
-	if err := m.services.Agent.Start(agent.BuildParams{Provider: provider, ModelID: "m", Recording: w, PermissionRules: (agent.PermissionPolicy{}).Decide}, m.services.Agent.Messages()); err != nil {
+	if err := m.services.Agent.Start(agentruntime.BuildParams{Provider: provider, ModelID: "m", Recording: w, PermissionRules: (agentruntime.PermissionPolicy{}).Decide}, m.services.Agent.Messages()); err != nil {
 		t.Fatal(err)
 	}
 	if err := m.services.Agent.Send(withID("text", core.UserMessage("describe again", nil))); err != nil {
@@ -461,7 +461,7 @@ func TestRenameKeepsTheOpenedSessionForFollowingMessages(t *testing.T) {
 	w := m.services.Session
 	provider := &restartStubProvider{requests: make(chan []core.Message, 1)}
 	stopped := make(chan error, 1)
-	if err := m.services.Agent.Start(agent.BuildParams{Provider: provider, ModelID: "m", Recording: w, PermissionRules: (agent.PermissionPolicy{}).Decide, OnEvent: func(event core.Event) {
+	if err := m.services.Agent.Start(agentruntime.BuildParams{Provider: provider, ModelID: "m", Recording: w, PermissionRules: (agentruntime.PermissionPolicy{}).Decide, OnEvent: func(event core.Event) {
 		if event, ok := event.(core.AgentStopped); ok {
 			stopped <- event.Err
 		}
@@ -545,7 +545,7 @@ func TestPendingInputSurvivesUnconfiguredProviderInNativeForm(t *testing.T) {
 	m.conv.Append(core.ChatMessage{ID: "display-only", Role: core.ChatUser, Content: "must not become history"})
 	added := make(chan core.Message, 2)
 	provider := &restartStubProvider{requests: make(chan []core.Message, 4)}
-	if err := m.services.Agent.Start(agent.BuildParams{Provider: provider, ModelID: "m", OnEvent: func(e core.Event) {
+	if err := m.services.Agent.Start(agentruntime.BuildParams{Provider: provider, ModelID: "m", OnEvent: func(e core.Event) {
 		if v, ok := e.(sdkagent.MessageAdded); ok && v.Message.Role == ai.RoleUser {
 			added <- v.Message
 		}

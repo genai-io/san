@@ -5,7 +5,7 @@ and [dependency rules](../reference/dependency-rules.md) for ownership and layer
 
 | Package | Purpose |
 |---|---|
-| [agent](agent.md) | Main agent lifecycle |
+| [runtime](runtime.md) | Main agent lifecycle |
 | [app](app.md) | Terminal UI and event routing |
 | [mail](mail.md) | Agent messaging |
 | [cmd](cmd.md) | CLI entrypoint and wiring |

@@ -618,6 +618,6 @@ prompt cache behaviour).
 | Conv event router | [`internal/app/tui/chat/update.go`](../../internal/app/tui/chat/update.go) |
 | `agent.Send` / outbox poll | [`internal/app/tui/agent.go`](../../internal/app/tui/agent.go) |
 | Cancel mid-stream | [`internal/app/tui/update_input_effects.go`](../../internal/app/tui/update_input_effects.go) |
-| `Cancel` | [`internal/agent/runtime.go`](../../internal/agent/runtime.go) |
+| `Cancel` | [`internal/runtime/runtime.go`](../../internal/runtime/runtime.go) |
 | `turn` / `Cancel` / Run loop | [`internal/core/run.go`](../../internal/core/run.go) |
 | Bottom UI compose | [`internal/app/tui/view.go`](../../internal/app/tui/view.go) |

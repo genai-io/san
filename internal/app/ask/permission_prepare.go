@@ -6,15 +6,15 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/infra/log"
+	"github.com/genai-io/san/internal/runtime"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/perm"
 )
 
 // PreparePermission validates the call and derives the native preview and grant eligibility.
-func PreparePermission(req *agent.PermGateRequest, cwd, mode string, settings *setting.Settings, grants *setting.SessionPermissions) (*perm.PermissionRequest, error) {
+func PreparePermission(req *runtime.PermGateRequest, cwd, mode string, settings *setting.Settings, grants *setting.SessionPermissions) (*perm.PermissionRequest, error) {
 	view := &perm.PermissionRequest{ToolName: req.ToolName, Description: req.Description}
 	ctx := req.Context
 	if ctx == nil {

@@ -3,10 +3,10 @@ package tui
 import (
 	"context"
 
-	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/ask"
 	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/runtime"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/tool"
@@ -52,7 +52,7 @@ func (p *workerResolver) Resolve(ctx context.Context, name string, input map[str
 	grants := p.grants.Snapshot()
 	// Grants remain live, but a later parent mode change cannot widen this child.
 	grants.Mode = p.mode
-	policy := agent.PermissionPolicy{Settings: p.settings, Session: grants}
+	policy := runtime.PermissionPolicy{Settings: p.settings, Session: grants}
 	d := policy.Decide(name, input)
 	if d.Decision == perm.Reject || d.Decision == perm.Permit && !forced {
 		decision := "deny"
@@ -67,7 +67,7 @@ func (p *workerResolver) Resolve(ctx context.Context, name string, input map[str
 	if forced {
 		d.Description = reason
 	}
-	req := &agent.PermGateRequest{Context: ctx, RequestID: core.NewMessageID(), ToolCallID: core.ToolCallIDFromContext(ctx), ToolName: name, Description: d.Description, Input: input}
+	req := &runtime.PermGateRequest{Context: ctx, RequestID: core.NewMessageID(), ToolCallID: core.ToolCallIDFromContext(ctx), ToolName: name, Description: d.Description, Input: input}
 	view, err := ask.PreparePermission(req, p.cwd, p.mode.PersistenceName(), p.settings, grants)
 	if err != nil {
 		return perm.Resolution{Decision: "deny", By: "config", Reason: err.Error()}

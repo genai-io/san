@@ -11,9 +11,9 @@ import (
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/mcp"
+	agentruntime "github.com/genai-io/san/internal/runtime"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/tests/integration/testutil"
 )
@@ -30,8 +30,8 @@ func namedTool(name string) core.Tool {
 // wired, Registry.SetOnToolsChanged had no caller outside a test, so the whole
 // notification chain ended in a nil callback.
 func TestSyncMCPToolsReachesTheRunningAgent(t *testing.T) {
-	sess := &agent.Runtime{}
-	if err := sess.Start(agent.BuildParams{Provider: &testutil.FakeProvider{}, ModelID: "m"}, nil); err != nil {
+	sess := &agentruntime.Runtime{}
+	if err := sess.Start(agentruntime.BuildParams{Provider: &testutil.FakeProvider{}, ModelID: "m"}, nil); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
 	defer stopRuntime(t, sess)
@@ -64,7 +64,7 @@ func TestSyncMCPToolsReachesTheRunningAgent(t *testing.T) {
 
 // Discovery may precede runtime startup.
 func TestSyncMCPToolsBeforeAnAgentExists(t *testing.T) {
-	for _, runtime := range []*agent.Runtime{nil, new(agent.Runtime)} {
+	for _, runtime := range []*agentruntime.Runtime{nil, new(agentruntime.Runtime)} {
 		m := &model{services: services{
 			Agent: runtime, MCP: mcp.NewManagerForTest(nil), Setting: setting.Default(),
 		}}
@@ -84,8 +84,8 @@ func TestMCPNotificationsReconcileOnTheUILoop(t *testing.T) {
 	defer httpServer.Close()
 	manager := mcp.NewManagerForTest(map[string]mcp.ServerConfig{"reload": {Type: mcp.TransportHTTP, URL: httpServer.URL}})
 	defer func() { _ = manager.Close() }()
-	runtime := &agent.Runtime{}
-	if err := runtime.Start(agent.BuildParams{Provider: &testutil.FakeProvider{}, ModelID: "m"}, nil); err != nil {
+	runtime := &agentruntime.Runtime{}
+	if err := runtime.Start(agentruntime.BuildParams{Provider: &testutil.FakeProvider{}, ModelID: "m"}, nil); err != nil {
 		t.Fatal(err)
 	}
 	defer stopRuntime(t, runtime)

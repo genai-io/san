@@ -19,7 +19,7 @@ For a grouped capability list, see the [feature overview](../features.md).
 ## Primitives
 
 1. **Agent** — an LLM-in-a-loop: messages in through `Append`, events out on an `Outbox` channel. Contracts
-   in `internal/core`; construction in `internal/agent`. Agents communicate
+   in `internal/core`; construction in `internal/runtime`. Agents communicate
    only through messages, no shared mutable state.
 2. **Tools** — built-in capabilities the agent can call. Registered in
    `internal/tool` and gated by `internal/setting` permissions.

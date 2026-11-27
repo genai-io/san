@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/mcp"
+	agentruntime "github.com/genai-io/san/internal/runtime"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/skill"
@@ -143,7 +143,7 @@ func TestBuildAgentParamsRequiresPermissionOwner(t *testing.T) {
 // Runtime construction must likewise preserve the hook audit chosen by the host.
 func TestRuntimeConstructionPreservesHostHookAudit(t *testing.T) {
 	m, store := resumedModel(t, nil)
-	owner := agent.MainSession{Session: m.services.Session, Store: store}
+	owner := agentruntime.MainSession{Session: m.services.Session, Store: store}
 	var audits atomic.Int32
 	hooks := hook.NewEngine(nil, owner.Session.ID(), m.env.CWD, owner.Session.Path())
 	hooks.SetAuditCallback(func(hook.HookFiredAudit) { audits.Add(1) })
@@ -152,7 +152,7 @@ func TestRuntimeConstructionPreservesHostHookAudit(t *testing.T) {
 		t.Fatal(err)
 	}
 	provider := &mainSessionProvider{client: aitest.New(aitest.Replies(ai.Response{Content: ai.Content{ai.ToolCallBlock(ai.ToolCall{ID: "audit-call", Name: "mcp__fixture__output", Input: `{}`})}, StopReason: ai.StopToolUse}), aitest.Says("done")).Client()}
-	if err := m.services.Agent.Start(agent.BuildParams{Provider: provider, ModelID: "fake", PermissionRules: (agent.PermissionPolicy{}).Decide, HookEngine: hooks, MCPTools: []core.Tool{sdkagent.ToolFunc("mcp__fixture__output", "output", func(context.Context, struct{}) (sdkagent.Result, error) { return sdkagent.TextResult("unused"), nil })}}, nil); err != nil {
+	if err := m.services.Agent.Start(agentruntime.BuildParams{Provider: provider, ModelID: "fake", PermissionRules: (agentruntime.PermissionPolicy{}).Decide, HookEngine: hooks, MCPTools: []core.Tool{sdkagent.ToolFunc("mcp__fixture__output", "output", func(context.Context, struct{}) (sdkagent.Result, error) { return sdkagent.TextResult("unused"), nil })}}, nil); err != nil {
 		t.Fatal(err)
 	}
 	if err := m.services.Agent.Send(core.UserMessage("run", nil)); err != nil {
