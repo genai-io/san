@@ -15,7 +15,7 @@ func (s *acpSession) commandPrompt(text string) (string, string, error) {
 	if !slash {
 		return text, "", nil
 	}
-	c, ok := s.commands.IsCustomCommand(name)
+	c, ok := s.commands.LookupPromptCommand(name)
 	if !ok {
 		return "", "", fmt.Errorf("unsupported ACP command /%s", name)
 	}

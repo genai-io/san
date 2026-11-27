@@ -270,32 +270,32 @@ func TestInstalledPluginsV2Format(t *testing.T) {
 	}
 }
 
-func TestMarketplaceManager(t *testing.T) {
+func TestMarketplaces(t *testing.T) {
 	if testPluginDir == "" {
 		t.Skip("Test plugin directory not found")
 	}
 
 	tmpDir := t.TempDir()
 	// Use custom config dir to avoid modifying user's real configuration
-	manager := plugin.NewMarketplaceManagerWithConfig(tmpDir, tmpDir)
+	marketplaces := plugin.NewMarketplacesWithConfig(tmpDir, tmpDir)
 
 	// Use the parent directory of the test plugin (which contains test-plugin/)
 	pluginsParentDir := filepath.Dir(testPluginDir)
 
 	// Add a directory marketplace
-	err := manager.AddDirectory("test-local", pluginsParentDir)
+	err := marketplaces.AddDirectory("test-local", pluginsParentDir)
 	if err != nil {
 		t.Fatalf("AddDirectory() error = %v", err)
 	}
 
 	// List marketplaces
-	ids := manager.List()
+	ids := marketplaces.List()
 	if len(ids) != 1 {
 		t.Errorf("List() length = %d, want 1", len(ids))
 	}
 
 	// Get marketplace
-	entry, ok := manager.Get("test-local")
+	entry, ok := marketplaces.Get("test-local")
 	if !ok {
 		t.Fatal("Marketplace not found")
 	}
@@ -304,12 +304,12 @@ func TestMarketplaceManager(t *testing.T) {
 	}
 
 	// Remove marketplace
-	err = manager.Remove("test-local")
+	err = marketplaces.Remove("test-local")
 	if err != nil {
 		t.Fatalf("Remove() error = %v", err)
 	}
 
-	ids = manager.List()
+	ids = marketplaces.List()
 	if len(ids) != 0 {
 		t.Errorf("After remove, List() length = %d, want 0", len(ids))
 	}

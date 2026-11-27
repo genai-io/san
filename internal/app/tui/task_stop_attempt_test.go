@@ -14,10 +14,10 @@ func TestViewedStopCannotCancelContinuedAttempt(t *testing.T) {
 	for _, boundary := range []string{"before dispatch", "before execution"} {
 		t.Run(boundary, func(t *testing.T) {
 			m := userPromptModel()
-			m.services.sessionID = "parent"
+			m.features.sessionID = "parent"
 			ctx, cancel := context.WithCancel(task.WithSessionID(context.Background(), "parent"))
 			defer cancel()
-			worker := m.services.Task.CreateAgentTask("stable", "Reviewer", "Review", ctx, cancel)
+			worker := m.features.Task.CreateAgentTask("stable", "Reviewer", "Review", ctx, cancel)
 			m.openTasks()
 			msg := input.TaskStopMsg{TaskID: "stable", ViewID: m.userInput.Tasks.ViewID(), Attempt: 1}
 			var cmd tea.Cmd

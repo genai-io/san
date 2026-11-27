@@ -35,7 +35,7 @@ func TestValidateResumeDirectory(t *testing.T) {
 func TestResumeDirectoryMismatchPreservesSelectionAndReleasesLease(t *testing.T) {
 	m, store := resumedModel(t, parallelResultChain())
 	t.Cleanup(group.Forget)
-	original := m.services.Session
+	original := m.features.Session
 	permissions := m.env.SessionPermissions
 	target := mustCreateSession(t, store, session.CreateOptions{ID: "other", InitialCWD: t.TempDir()})
 	if err := target.Close(); err != nil {
@@ -44,7 +44,7 @@ func TestResumeDirectoryMismatchPreservesSelectionAndReleasesLease(t *testing.T)
 	if err := m.loadSessionByID("other"); err == nil || !strings.Contains(err.Error(), "directory mismatch") {
 		t.Fatalf("expected mismatch, got %v", err)
 	}
-	if m.services.Session != original || m.sessionID() != original.ID() || m.env.SessionPermissions != permissions {
+	if m.features.Session != original || m.sessionID() != original.ID() || m.env.SessionPermissions != permissions {
 		t.Fatal("failed resume replaced original session or permission context")
 	}
 	if _, err := store.Open(t.Context(), original.ID()); err == nil {
@@ -78,7 +78,7 @@ func TestResumeFromCreationDirectoryAfterWorktreeChange(t *testing.T) {
 	if err := m.loadSessionByID("worktree"); err != nil {
 		t.Fatal(err)
 	}
-	history := m.services.Session.Snapshot()
+	history := m.features.Session.Snapshot()
 	if cwd := history.State().ExecutionCWD; cwd == nil || *cwd != initial || m.env.CWD != initial {
 		t.Fatalf("did not resume in creation directory: %v", cwd)
 	}

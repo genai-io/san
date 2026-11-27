@@ -38,9 +38,9 @@ func TestWorkerToolMetadata(t *testing.T) {
 }
 
 func TestResumeRejectsMissingOrChangedWorkerPolicy(t *testing.T) {
-	s := NewService(task.NewManager())
+	s := NewScheduler(task.NewRunSet())
 	s.SetExecutor(&scriptedExecutor{})
-	s.store = NewStore(t.TempDir())
+	s.store = newRunStore(t.TempDir())
 	for _, policies := range []map[string]string{nil, {"a": "old"}} {
 		r := RunRecord{ID: "changed", Definition: "```mermaid\nflowchart LR\n a\n```\n## a\nallow_tools: []\n\ninspect", WorkerPolicies: policies}
 		if err := s.store.Put(r); err != nil {

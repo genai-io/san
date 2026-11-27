@@ -13,8 +13,8 @@ import (
 
 func TestSessionShutdownDrainsHookBeforeClosingWriter(t *testing.T) {
 	m, _ := resumedModel(t, nil)
-	owner := m.services.Session
-	engine := m.services.Hook
+	owner := m.features.Session
+	engine := m.features.Hook
 	apphook.Bind(engine, nil, owner, "")
 	started := make(chan struct{})
 	engine.AddRuntimeFunctionHook(hook.PostToolUse, "", hook.FunctionHook{Callback: func(ctx context.Context, _ hook.HookInput) (hook.HookOutput, error) {

@@ -218,7 +218,7 @@ func TestTextareaKeepsCursorRowVisible(t *testing.T) {
 // The box tops out at half the screen, but the buffer behind it must keep
 // accepting input and scroll — MaxHeight alone would refuse keystrokes there.
 func TestTextareaAcceptsInputPastVisibleHeight(t *testing.T) {
-	m := New("", 40, nil, SelectorDeps{})
+	m := New("", 40, nil, SelectorBindings{})
 	m.SetTerminalHeight(24)
 
 	value := strings.TrimSuffix(strings.Repeat("line\n", 40), "\n")
@@ -615,7 +615,7 @@ func TestLeadingImagePath(t *testing.T) {
 }
 
 func TestPendingImageMatchesAndExtractInlineImages(t *testing.T) {
-	m := New("", 80, nil, SelectorDeps{})
+	m := New("", 80, nil, SelectorBindings{})
 	first := m.AddPendingImage(core.Attachment{Image: ai.Image{FileName: "a.png"}})
 	second := m.AddPendingImage(core.Attachment{Image: ai.Image{FileName: "b.png"}})
 
@@ -642,7 +642,7 @@ func TestPendingImageMatchesAndExtractInlineImages(t *testing.T) {
 }
 
 func TestExtractInlineImagesUsesSubmittedBufferOffsets(t *testing.T) {
-	m := New("", 80, nil, SelectorDeps{})
+	m := New("", 80, nil, SelectorBindings{})
 	label := m.AddPendingImage(core.Attachment{Image: ai.Image{FileName: "a.png"}})
 
 	raw := "  " + label + " hi"
@@ -658,7 +658,7 @@ func TestExtractInlineImagesUsesSubmittedBufferOffsets(t *testing.T) {
 }
 
 func TestRemoveImageToken(t *testing.T) {
-	m := New("", 80, nil, SelectorDeps{})
+	m := New("", 80, nil, SelectorBindings{})
 	label := m.AddPendingImage(core.Attachment{Image: ai.Image{FileName: "clip.png"}})
 	m.Textarea.SetValue("hello " + label + " world")
 

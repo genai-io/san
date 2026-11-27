@@ -63,7 +63,7 @@ func TestBackgroundAgentShowsDeniedToolBeforeNextInferenceEnds(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	task.Initialize(task.Options{OutputDir: t.TempDir()})
-	t.Cleanup(task.ResetDefaultTracker)
+	t.Cleanup(task.ResetDefault)
 	shell, err := proc.DefaultShell()
 	if err != nil {
 		t.Fatal(err)

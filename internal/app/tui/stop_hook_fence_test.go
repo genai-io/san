@@ -17,9 +17,9 @@ func pendingStopOutcome(t *testing.T, m *model, blocked bool) func() stopHookRes
 	t.Helper()
 	data := setting.NewData()
 	data.Hooks["Stop"] = []setting.Hook{{Hooks: []setting.HookCmd{{Type: "prompt", Prompt: "decide"}}}}
-	m.services.Hook.SetSettings(data)
+	m.features.Hook.SetSettings(data)
 	entered, release := make(chan struct{}), make(chan struct{})
-	m.services.Hook.SetLLMCompleter(func(ctx context.Context, _, _, _ string) (string, error) {
+	m.features.Hook.SetLLMCompleter(func(ctx context.Context, _, _, _ string) (string, error) {
 		close(entered)
 		select {
 		case <-release:
@@ -93,19 +93,19 @@ func TestDelayedStopOutcomeFence(t *testing.T) {
 						t.Fatal(err)
 					}
 				case "run-replaced":
-					if err := m.services.Agent.Reset(t.Context()); err != nil {
+					if err := m.features.Agent.Reset(t.Context()); err != nil {
 						t.Fatal(err)
 					}
 				case "session":
-					old := m.services.Session
+					old := m.features.Session
 					if err := old.Close(); err != nil {
 						t.Fatal(err)
 					}
-					replacement, err := m.services.SessionStore.Open(t.Context(), "s")
+					replacement, err := m.features.SessionStore.Open(t.Context(), "s")
 					if err != nil {
 						t.Fatal(err)
 					}
-					m.services.Session = replacement
+					m.features.Session = replacement
 					t.Cleanup(func() { _ = old.Close() })
 				case "cancel":
 					m.handleStreamCancel()
@@ -124,12 +124,12 @@ func TestDelayedStopOutcomeFence(t *testing.T) {
 				}
 				current := m.pendingStopHook
 				beforeRows, beforePending, beforeQueue := len(m.conv.Messages), m.pendingMessages.Len(), m.userInput.Queue.Len()
-				before, err := os.ReadFile(m.services.Session.Path())
+				before, err := os.ReadFile(m.features.Session.Path())
 				if err != nil {
 					t.Fatal(err)
 				}
 				_, cmd := m.dispatch(msg)
-				after, err := os.ReadFile(m.services.Session.Path())
+				after, err := os.ReadFile(m.features.Session.Path())
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -205,12 +205,12 @@ func TestLiveStopOutcomeConsumedOnce(t *testing.T) {
 			m, _ := compactQueueModel(t)
 			msg := pendingStopOutcome(t, m, blocked)()
 			beforeRows := len(m.conv.Messages)
-			before, err := os.ReadFile(m.services.Session.Path())
+			before, err := os.ReadFile(m.features.Session.Path())
 			if err != nil {
 				t.Fatal(err)
 			}
 			m.dispatch(msg)
-			after, err := os.ReadFile(m.services.Session.Path())
+			after, err := os.ReadFile(m.features.Session.Path())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -225,7 +225,7 @@ func TestLiveStopOutcomeConsumedOnce(t *testing.T) {
 			}
 			rows := len(m.conv.Messages)
 			_, cmd := m.dispatch(msg)
-			again, err := os.ReadFile(m.services.Session.Path())
+			again, err := os.ReadFile(m.features.Session.Path())
 			if err != nil {
 				t.Fatal(err)
 			}

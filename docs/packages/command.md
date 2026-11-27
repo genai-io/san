@@ -33,7 +33,7 @@ func (s *Registry) Get(name string) (Info, bool)
 func (s *Registry) List() []Info
 func (s *Registry) ListCustom() []CustomCommand
 func (s *Registry) Matching(prefix string) []Info
-func (s *Registry) IsCustomCommand(cmd string) (*CustomCommand, bool)
+func (s *Registry) LookupPromptCommand(cmd string) (*CustomCommand, bool)
 func (s *Registry) BuiltinNames() map[string]Info
 func (s *Registry) CustomCommands() []Info
 
@@ -52,8 +52,7 @@ func ResetDefaultRegistry()          // test-only
 
 ## Internals
 
-- `service` (`service.go`) — concrete implementation, holds cwd, dynamic
-  provider functions, and a plugin-command-path callback.
+- `default_registry.go` — constructs a registry with its providers and installs the package default.
 - `registry.go` — combines three sources at query time:
   - **Built-ins** registered from `builtin/` subpackage at init.
   - **Dynamic** — `DynamicProviders` callbacks returning `Info` slices

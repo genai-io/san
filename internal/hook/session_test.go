@@ -38,7 +38,7 @@ func TestForSessionSnapshotsConfigurationAndRegistrations(t *testing.T) {
 	}})
 	parent.AddSessionFunctionHook(UserPromptSubmit, "", FunctionHook{Once: true, Callback: func(context.Context, HookInput) (HookOutput, error) { calls.Add(1); return HookOutput{}, nil }})
 	// The parent's once history must not suppress a child's first invocation.
-	parent.store.CheckOnce("parent-only")
+	parent.store.claimOnce("parent-only")
 	child := parent.ForSession("child", "/child", "child.jsonl")
 	defer child.Shutdown()
 	if child.recordedCompleter != nil || child.completionRecorder != nil || child.auditCallback != nil || child.asyncCallback != nil {

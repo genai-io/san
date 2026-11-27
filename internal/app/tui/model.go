@@ -1,6 +1,6 @@
 // Root bubbletea model. Holds the four event sources (user input, system
 // triggers, agent outbox, main-loop notices), the env state, and the
-// services struct. Init batches the initial commands (MCP autoconnect, cron +
+// appFeatures struct. Init batches the initial commands (MCP autoconnect, cron +
 // async-hook tickers, optional initial prompt).
 //
 // All the model's *behavior* lives in sibling files:
@@ -9,7 +9,7 @@
 //	                       lifecycle wiring + SessionEnd shutdown
 //	model_session.go       session save/load + per-session task storage
 //	model_scrollback.go    rendering committed messages to terminal output
-//	model_agent_events.go  chat.Runtime callbacks invoked by the agent
+//	model_agent_events.go  chat.UI callbacks for agent events
 //	                       outbox pump
 //	model_compact.go       conversation compaction (auto + /compact)
 //	model_tool_effects.go  side effects from tool calls (cwd, files, agent
@@ -81,7 +81,7 @@ type model struct {
 	fileWatcher       *fileWatcher
 	conv              chat.Model           // Agent Outbox: conversation + output rendering
 	env               env                  // Shared app state: provider, session, permission, plan, config
-	services          services             // Domain service singletons, injected at construction
+	features          appFeatures          // Feature handles used by the root model
 	learnedStores     *learnedStoreContext // live cwd/settings source for /memory inventories
 	subscriptionUsage subscriptionUsageState
 	gitBar            gitBarState // optional local repository snapshot and poll generation
@@ -116,7 +116,7 @@ type model struct {
 	// take effect without an agent restart. m.env.AutoPilot is UI-goroutine-owned
 	// and can be reassigned by a mid-turn Save, so the agent side never reads it
 	// directly — it Loads this snapshot instead (single-word swap is race-free).
-	autopilot *atomic.Pointer[autopilotRuntime]
+	autopilot *atomic.Pointer[autopilotSnapshot]
 
 	// autopilotContinuations counts the running mission's auto-continuations
 	// (reset when a mission starts fresh); autopilotContinuing tags the
@@ -201,7 +201,7 @@ type model struct {
 	grp groupState
 }
 
-var _ chat.Runtime = (*model)(nil)
+var _ chat.UI = (*model)(nil)
 
 // modeHintFor is how long the shift+tab hint stays; the status bar redraws
 // often enough (every few hundred ms) that it goes without a timer of its own.
@@ -218,7 +218,7 @@ func (m *model) Init() tea.Cmd {
 		awaitMainNotice(m.mainNotices),
 		awaitFlowMain(m.flowMain),
 		awaitMCPToolsChanged(m.mcpToolsChanged),
-		autoUpdate(m.env.Version, m.services.Setting.AutoUpdate()),
+		autoUpdate(m.env.Version, m.features.Setting.AutoUpdate()),
 		refreshModelData(),
 		m.syncGitBar(),
 		m.syncSubscriptionUsage(),

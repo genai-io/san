@@ -15,14 +15,14 @@ import (
 // A result the window can hold is passed through untouched: nil means "leave
 // it alone", and returning a copy instead would rewrite every tool call for
 // nothing.
-func TestResultPagerBoundaryAndFailedPersistence(t *testing.T) {
+func TestResultPreviewBoundaryAndFailedPersistence(t *testing.T) {
 	mainSession := mainSessionFixture(t)
-	pager := ResultPager{Store: mainSession.Store, SessionID: mainSession.Session.ID()}
-	out, err := pager.Filter(context.Background(), sdkagent.PostToolContext{Result: sdkagent.TextResult(strings.Repeat("x", 100_000))})
+	previewer := ResultPreview{Store: mainSession.Store, SessionID: mainSession.Session.ID()}
+	out, err := previewer.Filter(context.Background(), sdkagent.PostToolContext{Result: sdkagent.TextResult(strings.Repeat("x", 100_000))})
 	if err != nil || out != nil {
 		t.Fatal("threshold result was rewritten")
 	}
-	out, err = pager.Filter(context.Background(), sdkagent.PostToolContext{
+	out, err = previewer.Filter(context.Background(), sdkagent.PostToolContext{
 		Call:   ai.ToolCall{ID: "../invalid"},
 		Result: sdkagent.Result{Content: ai.TextContent(strings.Repeat("界", 40_000)), Details: "kept"},
 	})
@@ -36,12 +36,12 @@ func TestResultPagerBoundaryAndFailedPersistence(t *testing.T) {
 	}
 }
 
-func TestResultPagerPersistsUnderNativeOwner(t *testing.T) {
+func TestResultPreviewPersistsUnderNativeOwner(t *testing.T) {
 	fixture := mainSessionFixture(t)
-	pager := ResultPager{Store: fixture.Store, SessionID: fixture.Session.ID()}
+	previewer := ResultPreview{Store: fixture.Store, SessionID: fixture.Session.ID()}
 	full := strings.Repeat("界", 40_000)
 	original := sdkagent.Result{Content: ai.TextContent(full), Details: "raw details"}
-	out, err := pager.Filter(t.Context(), sdkagent.PostToolContext{Call: ai.ToolCall{ID: "native-call"}, Result: original})
+	out, err := previewer.Filter(t.Context(), sdkagent.PostToolContext{Call: ai.ToolCall{ID: "native-call"}, Result: original})
 	if err != nil || out == nil {
 		t.Fatalf("filter=%+v err=%v", out, err)
 	}
@@ -60,8 +60,8 @@ func TestResultPagerPersistsUnderNativeOwner(t *testing.T) {
 }
 
 func TestAResultThatFitsIsLeftAlone(t *testing.T) {
-	pager := ResultPager{}
-	out, err := pager.Filter(context.Background(), sdkagent.PostToolContext{
+	previewer := ResultPreview{}
+	out, err := previewer.Filter(context.Background(), sdkagent.PostToolContext{
 		Result: sdkagent.Result{Content: ai.TextContent(strings.Repeat("x", 1000))},
 	})
 	if err != nil || out != nil {
@@ -73,9 +73,9 @@ func TestAResultThatFitsIsLeftAlone(t *testing.T) {
 // the guard used to edit the copy the interface draws, which stopped reaching
 // the model once the agent held its own conversation.
 func TestAResultTooLargeIsReplacedForTheModel(t *testing.T) {
-	pager := ResultPager{}
+	previewer := ResultPreview{}
 	full := strings.Repeat("y", 200_000)
-	out, err := pager.Filter(context.Background(), sdkagent.PostToolContext{
+	out, err := previewer.Filter(context.Background(), sdkagent.PostToolContext{
 		Call:   ai.ToolCall{ID: "tc-1"},
 		Result: sdkagent.Result{Content: ai.TextContent(full)},
 	})

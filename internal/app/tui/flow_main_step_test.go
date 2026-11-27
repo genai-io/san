@@ -18,8 +18,8 @@ func flowMainStepModel(t *testing.T) *model {
 	t.Helper()
 	m, _ := compactQueueModel(t)
 	m.flowMain = newFlowMainBridge()
-	executor := m.flowMain.bind(m.services.Session)
-	lease, err := executor.Open(t.Context(), flow.MainRunInfo{SessionID: m.services.Session.ID()})
+	executor := m.flowMain.bind(m.features.Session)
+	lease, err := executor.Open(t.Context(), flow.MainRunInfo{SessionID: m.features.Session.ID()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,7 +32,7 @@ func TestRetiredFlowInputStillUsesPromptHook(t *testing.T) {
 	m := flowMainStepModel(t)
 	id := m.userInput.Queue.Enqueue("retained Flow amendment", nil)
 	m.userInput.Queue.RequirePromptAdmission(id)
-	m.services.Hook = modelWithPromptHook(t, "exit 2").services.Hook
+	m.features.Hook = modelWithPromptHook(t, "exit 2").features.Hook
 	m.flowMain.bind(nil)
 	if _, released := m.releaseQueuedMessage(); released || m.userInput.Queue.Len() != 1 || !m.pendingMessages.Held() {
 		t.Fatal("retiring a Flow allowed its retained input to bypass prompt admission")
@@ -49,16 +49,16 @@ func TestFlowMainStepAdmissionFailureKeepsQueue(t *testing.T) {
 			case "inactive":
 				ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 				defer cancel()
-				if err := m.services.Agent.Stop(ctx); err != nil {
+				if err := m.features.Agent.Stop(ctx); err != nil {
 					t.Fatal(err)
 				}
 				m.flowMainRequest.outbox = m.AgentOutbox()
 			case "recording-failed":
-				if err := m.services.Session.Close(); err != nil {
+				if err := m.features.Session.Close(); err != nil {
 					t.Fatal(err)
 				}
 			case "hook-blocked":
-				m.services.Hook = modelWithPromptHook(t, "exit 2").services.Hook
+				m.features.Hook = modelWithPromptHook(t, "exit 2").features.Hook
 			}
 			if _, released := m.releaseQueuedMessage(); released {
 				t.Fatal("failed native admission consumed queue")
@@ -186,7 +186,7 @@ func TestFlowMainStepAdmissionExactlyOnce(t *testing.T) {
 	}
 	count := 0
 	var id string
-	for _, message := range m.services.Agent.Messages() {
+	for _, message := range m.features.Agent.Messages() {
 		if strings.Contains(message.Text(), amendment) {
 			count++
 			id = message.ID

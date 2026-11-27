@@ -124,7 +124,7 @@ func (m *model) dispatchSubmissionScoped(raw string, completion *session.Complet
 		m.autopilotContinuing = false
 	}
 
-	if blocked, reason := m.checkPromptHook(context.Background(), raw); blocked {
+	if blocked, reason := m.runPromptSubmitHook(context.Background(), raw); blocked {
 		m.conv.AddNotice("Prompt blocked: " + reason)
 		m.userInput.Reset()
 		return tea.Batch(m.CommitMessages()...)
@@ -267,11 +267,11 @@ func (m *model) sendQueuedInputs(explicit bool) (tea.Cmd, bool) {
 		item, _ := m.userInput.Queue.Dequeue()
 		isCommand := m.isSlashCommand(item.Content)
 		name, _, _ := command.ParseCommand(item.Content)
-		previousSession, previousOutbox := m.services.Session, m.AgentOutbox()
+		previousSession, previousOutbox := m.features.Session, m.AgentOutbox()
 		cmds = append(cmds, m.dispatchQueuedInput(item))
 		explicit = false
 		if !isCommand || name == "exit" || name == "quit" ||
-			m.services.Session != previousSession || m.AgentOutbox() != previousOutbox ||
+			m.features.Session != previousSession || m.AgentOutbox() != previousOutbox ||
 			m.conv.Stream.Active || m.conv.Compact.Active || m.pendingMessages.Len() > 0 {
 			return tea.Batch(cmds...), true
 		}
@@ -388,7 +388,7 @@ func (m *model) HandleSkillInvocation() tea.Cmd {
 		if m.pendingMessages.Cancelling() != nil {
 			m.pendingPluginRoot = pluginRoot
 		} else {
-			m.services.Agent.SetPluginRoot(pluginRoot)
+			m.features.Agent.SetPluginRoot(pluginRoot)
 		}
 	}
 	return m.SubmitToAgent(msg)

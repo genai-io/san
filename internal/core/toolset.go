@@ -22,7 +22,7 @@ func (a *agent) offered() []Tool {
 	out := make([]Tool, 0, len(all))
 	for _, t := range all {
 		tagged := withCallID{inner: t}
-		if name := t.Schema().Name; isReadOnlyTool(name) || spawnsAnAgent(name) {
+		if canRunInParallel(t.Schema().Name) {
 			out = append(out, tagged)
 			continue
 		}
@@ -65,15 +65,11 @@ func ToolCallIDFromContext(ctx context.Context) string {
 	return ""
 }
 
-func isReadOnlyTool(name string) bool {
+func canRunInParallel(name string) bool {
 	switch name {
-	case "Read", "WebFetch", "WebSearch", "LSP":
+	case "Read", "WebFetch", "WebSearch", "LSP", "Agent", "SendMessage":
 		return true
 	default:
 		return false
 	}
-}
-
-func spawnsAnAgent(name string) bool {
-	return name == "Agent" || name == "SendMessage"
 }

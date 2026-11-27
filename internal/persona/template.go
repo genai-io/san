@@ -4,8 +4,6 @@ import (
 	_ "embed"
 	"os"
 	"path/filepath"
-
-	"github.com/genai-io/san/internal/infra/confdir"
 )
 
 //go:embed README.md.tmpl
@@ -17,7 +15,7 @@ func UserDir() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(confdir.Dir(home), "personas"), nil
+	return personasDir(home), nil
 }
 
 // EnsureUserDir creates ~/.san/personas/ and writes README.md if missing.

@@ -288,11 +288,11 @@ func (s *SearchSelector) panel() widgets.Panel {
 
 // --- Search Runtime ---
 
-func UpdateSearch(deps OverlayDeps, state *SearchSelector, msg tea.Msg) (tea.Cmd, bool) {
+func UpdateSearch(panel PanelContext, state *SearchSelector, msg tea.Msg) (tea.Cmd, bool) {
 	switch msg := msg.(type) {
 	case searchSelectedMsg:
 		state.Cancel()
-		token := deps.State.Provider.SetStatusMessage(fmt.Sprintf("Search engine: %s", msg.Provider))
+		token := panel.State.Provider.SetStatusMessage(fmt.Sprintf("Search engine: %s", msg.Provider))
 		return widgets.StatusTimer(3*time.Second, token), true
 	}
 	return nil, false

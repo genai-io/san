@@ -94,7 +94,7 @@ func TestTaskTrackerStaysPutAsForegroundWaitChanges(t *testing.T) {
 			t.Run(fmt.Sprintf("%dx%d", width, height), func(t *testing.T) {
 				m := fixedComposerModel(width, height)
 				m.conv.ShowTasks = true
-				m.services.Tracker.Create("Current task", "", "", nil)
+				m.features.Tracker.Create("Current task", "", "", nil)
 				m.userInput.Queue.Enqueue("queued prompt", nil)
 				started := time.Now().Add(-7 * time.Second)
 				var initial []string
@@ -143,10 +143,10 @@ func TestTaskTrackerStaysPutAsForegroundWaitChanges(t *testing.T) {
 func TestForegroundWaitWithRunningTask(t *testing.T) {
 	const width, height = 64, 12
 	m := fixedComposerModel(width, height)
-	m.services.Task = task.NewManager()
+	m.features.Task = task.NewRunSet()
 	worker := viewerWorker(m, "coverage", "", time.Now().Add(-41*time.Second))
 	worker.info.Description = "Measure targeted Go coverage"
-	todo.TrackWorker(m.services.Tracker, worker.info)
+	todo.TrackWorker(m.features.Tracker, worker.info)
 	started := time.Now().Add(-7 * time.Second)
 	m.conv.Stream = chat.StreamState{Active: true, Inferring: true, StartedAt: started}
 
@@ -248,7 +248,7 @@ func TestCompactionPlacementAndRecovery(t *testing.T) {
 
 func TestCompactionCompletionIsTopLevel(t *testing.T) {
 	m := modelWithInferenceProgress(24)
-	m.services.Reminder = &reminder.Queue{}
+	m.features.Reminder = &reminder.Queue{}
 	m.env.CWD = t.TempDir()
 	m.OnCompactStart(83)
 	m.OnCompacted(core.Compacted{Summary: "private summary body", OriginalCount: 83})

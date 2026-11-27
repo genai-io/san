@@ -108,7 +108,7 @@ type acpSession struct {
 	hooks              *hook.Engine
 	reminders          *reminder.Queue
 	toolResponses      sync.Map
-	mcp                *mcp.Manager
+	mcp                *mcp.ServerSet
 	permissions        *acpPermissions
 	commands           *command.Registry
 	lastSentCommands   []command.Info // Last command list sent to the client; unchanged lists are not resent.
@@ -167,11 +167,7 @@ func (h *acpHost) open(ctx context.Context, req protocol.NewSessionRequest, resu
 		}
 		snapshot := opened.Snapshot()
 		history = &snapshot
-		cwd := history.Identity().InitialCWD
-		if saved := history.State().ExecutionCWD; saved != nil {
-			cwd = *saved
-		}
-		if err := session.ValidateResumeDirectory(cwd, req.CWD); err != nil {
+		if err := session.ValidateResumeDirectory(history.ExecutionCWD(), req.CWD); err != nil {
 			return protocol.NewSessionResponse{}, err
 		}
 	}
@@ -224,10 +220,10 @@ func (h *acpHost) open(ctx context.Context, req protocol.NewSessionRequest, resu
 		}
 	}
 	s.nativeSession = agentruntime.MainSession{Session: opened, Store: store}
-	tasks := task.NewManager()
+	tasks := task.NewRunSet()
 	s.tracker = todo.NewStoreWithTasks(tasks)
 	if home, err := os.UserHomeDir(); err == nil {
-		if err := s.tracker.SetStorageDir(task.SessionDir(home, opened.ID())); err != nil {
+		if err := s.tracker.SetStorageDir(task.ListDir(home, opened.ID())); err != nil {
 			log.Logger().Warn("task tracker storage unavailable", zap.Error(err))
 		}
 	}
@@ -261,7 +257,7 @@ func (h *acpHost) open(ctx context.Context, req protocol.NewSessionRequest, resu
 		PermissionRules:  policy.Decide,
 		CanApproveByHook: policy.CanApproveByHook,
 		HookEngine:       s.hooks, Recording: opened,
-		ResultFilter: agentruntime.ResultPager{Store: store, SessionID: opened.ID()}.Filter,
+		ResultFilter: agentruntime.ResultPreview{Store: store, SessionID: opened.ID()}.Filter,
 		AutoMemory:   agentruntime.AutoMemoryConfig{Store: memory, Recall: settings.MemoryRecall(), IndexLimits: settings.MemoryPreview()},
 		FileCache:    filecache.New(),
 	}

@@ -20,7 +20,7 @@ func TestMemorySlashRoutes(t *testing.T) {
 	cwd := t.TempDir()
 	t.Chdir(cwd)
 	svc := setting.New(setting.NewData())
-	m := &Model{Reflection: NewReflectionSelector(ReflectionDeps{
+	m := &Model{Reflection: NewReflectionSelector(ReflectionSources{
 		Workspace: func() (string, *setting.Settings) { return cwd, svc },
 	})}
 	path := filepath.Join(cwd, "AGENTS.md")
@@ -124,7 +124,7 @@ func TestReflectionTogglesRepositoryMemory(t *testing.T) {
 		t.Fatal(err)
 	}
 	svc := setting.New(setting.NewData())
-	c := NewReflectionSelector(ReflectionDeps{Workspace: func() (string, *setting.Settings) { return cwd, svc }})
+	c := NewReflectionSelector(ReflectionSources{Workspace: func() (string, *setting.Settings) { return cwd, svc }})
 	c.Enter(120, 40)
 	press := func(key rune) { c.HandleKeypress(tea.KeyPressMsg{Code: key}) }
 	press(tea.KeyRight) // Options.

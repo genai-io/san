@@ -25,7 +25,7 @@ import (
 // Every category is an estimate — the provider reports one exact prompt size
 // and no breakdown, so the split has to be derived from the text itself.
 func (m *model) contextUsage() chat.ContextUsage {
-	store, current := m.services.LLM.Store(), m.env.CurrentModel
+	store, current := m.features.LLM.Store(), m.env.CurrentModel
 	window, budget := widgets.GetContextLimits(store, current)
 	usage := chat.ContextUsage{
 		ModelName:     m.env.GetModelDisplayName(),
@@ -37,8 +37,8 @@ func (m *model) contextUsage() chat.ContextUsage {
 		_, _, usage.Overridden = store.ContextLimit(current.ModelID)
 	}
 
-	sys, tools := m.services.Agent.System(), m.services.Agent.Tools()
-	messages := m.services.Agent.Messages()
+	sys, tools := m.features.Agent.System(), m.features.Agent.Tools()
+	messages := m.features.Agent.Messages()
 	if sys == nil || tools == nil {
 		m.addUnstartedAgentUsage(&usage)
 	} else {
@@ -63,7 +63,7 @@ func (m *model) contextUsage() chat.ContextUsage {
 	// Reminders queued for the next turn are not in the chain yet. Counting
 	// them keeps a fresh session from reporting zero skills and zero memory
 	// when both are about to be injected on the very next message.
-	for _, pending := range m.services.Reminder.Pending() {
+	for _, pending := range m.features.Reminder.Pending() {
 		addContextUsage(&usage, pending)
 	}
 

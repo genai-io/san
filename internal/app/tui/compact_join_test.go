@@ -29,7 +29,7 @@ func TestManualCompactionCancellationJoinsPreCompactModelHook(t *testing.T) {
 	settings.Hooks["PreCompact"] = []setting.Hook{{Hooks: []setting.HookCmd{{Type: "prompt", Prompt: "verify"}}}}
 	engine := hook.NewEngine(settings, owner.ID(), m.env.CWD, owner.Path())
 	apphook.Bind(engine, m.env.LLMProvider, owner, "m")
-	m.services.Hook = engine
+	m.features.Hook = engine
 	t.Cleanup(engine.Shutdown)
 	req := m.BuildCompactRequest("", "manual")
 	runDone := make(chan struct{})
@@ -75,7 +75,7 @@ func TestManualCompactionCancellationFencesUnstartedHook(t *testing.T) {
 		called = true
 		return hook.HookOutput{}, nil
 	}})
-	m.services.Hook = engine
+	m.features.Hook = engine
 	t.Cleanup(engine.Shutdown)
 	req := m.BuildCompactRequest("", "manual")
 	if err := m.cancelManualCompaction(); err != nil {

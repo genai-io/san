@@ -20,17 +20,18 @@ func IsPersonaFile(cwd, path string) bool {
 	if !strings.Contains(slash, "/"+confdir.Name+"/personas/") {
 		return false
 	}
-	return withinAny(path, scopeDirs(cwd, "personas"))
+	return withinAny(path, scopeDirs(cwd))
 }
 
-// scopeDirs returns the user- and project-level <sub> directories.
-func scopeDirs(cwd, sub string) []string {
+func personasDir(root string) string { return filepath.Join(confdir.Dir(root), "personas") }
+
+func scopeDirs(cwd string) []string {
 	var out []string
 	if home, err := os.UserHomeDir(); err == nil && home != "" {
-		out = append(out, filepath.Join(home, confdir.Name, sub))
+		out = append(out, personasDir(home))
 	}
 	if cwd != "" {
-		out = append(out, filepath.Join(cwd, confdir.Name, sub))
+		out = append(out, personasDir(cwd))
 	}
 	return out
 }

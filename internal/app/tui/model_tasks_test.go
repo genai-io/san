@@ -36,13 +36,13 @@ func (w *taskViewerWorker) WaitForCompletion(time.Duration) bool { return !w.IsR
 
 func viewerWorker(m *model, id, session string, start time.Time) *taskViewerWorker {
 	w := &taskViewerWorker{info: task.TaskInfo{ID: id, ParentSessionID: session, StartTime: start, Status: task.StatusRunning, Type: task.TaskTypeAgent, Description: "subject-" + id}}
-	m.services.Task.RegisterTask(w)
+	m.features.Task.RegisterTask(w)
 	return w
 }
 
 func TestTaskRootSnapshotsScopeOrderAndUTF8Bound(t *testing.T) {
 	m := userPromptModel()
-	m.services.sessionID = "current"
+	m.features.sessionID = "current"
 	now := time.Now()
 	b := viewerWorker(m, "b", "current", now)
 	viewerWorker(m, "a", "current", now)
@@ -98,7 +98,7 @@ func TestTaskRootStopIsAsyncExactIDAndRejectsStaleActions(t *testing.T) {
 	for _, invalidate := range []string{"reopen", "switch", "reset"} {
 		t.Run(invalidate, func(t *testing.T) {
 			m := userPromptModel()
-			m.services.sessionID = "one"
+			m.features.sessionID = "one"
 			selected := viewerWorker(m, "selected", "one", time.Now())
 			peer := viewerWorker(m, "peer", "one", time.Now())
 			m.openTasks()
@@ -111,7 +111,7 @@ func TestTaskRootStopIsAsyncExactIDAndRejectsStaleActions(t *testing.T) {
 			case "reopen":
 				m.openTasks()
 			case "switch":
-				m.services.sessionID = "two"
+				m.features.sessionID = "two"
 				m.refreshTaskViewer()
 			case "reset":
 				m.resetUserPrompts()
@@ -134,7 +134,7 @@ func TestTaskRootStopIsAsyncExactIDAndRejectsStaleActions(t *testing.T) {
 
 func TestTaskRootStopResultHasNoDuplicateReceipt(t *testing.T) {
 	m := userPromptModel()
-	m.services.sessionID = "one"
+	m.features.sessionID = "one"
 	viewerWorker(m, "worker", "one", time.Now())
 	m.openTasks()
 	cmd := m.stopViewedTask(input.TaskStopMsg{TaskID: "worker", ViewID: m.userInput.Tasks.ViewID()})
@@ -244,7 +244,7 @@ func TestTaskRootReviewResumesWhenQueueExpiresDuringActivation(t *testing.T) {
 
 func TestTaskRootPeriodicTickScopedRefresh(t *testing.T) {
 	m := userPromptModel()
-	m.services.sessionID = "one"
+	m.features.sessionID = "one"
 	worker := viewerWorker(m, "worker", "one", time.Now())
 	if m.openTasks() == nil {
 		t.Fatal("viewer has no periodic refresh")
@@ -277,9 +277,9 @@ func TestTaskRootTrackerUsesOnlyLivePermissionAssociation(t *testing.T) {
 	m := userPromptModel()
 	ctx, cancel := context.WithCancel(task.WithSessionID(context.Background(), m.sessionID()))
 	defer cancel()
-	worker := m.services.Task.CreateAgentTask("tracked", "Reviewer", "Audit", ctx, cancel)
-	item := m.services.Tracker.Create("Audit", "", "", map[string]any{"background_task_id": worker.GetID(), "background_status_detail": "running"})
-	if err := m.services.Tracker.Update(item.ID, todo.WithStatus(todo.StatusInProgress)); err != nil {
+	worker := m.features.Task.CreateAgentTask("tracked", "Reviewer", "Audit", ctx, cancel)
+	item := m.features.Tracker.Create("Audit", "", "", map[string]any{"background_task_id": worker.GetID(), "background_status_detail": "running"})
+	if err := m.features.Tracker.Update(item.ID, todo.WithStatus(todo.StatusInProgress)); err != nil {
 		t.Fatal(err)
 	}
 	m.userPrompts.active = userPromptQuestion(m, context.Background(), worker.GetID())

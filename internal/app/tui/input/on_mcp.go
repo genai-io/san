@@ -64,7 +64,7 @@ type mcpServerItem struct {
 
 // MCPSelector holds state for the MCP server selector
 type MCPSelector struct {
-	registry *coremcp.Manager
+	serverSet *coremcp.ServerSet
 
 	active          bool
 	servers         []mcpServerItem
@@ -92,7 +92,7 @@ type mcpConnectMsg struct {
 
 // mcpConnectResultMsg is sent when connection completes
 type mcpConnectResultMsg struct {
-	manager    *coremcp.Manager
+	serverSet  *coremcp.ServerSet
 	ServerName string
 	Success    bool
 	ToolCount  int
@@ -125,13 +125,13 @@ type mcpEditServerMsg struct {
 
 // ── Constructor ─────────────────────────────────────────────────────
 
-// NewMCPSelector creates a new MCPSelector with the given MCP registry.
-func NewMCPSelector(reg *coremcp.Manager) MCPSelector {
+// NewMCPSelector creates a new MCPSelector with the given MCP server set.
+func NewMCPSelector(serverSet *coremcp.ServerSet) MCPSelector {
 	return MCPSelector{
-		registry: reg,
-		active:   false,
-		servers:  []mcpServerItem{},
-		nav:      widgets.ListNav{MaxVisible: 10},
+		serverSet: serverSet,
+		active:    false,
+		servers:   []mcpServerItem{},
+		nav:       widgets.ListNav{MaxVisible: 10},
 	}
 }
 
@@ -139,7 +139,7 @@ func NewMCPSelector(reg *coremcp.Manager) MCPSelector {
 
 // EnterSelect enters MCP server selection mode
 func (s *MCPSelector) EnterSelect(width, height int) error {
-	if s.registry == nil {
+	if s.serverSet == nil {
 		return fmt.Errorf("MCP is not initialized")
 	}
 
@@ -166,8 +166,8 @@ func (s *MCPSelector) AutoReconnect() tea.Cmd {
 	var cmds []tea.Cmd
 	for _, srv := range s.servers {
 		if srv.Status == coremcp.StatusError {
-			s.registry.SetConnecting(srv.Name, true)
-			cmds = append(cmds, mcpStartConnect(s.registry, srv.Name))
+			s.serverSet.SetConnecting(srv.Name, true)
+			cmds = append(cmds, mcpStartConnect(s.serverSet, srv.Name))
 		}
 	}
 	if len(cmds) == 0 {
@@ -176,9 +176,9 @@ func (s *MCPSelector) AutoReconnect() tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
-// refreshServers refreshes the server list from registry
+// refreshServers refreshes the server list from the server set
 func (s *MCPSelector) refreshServers() {
-	servers := s.registry.List()
+	servers := s.serverSet.List()
 	s.servers = make([]mcpServerItem, 0, len(servers))
 
 	for _, srv := range servers {
@@ -356,26 +356,26 @@ func (s *MCPSelector) HandleConnectResult(msg mcpConnectResultMsg) {
 // HandleDisconnect handles a disconnect (disable) request.
 // Marks the server as disabled so it won't auto-connect on restart.
 func (s *MCPSelector) HandleDisconnect(name string) {
-	if s.registry != nil {
-		s.registry.Disconnect(name)
-		s.registry.SetDisabled(name, true)
+	if s.serverSet != nil {
+		s.serverSet.Disconnect(name)
+		s.serverSet.SetDisabled(name, true)
 	}
 	s.refreshAndUpdateView()
 }
 
 // HandleReconnect handles a reconnect request.
 func (s *MCPSelector) HandleReconnect(name string) {
-	if s.registry != nil {
-		s.registry.Disconnect(name)
+	if s.serverSet != nil {
+		s.serverSet.Disconnect(name)
 	}
 	s.refreshAndUpdateView()
 }
 
 // HandleRemove handles a remove request
 func (s *MCPSelector) HandleRemove(name string) {
-	if s.registry != nil {
-		s.registry.SetDisabled(name, false)
-		if err := s.registry.RemoveServer(name); err != nil {
+	if s.serverSet != nil {
+		s.serverSet.SetDisabled(name, false)
+		if err := s.serverSet.RemoveServer(name); err != nil {
 			log.Logger().Warn("failed to remove MCP server", zap.String("server", name), zap.Error(err))
 		}
 	}
@@ -430,15 +430,15 @@ func (s *MCPSelector) clampActionIdx() {
 // AutoConnect returns a batch of commands to connect all configured MCP servers,
 // skipping servers that the user has explicitly disabled.
 func (s *MCPSelector) AutoConnect() tea.Cmd {
-	if s.registry == nil {
+	if s.serverSet == nil {
 		return nil
 	}
 	var cmds []tea.Cmd
-	for _, srv := range s.registry.List() {
+	for _, srv := range s.serverSet.List() {
 		name := srv.Config.Name
-		if !s.registry.IsDisabled(name) {
-			s.registry.SetConnecting(name, true)
-			cmds = append(cmds, mcpStartConnect(s.registry, name))
+		if !s.serverSet.IsDisabled(name) {
+			s.serverSet.SetConnecting(name, true)
+			cmds = append(cmds, mcpStartConnect(s.serverSet, name))
 		}
 	}
 	if len(cmds) == 0 {
@@ -448,21 +448,21 @@ func (s *MCPSelector) AutoConnect() tea.Cmd {
 }
 
 // mcpStartConnect returns a tea.Cmd that connects to an MCP server.
-func mcpStartConnect(reg *coremcp.Manager, name string) tea.Cmd {
+func mcpStartConnect(serverSet *coremcp.ServerSet, name string) tea.Cmd {
 	return func() tea.Msg {
 		ctx := context.Background()
-		if reg == nil {
+		if serverSet == nil {
 			return mcpConnectResultMsg{
-				manager:    reg,
+				serverSet:  serverSet,
 				ServerName: name,
 				Success:    false,
 				Err:        fmt.Errorf("MCP not initialized"),
 			}
 		}
 
-		if err := reg.Connect(ctx, name); err != nil {
+		if err := serverSet.Connect(ctx, name); err != nil {
 			return mcpConnectResultMsg{
-				manager:    reg,
+				serverSet:  serverSet,
 				ServerName: name,
 				Success:    false,
 				Err:        err,
@@ -470,12 +470,12 @@ func mcpStartConnect(reg *coremcp.Manager, name string) tea.Cmd {
 		}
 
 		toolCount := 0
-		if client, ok := reg.Client(name); ok {
+		if client, ok := serverSet.Client(name); ok {
 			toolCount = len(client.CachedTools())
 		}
 
 		return mcpConnectResultMsg{
-			manager:    reg,
+			serverSet:  serverSet,
 			ServerName: name,
 			Success:    true,
 			ToolCount:  toolCount,
@@ -486,32 +486,32 @@ func mcpStartConnect(reg *coremcp.Manager, name string) tea.Cmd {
 // ── Runtime interface ───────────────────────────────────────────────
 
 // UpdateMCP routes MCP server management messages.
-func UpdateMCP(deps OverlayDeps, state *MCPState, msg tea.Msg) (tea.Cmd, bool) {
+func UpdateMCP(panel PanelContext, state *MCPState, msg tea.Msg) (tea.Cmd, bool) {
 	switch msg := msg.(type) {
 	case mcpConnectMsg:
-		if state.Selector.registry != nil {
-			state.Selector.registry.SetDisabled(msg.ServerName, false)
-			state.Selector.registry.SetConnecting(msg.ServerName, true)
+		if state.Selector.serverSet != nil {
+			state.Selector.serverSet.SetDisabled(msg.ServerName, false)
+			state.Selector.serverSet.SetConnecting(msg.ServerName, true)
 		}
-		return mcpStartConnect(state.Selector.registry, msg.ServerName), true
+		return mcpStartConnect(state.Selector.serverSet, msg.ServerName), true
 
 	case mcpConnectResultMsg:
-		if msg.manager != nil && msg.manager != state.Selector.registry {
+		if msg.serverSet != nil && msg.serverSet != state.Selector.serverSet {
 			return nil, true
 		}
-		if state.Selector.registry != nil {
-			state.Selector.registry.SetConnecting(msg.ServerName, false)
+		if state.Selector.serverSet != nil {
+			state.Selector.serverSet.SetConnecting(msg.ServerName, false)
 			if !msg.Success && msg.Err != nil {
-				state.Selector.registry.SetConnectError(msg.ServerName, msg.Err.Error())
+				state.Selector.serverSet.SetConnectError(msg.ServerName, msg.Err.Error())
 			} else {
-				state.Selector.registry.SetConnectError(msg.ServerName, "")
+				state.Selector.serverSet.SetConnectError(msg.ServerName, "")
 			}
 		}
 		state.Selector.HandleConnectResult(msg)
 		if !state.Selector.IsActive() && !msg.Success {
 			content := fmt.Sprintf("Failed to connect to '%s': %v", msg.ServerName, msg.Err)
-			deps.Conv.Append(core.ChatMessage{Role: core.ChatNotice, Content: content})
-			return tea.Batch(deps.CommitMessages()...), true
+			panel.Conv.Append(core.ChatMessage{Role: core.ChatNotice, Content: content})
+			return tea.Batch(panel.CommitMessages()...), true
 		}
 		return nil, true
 
@@ -521,24 +521,24 @@ func UpdateMCP(deps OverlayDeps, state *MCPState, msg tea.Msg) (tea.Cmd, bool) {
 
 	case mcpReconnectMsg:
 		state.Selector.HandleReconnect(msg.ServerName)
-		if state.Selector.registry != nil {
-			state.Selector.registry.SetConnecting(msg.ServerName, true)
+		if state.Selector.serverSet != nil {
+			state.Selector.serverSet.SetConnecting(msg.ServerName, true)
 		}
-		return mcpStartConnect(state.Selector.registry, msg.ServerName), true
+		return mcpStartConnect(state.Selector.serverSet, msg.ServerName), true
 
 	case mcpRemoveMsg:
 		state.Selector.HandleRemove(msg.ServerName)
 		return nil, true
 
 	case mcpAddServerMsg:
-		deps.State.Textarea.SetValue("/mcp add ")
+		panel.State.Textarea.SetValue("/mcp add ")
 		return nil, true
 
 	case mcpEditServerMsg:
-		info, err := coremcp.PrepareServerEdit(state.Selector.registry, msg.ServerName)
+		info, err := coremcp.PrepareServerEdit(state.Selector.serverSet, msg.ServerName)
 		if err != nil {
-			deps.Conv.Append(core.ChatMessage{Role: core.ChatNotice, Content: fmt.Sprintf("Error: %v", err)})
-			return tea.Batch(deps.CommitMessages()...), true
+			panel.Conv.Append(core.ChatMessage{Role: core.ChatNotice, Content: fmt.Sprintf("Error: %v", err)})
+			return tea.Batch(panel.CommitMessages()...), true
 		}
 		state.EditingFile = info.TempFile
 		state.EditingServer = info.ServerName
@@ -555,17 +555,17 @@ func UpdateMCP(deps OverlayDeps, state *MCPState, msg tea.Msg) (tea.Cmd, bool) {
 
 		if msg.Err != nil {
 			os.Remove(info.TempFile)
-			deps.Conv.Append(core.ChatMessage{Role: core.ChatNotice, Content: fmt.Sprintf("Editor error: %v", msg.Err)})
-			return tea.Batch(deps.CommitMessages()...), true
+			panel.Conv.Append(core.ChatMessage{Role: core.ChatNotice, Content: fmt.Sprintf("Editor error: %v", msg.Err)})
+			return tea.Batch(panel.CommitMessages()...), true
 		}
 
-		if err := coremcp.ApplyServerEdit(state.Selector.registry, info); err != nil {
-			deps.Conv.Append(core.ChatMessage{Role: core.ChatNotice, Content: fmt.Sprintf("Failed to apply edit: %v", err)})
-			return tea.Batch(deps.CommitMessages()...), true
+		if err := coremcp.ApplyServerEdit(state.Selector.serverSet, info); err != nil {
+			panel.Conv.Append(core.ChatMessage{Role: core.ChatNotice, Content: fmt.Sprintf("Failed to apply edit: %v", err)})
+			return tea.Batch(panel.CommitMessages()...), true
 		}
 
-		deps.Conv.Append(core.ChatMessage{Role: core.ChatNotice, Content: fmt.Sprintf("Updated MCP server '%s'", info.ServerName)})
-		return tea.Batch(deps.CommitMessages()...), true
+		panel.Conv.Append(core.ChatMessage{Role: core.ChatNotice, Content: fmt.Sprintf("Updated MCP server '%s'", info.ServerName)})
+		return tea.Batch(panel.CommitMessages()...), true
 	}
 	return nil, false
 }

@@ -32,11 +32,11 @@ func TestClearStartsAFreshDraft(t *testing.T) {
 	if err := testutil.AppendMessages(old, history); err != nil {
 		t.Fatal(err)
 	}
-	m := model{services: services{Agent: &agentruntime.Runtime{}, Session: old, SessionStore: store, Tracker: todo.NewStore(), Task: task.NewManager(), Reminder: reminder.NewQueue(), Hook: hook.NewEngine(nil, "old", "", old.Path())}, conv: chat.NewModel(80)}
-	m.services.Setting = setting.New(setting.NewData())
-	m.services.LLM = &llm.Conn{}
-	m.autopilot = new(atomic.Pointer[autopilotRuntime])
-	m.services.Agent.SetMessages(history)
+	m := model{features: appFeatures{Agent: &agentruntime.Runtime{}, Session: old, SessionStore: store, Tracker: todo.NewStore(), Task: task.NewRunSet(), Reminder: reminder.NewQueue(), Hook: hook.NewEngine(nil, "old", "", old.Path())}, conv: chat.NewModel(80)}
+	m.features.Setting = setting.New(setting.NewData())
+	m.features.LLM = &llm.Conn{}
+	m.autopilot = new(atomic.Pointer[autopilotSnapshot])
+	m.features.Agent.SetMessages(history)
 	m.env.CWD = cwd
 	m.env.SessionName = "old title"
 	m.env.FileCache = filecache.New()
@@ -47,13 +47,13 @@ func TestClearStartsAFreshDraft(t *testing.T) {
 	if id == "old" || id == "" {
 		t.Fatalf("clear kept old identity: %q", id)
 	}
-	if m.env.SessionName != "" || len(m.services.Agent.Messages()) != 0 {
+	if m.env.SessionName != "" || len(m.features.Agent.Messages()) != 0 {
 		t.Fatal("clear retained old session state")
 	}
-	if filepath.Base(m.services.Tracker.StorageDir()) != id {
+	if filepath.Base(m.features.Tracker.StorageDir()) != id {
 		t.Fatal("task storage kept old identity")
 	}
-	if _, err := os.Stat(m.services.Session.Path()); !errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(m.features.Session.Path()); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("/clear saved an empty transcript: %v", err)
 	}
 	// Delayed events from the retired runtime must not write into either log.
@@ -83,10 +83,10 @@ func initClearSessionTest(t *testing.T, m *model) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("SAN_TASK_LIST_ID", "")
 	m.env.CWD = t.TempDir()
-	m.services.Session = nil
-	m.services.sessionID = "before-clear"
-	m.services.Hook = hook.NewEngine(nil, "before-clear", "", "")
-	m.services.Task = task.NewManager()
+	m.features.Session = nil
+	m.features.sessionID = "before-clear"
+	m.features.Hook = hook.NewEngine(nil, "before-clear", "", "")
+	m.features.Task = task.NewRunSet()
 	m.env.FileCache = filecache.New()
 }
 

@@ -31,7 +31,7 @@ func Run(opts setting.RunOptions) (runErr error) {
 				return
 			}
 			m.closeUserPrompts()
-			tasks = m.services.Task
+			tasks = m.features.Task
 		}
 		if err := tasks.Shutdown(); err != nil {
 			runErr = errors.Join(runErr, err)
@@ -102,7 +102,7 @@ func (m *model) configureAsyncHookCallback() {
 		return
 	}
 	queue := m.asyncHookQueue
-	m.services.Hook.SetAsyncHookCallback(func(result hook.AsyncHookResult) {
+	m.features.Hook.SetAsyncHookCallback(func(result hook.AsyncHookResult) {
 		reason := result.BlockReason
 		if reason == "" {
 			reason = "asynchronous hook requested a rewake"
@@ -124,23 +124,20 @@ func (m *model) fireStartupHooks() {
 	// keeps SessionStart context out of the visible chat and lets it
 	// re-emerge after PostCompact alongside other harness reminders.
 	if outcome.AdditionalContext != "" {
-		m.services.Reminder.EnqueueWithSource(outcome.AdditionalContext, reminder.SourceSessionStart)
+		m.features.Reminder.EnqueueWithSource(outcome.AdditionalContext, reminder.SourceSessionStart)
 	}
 }
 
 func printExitMessage(m *model) {
 	command := ""
-	if owner := m.services.Session; owner != nil {
+	if owner := m.features.Session; owner != nil {
 		history := owner.Snapshot()
 		if history.HasMessages() {
 			saved := ""
 			if cwd, _ := os.Getwd(); cwd == "" {
 				saved = history.Identity().InitialCWD
 			} else if _, err := resumeDirectory(history, cwd); err != nil {
-				saved = history.Identity().InitialCWD
-				if last := history.State().ExecutionCWD; last != nil {
-					saved = *last
-				}
+				saved = history.ExecutionCWD()
 			}
 			command = resumeCommandForSession(owner.ID(), owner.Path(), saved)
 		}

@@ -18,8 +18,8 @@ import (
 
 func newRecapModel(t *testing.T) *model {
 	m := fixedComposerModel(80, 40)
-	m.services.Agent, m.services.Task = &runtime.Runtime{}, task.NewManager()
-	m.services.MCP = mcp.NewManagerForTest(nil)
+	m.features.Agent, m.features.Task = &runtime.Runtime{}, task.NewRunSet()
+	m.features.MCP = mcp.NewServerSetForTest(nil)
 	m.env.LLMProvider = &autopilotStubProvider{}
 	m.env.SessionPermissions = setting.NewSessionPermissions()
 	m.env.ApplyModePermissions(t.TempDir())
@@ -41,7 +41,7 @@ func recapEligibilityModel(t *testing.T) *model {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m.services.SessionStore, m.services.Session, m.services.sessionID = store, owner, owner.ID()
+	m.features.SessionStore, m.features.Session, m.features.sessionID = store, owner, owner.ID()
 	m.conv.OnNotice = m.recordNotice
 	setRecapTurns(t, owner, setting.RecapDefaultTurns)
 	return m
@@ -74,7 +74,7 @@ func TestFocusShowsRecapWrittenAhead(t *testing.T) {
 	}
 
 	m.unfocusedSince = time.Now().Add(-23 * time.Minute)
-	m.recap.ready = recapReadyMsg{sessionID: m.sessionID(), owner: m.services.Session, chainLen: m.chainLen(), text: "Now: x\nNext: y"}
+	m.recap.ready = recapReadyMsg{sessionID: m.sessionID(), owner: m.features.Session, chainLen: m.chainLen(), text: "Now: x\nNext: y"}
 	m.onFocus()
 	last := m.conv.Messages[len(m.conv.Messages)-1]
 	if last.Role != core.ChatNotice || last.Content != "/recap \n\nNow: x\nNext: y" {
@@ -102,7 +102,7 @@ func TestFocusShowsRecapWrittenAhead(t *testing.T) {
 // A recap landing while the user is away shows at once; otherwise it is held.
 func TestRecapWrittenAwayShowsOnArrival(t *testing.T) {
 	m := recapEligibilityModel(t)
-	msg := recapReadyMsg{sessionID: m.sessionID(), owner: m.services.Session, chainLen: m.chainLen(), text: "Now: x\nNext: y"}
+	msg := recapReadyMsg{sessionID: m.sessionID(), owner: m.features.Session, chainLen: m.chainLen(), text: "Now: x\nNext: y"}
 
 	m.onRecapReady(msg)
 	if m.recap.ready.text == "" || m.conv.Messages[len(m.conv.Messages)-1].Role == core.ChatNotice {
@@ -124,11 +124,11 @@ func TestRecapCapturedOwnerAnnotation(t *testing.T) {
 		t.Run(map[bool]string{false: "current", true: "superseded"}[superseded], func(t *testing.T) {
 			_, owner := autopilotRecordingModel(t)
 			m := newRecapModel(t)
-			m.services.Session, m.services.sessionID = owner, owner.ID()
+			m.features.Session, m.features.sessionID = owner, owner.ID()
 			m.conv.OnNotice = m.recordNotice
 			r := recapReadyMsg{owner: owner, sessionID: m.sessionID(), chainLen: m.chainLen(), text: "Done; waiting for the user."}
 			if superseded {
-				m.services.Session = nil
+				m.features.Session = nil
 			}
 			before := len(m.conv.Messages)
 			m.showRecap(r)
@@ -179,7 +179,7 @@ func TestPersistedRecapDoesNotRepeatOnReturn(t *testing.T) {
 		}
 	}
 	m := newRecapModel(t)
-	m.services.Session, m.services.sessionID = opened, opened.ID()
+	m.features.Session, m.features.sessionID = opened, opened.ID()
 	m.conv.OnNotice = m.recordNotice
 	setRecapTurns(t, opened, setting.RecapDefaultTurns)
 	m.conv.Messages = store.ChatRows(opened.Snapshot())
@@ -234,7 +234,7 @@ func TestRecapBecomesDueWhileAway(t *testing.T) {
 		t.Fatal("scheduled a recap over completed work")
 	}
 	m.unfocusedSince = time.Now().Add(-8 * time.Minute)
-	setRecapTurns(t, m.services.Session, 2*setting.RecapDefaultTurns)
+	setRecapTurns(t, m.features.Session, 2*setting.RecapDefaultTurns)
 	if cmd := m.prepareRecap(); cmd == nil || !m.recap.busy {
 		t.Fatal("new work while away did not prepare a recap")
 	}
@@ -255,9 +255,9 @@ func TestRecapForAnotherSessionIsDropped(t *testing.T) {
 // while AutoPilot drives it.
 func TestRecapFacts(t *testing.T) {
 	m := newRecapModel(t)
-	a := m.services.Tracker.Create("one", "", "", nil)
-	m.services.Tracker.Create("two", "", "", nil)
-	if err := m.services.Tracker.Update(a.ID, todo.WithStatus(todo.StatusCompleted)); err != nil {
+	a := m.features.Tracker.Create("one", "", "", nil)
+	m.features.Tracker.Create("two", "", "", nil)
+	if err := m.features.Tracker.Update(a.ID, todo.WithStatus(todo.StatusCompleted)); err != nil {
 		t.Fatal(err)
 	}
 	if got := m.recapFacts(); got != "plan 1/2" {
@@ -288,7 +288,7 @@ func TestRecapSkipsRunningTurn(t *testing.T) {
 	m := newRecapModel(t)
 	snapshot := owner.Snapshot()
 	m.env.CWD = snapshot.Identity().InitialCWD
-	m.services.SessionStore, m.services.Session, m.services.sessionID = native.services.SessionStore, owner, owner.ID()
+	m.features.SessionStore, m.features.Session, m.features.sessionID = native.features.SessionStore, owner, owner.ID()
 	setRecapTurns(t, owner, setting.RecapDefaultTurns)
 	m.conv.Stream.Active = true
 
@@ -320,7 +320,7 @@ func TestRecapSkipsRunningTurn(t *testing.T) {
 func TestRecapWaitsForNewTurns(t *testing.T) {
 	m := recapEligibilityModel(t)
 	m.showRecap(recapReadyMsg{text: "Done; waiting for the user."})
-	setRecapTurns(t, m.services.Session, setting.RecapDefaultTurns+1)
+	setRecapTurns(t, m.features.Session, setting.RecapDefaultTurns+1)
 	m.unfocusedSince = time.Now().Add(-10 * time.Minute)
 	if cmd := m.onFocus(); cmd != nil {
 		t.Fatal("recapped again after a single turn")
@@ -332,19 +332,19 @@ func TestRecapWaitsForNewTurns(t *testing.T) {
 
 func TestRecapUsesConfiguredThresholds(t *testing.T) {
 	m := recapEligibilityModel(t)
-	m.services.Setting = setting.New(&setting.Data{Recap: setting.RecapSettings{
+	m.features.Setting = setting.New(&setting.Data{Recap: setting.RecapSettings{
 		AfterMinutes: 10, Turns: 4,
 	}})
 	if cmd := m.onBlur(); cmd != nil {
 		t.Fatal("scheduled automatic recap below the first-turn threshold")
 	}
-	setRecapTurns(t, m.services.Session, 4)
+	setRecapTurns(t, m.features.Session, 4)
 	if cmd := m.onBlur(); cmd == nil {
 		t.Fatal("did not schedule automatic recap at the first-turn threshold")
 	}
 
 	m.unfocusedSince = time.Now().Add(-5 * time.Minute)
-	ready := recapReadyMsg{sessionID: m.sessionID(), owner: m.services.Session, chainLen: m.chainLen(), text: "Next step."}
+	ready := recapReadyMsg{sessionID: m.sessionID(), owner: m.features.Session, chainLen: m.chainLen(), text: "Next step."}
 	m.onRecapReady(ready)
 	if !m.recapReady() {
 		t.Fatal("warm-cache recap was shown before the configured absence elapsed")
@@ -358,11 +358,11 @@ func TestRecapUsesConfiguredThresholds(t *testing.T) {
 		t.Fatal("an eligible return did not show the cached recap")
 	}
 
-	setRecapTurns(t, m.services.Session, 7)
+	setRecapTurns(t, m.features.Session, 7)
 	if cmd := m.onBlur(); cmd != nil {
 		t.Fatal("scheduled another recap before four new turns")
 	}
-	setRecapTurns(t, m.services.Session, 8)
+	setRecapTurns(t, m.features.Session, 8)
 	if cmd := m.onBlur(); cmd == nil {
 		t.Fatal("four new turns should earn another recap on the next long absence")
 	}
@@ -370,7 +370,7 @@ func TestRecapUsesConfiguredThresholds(t *testing.T) {
 
 func TestRecapManualWorksWithAutomaticDisabled(t *testing.T) {
 	m := newRecapModel(t)
-	m.services.Setting = setting.New(&setting.Data{Recap: setting.RecapSettings{AfterMinutes: -1}})
+	m.features.Setting = setting.New(&setting.Data{Recap: setting.RecapSettings{AfterMinutes: -1}})
 	if cmd := m.onBlur(); cmd != nil {
 		t.Fatal("scheduled a disabled automatic recap")
 	}

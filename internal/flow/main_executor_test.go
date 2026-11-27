@@ -138,11 +138,11 @@ func TestMainMalformedVerdictDoesNotReview(t *testing.T) {
 	}
 }
 
-func TestMainServiceSinkIdentityAndSessionSafety(t *testing.T) {
-	tasks := task.NewManager()
+func TestMainSchedulerSinkIdentityAndSessionSafety(t *testing.T) {
+	tasks := task.NewRunSet()
 	tasks.SetSessionID("native-session")
-	s := NewService(tasks)
-	s.store = NewStore(t.TempDir())
+	s := NewScheduler(tasks)
+	s.store = newRunStore(t.TempDir())
 	m := &scriptedMain{}
 	s.SetMainExecutor(m)
 	b, err := Parse("```mermaid\nflowchart LR\n answer\n```\n## answer\nexecutor: main\n\nwrite\n")

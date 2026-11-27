@@ -35,8 +35,8 @@ func autopilotRecordingModel(t *testing.T) (*model, *session.Session) {
 	}
 	t.Cleanup(func() { owner.Close() })
 	m := newSuggestionModel(t, true, setting.ModeAutoPilot)
-	m.services.Session, m.services.sessionID = owner, owner.ID()
-	m.services.SessionStore = store
+	m.features.Session, m.features.sessionID = owner, owner.ID()
+	m.features.SessionStore = store
 	t.Cleanup(m.cancelAutopilot)
 	return m, owner
 }
@@ -361,15 +361,15 @@ func TestAutopilotMissionRefineOwnerFence(t *testing.T) {
 				if err := original.Close(); err != nil {
 					t.Fatal(err)
 				}
-				replacement, err = m.services.SessionStore.Open(t.Context(), original.ID())
+				replacement, err = m.features.SessionStore.Open(t.Context(), original.ID())
 			} else {
-				replacement, err = m.services.SessionStore.Create(t.Context(), session.CreateOptions{ID: "another-session"})
+				replacement, err = m.features.SessionStore.Create(t.Context(), session.CreateOptions{ID: "another-session"})
 			}
 			if err != nil {
 				t.Fatal(err)
 			}
 			defer replacement.Close()
-			m.services.Session = replacement
+			m.features.Session = replacement
 			if valid, _ := current(); valid {
 				t.Fatal("changed session accepted old editor result")
 			}

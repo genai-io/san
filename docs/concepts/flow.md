@@ -7,7 +7,7 @@ is not another Agent or a separate permission/session system.
 
 Definitions are markdown documents saved under `.san/workflows/`. The existing
 storage directories are retained so saved definitions and runs remain available.
-`/flow` calls the scheduling service directly: there is no model-facing Flow
+`/flow` calls the flow scheduler directly: there is no model-facing Flow
 tool or schema. San validates the graph before execution and reports its outcome
 as one parent task.
 

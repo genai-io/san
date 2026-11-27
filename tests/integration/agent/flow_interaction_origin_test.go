@@ -29,7 +29,7 @@ func TestFlowInteractionOriginAndRoutingIsolation(t *testing.T) {
 				t.Errorf("flow %s did not stop during cleanup", bg.GetID())
 			}
 		}
-		task.ResetDefaultTracker()
+		task.ResetDefault()
 	})
 	responses := make([]llm.CompletionResponse, 0, 8)
 	for range 4 {
@@ -60,7 +60,7 @@ func TestFlowInteractionOriginAndRoutingIsolation(t *testing.T) {
 			return ask.PermissionDecision{Request: request}
 		}
 	})
-	flows := flow.NewService(task.Default())
+	flows := flow.NewScheduler(task.Default())
 	flows.SetExecutor(subagent.NewExecutorAdapter(executor))
 	definition := "---\nname: review\n---\n```mermaid\nflowchart LR\n  first\n  second\n```\n\n## first\nCheck first\n\n## second\nCheck second\n"
 	var runIDs []string

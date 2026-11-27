@@ -116,7 +116,7 @@ func TestSkill_AvailablePrompt(t *testing.T) {
 
 	registry := newTestRegistry(t, skills)
 
-	prompt := registry.SkillsSection()
+	prompt := registry.PromptSection()
 
 	// Only active skills should be in the prompt
 	if !strings.Contains(prompt, "git:commit") {
@@ -274,7 +274,7 @@ func TestSkill_ScopePriority_ProjectOverridesUser(t *testing.T) {
 }
 
 // TestSkill_Active_AppearsInSystemPrompt verifies that active skill content
-// is included in the system prompt section returned by GetSkillsSection.
+// is included in the system prompt section returned by PromptSection.
 func TestSkill_Active_AppearsInSystemPrompt(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -296,7 +296,7 @@ func TestSkill_Active_AppearsInSystemPrompt(t *testing.T) {
 	}
 
 	registry := newTestRegistry(t, skills)
-	prompt := registry.SkillsSection()
+	prompt := registry.PromptSection()
 
 	// Active skill must appear
 	if !strings.Contains(prompt, "deploy") {

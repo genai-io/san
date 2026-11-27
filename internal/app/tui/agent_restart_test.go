@@ -73,7 +73,7 @@ func TestStopAgentRuntimePreservesLiveChainForRestart(t *testing.T) {
 	}
 
 	m := model{
-		services: services{Agent: sess},
+		features: appFeatures{Agent: sess},
 		conv:     chat.NewModel(80),
 	}
 	if err := m.StopAgentRuntime(); err != nil {
@@ -87,7 +87,7 @@ func TestStopAgentRuntimePreservesLiveChainForRestart(t *testing.T) {
 	// SubmitToAgent asks for a replacement. It is sent through the inbox after
 	// Start, so it must not displace the preserved seed.
 	m.conv.Append(core.ChatMessage{ID: "ui-completion", Role: core.ChatUser, Content: "background result"})
-	got := m.services.Agent.Messages()
+	got := m.features.Agent.Messages()
 	if len(got) != len(live) {
 		t.Fatalf("Agent.Messages() len = %d, want %d: %+v", len(got), len(live), got)
 	}
@@ -162,16 +162,16 @@ func TestStopAgentRuntimePreservesLiveChainForRestart(t *testing.T) {
 func TestResetAgentRuntimeDiscardsRestartChain(t *testing.T) {
 	m := model{
 		env:      env{FileCache: filecache.New()},
-		services: services{Agent: &agentruntime.Runtime{}, Reminder: reminder.NewQueue()},
+		features: appFeatures{Agent: &agentruntime.Runtime{}, Reminder: reminder.NewQueue()},
 		conv:     chat.NewModel(80),
 	}
-	m.services.Agent.SetMessages([]core.Message{{ID: "old-u1", Role: ai.RoleUser, Content: ai.TextContent("old session")}})
+	m.features.Agent.SetMessages([]core.Message{{ID: "old-u1", Role: ai.RoleUser, Content: ai.TextContent("old session")}})
 	if err := m.ResetAgentRuntime(); err != nil {
 		t.Fatal(err)
 	}
 	m.conv.Append(core.ChatMessage{ID: "new-u1", Role: core.ChatUser, Content: "new session"})
 
-	if got := m.services.Agent.Messages(); len(got) != 0 {
+	if got := m.features.Agent.Messages(); len(got) != 0 {
 		t.Fatalf("Agent.Messages() after reset = %+v, want no old seed", got)
 	}
 }
@@ -197,11 +197,11 @@ func TestResetAgentRuntimeFailurePreservesConversationState(t *testing.T) {
 	defer close(release)
 	<-started
 	m := model{
-		services:          services{Agent: sess, Reminder: reminder.NewQueue()},
+		features:          appFeatures{Agent: sess, Reminder: reminder.NewQueue()},
 		pendingPluginRoot: "retained-plugin",
 	}
 	m.pendingMessages.Hold(nil)
-	m.services.Reminder.PrepareInput(core.UserMessage("first", nil))
+	m.features.Reminder.PrepareInput(core.UserMessage("first", nil))
 	// Nil reset-only dependencies also catch premature UI/cache teardown.
 	if err := m.ResetAgentRuntime(); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("ResetAgentRuntime = %v, want deadline exceeded", err)
@@ -209,32 +209,33 @@ func TestResetAgentRuntimeFailurePreservesConversationState(t *testing.T) {
 	if !sess.Active() || len(sess.Messages()) != 1 || sess.Messages()[0].ID != seed[0].ID {
 		t.Fatal("failed reset lost the live conversation")
 	}
-	if m.pendingPluginRoot != "retained-plugin" || !m.services.Reminder.Prepared() || !m.pendingMessages.Held() {
+	if m.pendingPluginRoot != "retained-plugin" || !m.features.Reminder.Prepared() || !m.pendingMessages.Held() {
 		t.Fatal("failed reset cleared conversation UI state")
 	}
 }
 
 func TestSystemRemindersOncePerConversation(t *testing.T) {
-	m := model{env: env{FileCache: filecache.New()}, services: services{Agent: &agentruntime.Runtime{}, Reminder: reminder.NewQueue()}}
-	m.services.Reminder.Register(reminder.ProviderSkillsDirectory, func() string { return "skills" })
+	m := model{env: env{FileCache: filecache.New()}, features: appFeatures{Agent: &agentruntime.Runtime{}, Reminder: reminder.NewQueue()}}
+	m.features.Reminder.Register(reminder.ProviderSkillsDirectory, func() string { return "skills" })
 	send := func(text string) string {
 		return m.attachPendingReminders(core.Message{Role: ai.RoleUser, Content: ai.TextContent(text)}).Text()
 	}
 
 	first := m.attachPendingReminders(core.UserMessage("first", nil))
-	if len(first.Content) != 2 || first.Content[0].Text != "first" || !reminder.HasSystemReminder(first.Content[1].Text) {
+	want := reminder.WrapWithSource("skills", reminder.ProviderSkillsDirectory)
+	if len(first.Content) != 2 || first.Content[0].Text != "first" || !strings.Contains(first.Content[1].Text, want) {
 		t.Fatalf("first message should have separate user and reminder blocks: %+v", first.Content)
 	}
 	if got := send("second"); got != "second" {
 		t.Fatalf("second message = %q, want no reminders", got)
 	}
 
-	m.services.Reminder.Enqueue("old hook context")
+	m.features.Reminder.Enqueue("old hook context")
 	if err := m.ResetAgentRuntime(); err != nil {
 		t.Fatal(err)
 	}
 	got := send("after reset")
-	if !reminder.HasSystemReminder(got) || strings.Contains(got, "old hook context") {
+	if !strings.Contains(got, want) || strings.Contains(got, "old hook context") {
 		t.Fatalf("after reset = %q, want the skills reminder and no old notice", got)
 	}
 }
@@ -259,11 +260,11 @@ func chainWithImage() []core.Message {
 // rejects on every later turn. Only inference input should drop them.
 func TestRuntimeMessagesKeepNativeImagesForTextOnlyModel(t *testing.T) {
 	original := chainWithImage()
-	m := model{conv: chat.NewModel(80), services: services{Agent: &agentruntime.Runtime{}}}
-	m.services.Agent.SetMessages(chainWithImage())
+	m := model{conv: chat.NewModel(80), features: appFeatures{Agent: &agentruntime.Runtime{}}}
+	m.features.Agent.SetMessages(chainWithImage())
 	m.env.LLMProvider = &textOnlyStubProvider{}
 
-	seeded := m.services.Agent.Messages()
+	seeded := m.features.Agent.Messages()
 	if len(seeded) != len(original) {
 		t.Fatalf("Agent.Messages() length = %d, want %d", len(seeded), len(original))
 	}
@@ -275,18 +276,18 @@ func TestRuntimeMessagesKeepNativeImagesForTextOnlyModel(t *testing.T) {
 	}
 	// The retained snapshot must survive intact: switching back to a
 	// vision-capable model has to restore the images.
-	if imageBlocks(m.services.Agent.Messages()[0]) != 1 {
+	if imageBlocks(m.features.Agent.Messages()[0]) != 1 {
 		t.Error("stripping mutated the retained restart chain")
 	}
 }
 
 // Vision-capable providers are the common case and must see the chain untouched.
 func TestRuntimeMessagesKeepImagesForVisionModel(t *testing.T) {
-	m := model{conv: chat.NewModel(80), services: services{Agent: &agentruntime.Runtime{}}}
-	m.services.Agent.SetMessages(chainWithImage())
+	m := model{conv: chat.NewModel(80), features: appFeatures{Agent: &agentruntime.Runtime{}}}
+	m.features.Agent.SetMessages(chainWithImage())
 	m.env.LLMProvider = &restartStubProvider{}
 
-	seeded := m.services.Agent.Messages()
+	seeded := m.features.Agent.Messages()
 	if imageBlocks(seeded[0]) != 1 {
 		t.Errorf("seeded user message has %d image(s), want the original 1", imageBlocks(seeded[0]))
 	}
@@ -317,7 +318,7 @@ func TestAReplacedAgentsLateStopLeavesTheNewOneRunning(t *testing.T) {
 	}
 	defer stopRuntime(t, sess)
 
-	m := model{services: services{Agent: sess}, conv: chat.NewModel(80)}
+	m := model{features: appFeatures{Agent: sess}, conv: chat.NewModel(80)}
 	old := make(chan core.Event)
 	close(old)
 	for _, late := range []chat.AgentOutboxMsg{

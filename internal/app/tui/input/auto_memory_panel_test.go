@@ -17,7 +17,7 @@ func TestAutoMemoryPanelRecallKeys(t *testing.T) {
 	t.Setenv("SAN_TRUST_WORKSPACE", "1")
 	t.Setenv("SAN_DISABLE_AUTO_MEMORY", "")
 	svc := setting.New(nil)
-	popup := NewReflectionSelector(ReflectionDeps{Workspace: func() (string, *setting.Settings) { return cwd, svc }})
+	popup := NewReflectionSelector(ReflectionSources{Workspace: func() (string, *setting.Settings) { return cwd, svc }})
 	popup.Enter(100, 30)
 	p := popup.ActivePanel().(*autoMemoryPanel)
 	press := func(code rune) { popup.HandleKeypress(tea.KeyPressMsg{Code: code}) }
@@ -163,7 +163,7 @@ func TestAutoMemoryPanelUpdateKeys(t *testing.T) {
 	t.Setenv("USERPROFILE", home)
 	t.Setenv("SAN_TRUST_WORKSPACE", "1")
 	svc := setting.New(nil)
-	popup := NewReflectionSelector(ReflectionDeps{Workspace: func() (string, *setting.Settings) { return cwd, svc }})
+	popup := NewReflectionSelector(ReflectionSources{Workspace: func() (string, *setting.Settings) { return cwd, svc }})
 	popup.Enter(100, 30)
 	p := popup.ActivePanel().(*autoMemoryPanel)
 	press := func(code rune) { popup.HandleKeypress(tea.KeyPressMsg{Code: code}) }

@@ -41,7 +41,7 @@ type AgentToggleMsg struct {
 	Enabled   bool
 }
 
-// AgentSelector holds the state for the agent selector overlay. The tab/filter/
+// AgentSelector holds the state for the agent selector panel. The tab/filter/
 // keypress/frame mechanics live in the embedded tabbedList; this type owns
 // agent loading, the row layout, and the enable/disable action.
 type AgentSelector struct {

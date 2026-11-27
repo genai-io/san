@@ -138,7 +138,7 @@ func (t *BashTask) GetOutput() string {
 // counterpart to AgentTask.Complete and classifying the same three outcomes.
 //
 // A stopped run reaches cmd.Wait as an ordinary signal death ("signal:
-// terminated"), never as context.Canceled. A manager-initiated stop records
+// terminated"), never as context.Canceled. A run set-initiated stop records
 // that intent before signalling; the Bash tool also reports a process-group
 // command that can send SIGTERM directly. Treat that graceful external
 // termination as stopped too. A timeout uses SIGKILL and remains a failure.
@@ -291,7 +291,7 @@ func (t *BashTask) WaitForCompletion(timeout time.Duration) bool {
 // It deliberately leaves the task context alone. exec wires cmd.Cancel to
 // SIGKILL the group the instant that context is done, so cancelling here would
 // deliver the kill before the SIGTERM and the graceful stop would never
-// actually happen. Escalation belongs to the caller: Manager.Kill waits
+// actually happen. Escalation belongs to the caller: RunSet.Kill waits
 // gracefulStopTimeout and then falls back to Kill.
 func (t *BashTask) Stop() error {
 	t.stopRequested.Store(true)

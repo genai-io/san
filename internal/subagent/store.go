@@ -11,21 +11,21 @@ import (
 	"github.com/genai-io/san/internal/infra/confdir"
 )
 
-// AgentStoreData is the JSON structure for agents.json
-type AgentStoreData struct {
+// disabledStoreData is the JSON structure for agents.json
+type disabledStoreData struct {
 	Disabled []string `json:"disabled"`
 }
 
-// AgentStore handles persistence of agent enabled/disabled states
-type AgentStore struct {
+// disabledStore handles persistence of agent enabled/disabled states
+type disabledStore struct {
 	mu       sync.RWMutex
 	path     string
 	disabled map[string]bool
 }
 
-// NewAgentStore creates a new store at the given path
-func NewAgentStore(path string) *AgentStore {
-	store := &AgentStore{
+// newDisabledStore creates a new store at the given path
+func newDisabledStore(path string) *disabledStore {
+	store := &disabledStore{
 		path:     path,
 		disabled: make(map[string]bool),
 	}
@@ -33,22 +33,22 @@ func NewAgentStore(path string) *AgentStore {
 	return store
 }
 
-// NewUserAgentStore creates a store for user-level (~/.san/agents.json)
-func NewUserAgentStore() *AgentStore {
+// newUserDisabledStore creates a store for user-level (~/.san/agents.json)
+func newUserDisabledStore() *disabledStore {
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return &AgentStore{disabled: make(map[string]bool)}
+		return &disabledStore{disabled: make(map[string]bool)}
 	}
-	return NewAgentStore(filepath.Join(confdir.Dir(home), "agents.json"))
+	return newDisabledStore(filepath.Join(confdir.Dir(home), "agents.json"))
 }
 
-// NewProjectAgentStore creates a store for project-level (.san/agents.json)
-func NewProjectAgentStore(cwd string) *AgentStore {
-	return NewAgentStore(filepath.Join(confdir.Dir(cwd), "agents.json"))
+// newProjectDisabledStore creates a store for project-level (.san/agents.json)
+func newProjectDisabledStore(cwd string) *disabledStore {
+	return newDisabledStore(filepath.Join(confdir.Dir(cwd), "agents.json"))
 }
 
 // load reads disabled agents from disk
-func (s *AgentStore) load() {
+func (s *disabledStore) load() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -57,7 +57,7 @@ func (s *AgentStore) load() {
 		return
 	}
 
-	var storeData AgentStoreData
+	var storeData disabledStoreData
 	if err := json.Unmarshal(data, &storeData); err != nil {
 		return
 	}
@@ -71,18 +71,18 @@ func (s *AgentStore) load() {
 // persistDisabled writes the disabled agent list to disk. Lock-free — operates
 // only on the provided snapshot.
 func persistDisabled(path string, disabled []string) error {
-	return atomicfile.WriteJSON(path, AgentStoreData{Disabled: disabled}, 0o644)
+	return atomicfile.WriteJSON(path, disabledStoreData{Disabled: disabled}, 0o644)
 }
 
 // IsDisabled returns whether an agent is disabled
-func (s *AgentStore) IsDisabled(name string) bool {
+func (s *disabledStore) IsDisabled(name string) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.disabled[name]
 }
 
 // SetDisabled sets the disabled state for an agent and persists to disk.
-func (s *AgentStore) SetDisabled(name string, disabled bool) error {
+func (s *disabledStore) SetDisabled(name string, disabled bool) error {
 	s.mu.Lock()
 	if disabled {
 		s.disabled[name] = true
@@ -102,7 +102,7 @@ func (s *AgentStore) SetDisabled(name string, disabled bool) error {
 }
 
 // Disabled returns a copy of the disabled agents map
-func (s *AgentStore) Disabled() map[string]bool {
+func (s *disabledStore) Disabled() map[string]bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 

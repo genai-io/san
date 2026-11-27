@@ -44,11 +44,11 @@ import (
 // built-in default (no settings.persona, or it doesn't resolve). A configured
 // name that doesn't resolve logs a warning and falls back to the default.
 func (m *model) activePersona() *persona.Persona {
-	snap := m.services.Setting.Snapshot()
+	snap := m.features.Setting.Snapshot()
 	if snap == nil || snap.Persona == "" || snap.Persona == persona.DefaultName {
 		return nil
 	}
-	p, ok := m.services.Persona.Get(snap.Persona)
+	p, ok := m.features.Persona.Get(snap.Persona)
 	if !ok || p.IsBuiltin() {
 		log.Logger().Warn("configured persona not found; using built-in default",
 			zap.String("persona", snap.Persona))
@@ -76,10 +76,10 @@ func (m *model) applyPersonaSkills() {
 		if p.Settings != nil {
 			states = p.Settings.Skills
 		}
-		m.services.Skill.LoadPersona(p.SkillDirs, states)
+		m.features.Skill.LoadPersona(p.SkillDirs, states)
 		return
 	}
-	m.services.Skill.ClearPersona()
+	m.features.Skill.ClearPersona()
 }
 
 // applyPersonaAgents restricts the visible subagents to the active persona's
@@ -87,10 +87,10 @@ func (m *model) applyPersonaSkills() {
 // when no persona is selected. In-memory, mirroring applyPersonaSkills.
 func (m *model) applyPersonaAgents() {
 	if p := m.activePersona(); p != nil && p.Settings != nil && len(p.Settings.Agents) > 0 {
-		m.services.Subagent.LoadPersona(p.Settings.Agents)
+		m.features.Subagent.LoadPersona(p.Settings.Agents)
 		return
 	}
-	m.services.Subagent.ClearPersona()
+	m.features.Subagent.ClearPersona()
 }
 
 // promptParams fills in the fields that shape the system prompt and the
@@ -107,26 +107,26 @@ func (m *model) promptParams() agentruntime.BuildParams {
 		CWD:     m.env.CWD,
 		Persona: m.personaPrompt(),
 		AgentCatalog: func() string {
-			if m.services.Subagent == nil {
+			if m.features.Subagent == nil {
 				return ""
 			}
-			return m.services.Subagent.AgentCatalog()
+			return m.features.Subagent.AgentCatalog()
 		},
 		DisabledTools: m.disabledTools(),
-		MCPTools:      mcp.AsCoreTools(m.services.MCP.ToolSchemas(), m.services.MCP),
+		MCPTools:      mcp.AsCoreTools(m.features.MCP.ToolSchemas(), m.features.MCP),
 
 		// Inject the ReviewSkill trigger tool (tailored to the enabled capabilities)
 		// so the model can queue its own self-learning reviews.
 		ExtraTools: m.autoSkillExtraTools(),
 
 		AutoMemory:  m.currentAutoMemory(),
-		Skills:      m.services.Skill,
+		Skills:      m.features.Skill,
 		GroupRoster: group.Roster,
 	}
 }
 
 func (m *model) buildAgentParams() (agentruntime.BuildParams, error) {
-	if m.services.Setting == nil || m.env.SessionPermissions == nil {
+	if m.features.Setting == nil || m.env.SessionPermissions == nil {
 		return agentruntime.BuildParams{}, fmt.Errorf("main-session runtime requires a permission policy")
 	}
 	params := m.promptParams()
@@ -135,7 +135,7 @@ func (m *model) buildAgentParams() (agentruntime.BuildParams, error) {
 	if err != nil {
 		return params, err
 	}
-	owner := agentruntime.MainSession{Session: rec, Store: m.services.SessionStore}
+	owner := agentruntime.MainSession{Session: rec, Store: m.features.SessionStore}
 	if err := owner.Validate(); err != nil {
 		return params, err
 	}
@@ -154,11 +154,11 @@ func (m *model) buildAgentParams() (agentruntime.BuildParams, error) {
 	// default (zero value => core picks FirstChunkTimeout=5m, IdleTimeout=60s).
 	streamFirstChunk := firstValidDuration(
 		setting.Getenv("STREAM_FIRST_CHUNK_TIMEOUT"),
-		m.services.Setting.StreamFirstChunkTimeout(),
+		m.features.Setting.StreamFirstChunkTimeout(),
 	)
 	streamIdle := firstValidDuration(
 		setting.Getenv("STREAM_IDLE_TIMEOUT"),
-		m.services.Setting.StreamIdleTimeout(),
+		m.features.Setting.StreamIdleTimeout(),
 	)
 
 	params.Provider = m.env.LLMProvider
@@ -167,7 +167,7 @@ func (m *model) buildAgentParams() (agentruntime.BuildParams, error) {
 	params.MaxTokens = m.sessionMaxOutput()
 	params.ThinkingEffort = m.env.EffectiveThinkingEffort()
 	params.FileCache = m.env.FileCache
-	params.Tracker = m.services.Tracker
+	params.Tracker = m.features.Tracker
 	params.CWDFunc = func() string { return m.autopilot.Load().cwd }
 
 	bridge := m.conv.AgentToUI
@@ -197,16 +197,16 @@ func (m *model) buildAgentParams() (agentruntime.BuildParams, error) {
 		providerName = params.Provider.Name()
 	}
 	recorder := session.NewRecorder(rec, providerName)
-	if engine := m.services.Hook; engine != nil {
+	if engine := m.features.Hook; engine != nil {
 		engine.SetSession(rec.ID(), rec.Path())
 		apphook.Bind(engine, params.Provider, rec, params.ModelID)
 		params.HookEngine = engine
 	}
-	if skills := m.services.Skill; skills != nil {
+	if skills := m.features.Skill; skills != nil {
 		skills.SetStateChangeObserver(recorder.RecordSkillStateChange)
 	}
 	policy := agentruntime.PermissionPolicy{
-		Settings: m.services.Setting, Session: m.env.SessionPermissions,
+		Settings: m.features.Setting, Session: m.env.SessionPermissions,
 	}
 	params.PermissionRules = policy.Decide
 	params.CanApproveByHook = policy.CanApproveByHook
@@ -221,7 +221,7 @@ func (m *model) buildAgentParams() (agentruntime.BuildParams, error) {
 			Judge: rt.judge.Permission, Observe: m.recordDecision, Recording: rec,
 		})
 	}
-	params.ResultFilter = agentruntime.ResultPager{Store: owner.Store, SessionID: owner.Session.ID()}.Filter
+	params.ResultFilter = agentruntime.ResultPreview{Store: owner.Store, SessionID: owner.Session.ID()}.Filter
 	return params, nil
 }
 
@@ -245,7 +245,7 @@ func (m *model) resolveJudge(ref string) (llm.Provider, *llm.CurrentModelInfo) {
 		return m.env.LLMProvider, session
 	}
 	if vendor, id, ok := llm.ParseVendorModel(ref); ok {
-		if p, err := llm.NewProviderPool(m.services.LLM.Store()).Resolve(context.Background(), vendor); err == nil {
+		if p, err := llm.NewProviderPool(m.features.LLM.Store()).Resolve(context.Background(), vendor); err == nil {
 			return p, &llm.CurrentModelInfo{ModelID: id, Provider: vendor}
 		}
 		log.Logger().Warn("judge model vendor unavailable; using session model", zap.String("model", ref))
@@ -262,13 +262,13 @@ func (m *model) autopilotModelEfforts(ref string) []string {
 		return nil
 	}
 	p, info := m.resolveJudge(ref)
-	return llm.ThinkingEffortsForModel(p, m.services.LLM.Store(), info)
+	return llm.ThinkingEffortsForModel(p, m.features.LLM.Store(), info)
 }
 
 // autopilotModelRefs lists "vendor/model" refs for the /autopilot model picker:
 // the cached models of each connected provider under its connected auth method.
 func (m *model) autopilotModelRefs() []string {
-	store := m.services.LLM.Store()
+	store := m.features.LLM.Store()
 	if store == nil {
 		return nil
 	}
@@ -304,7 +304,7 @@ func (m *model) recordDecision(ctx context.Context, approved bool, reason string
 // TakeJudgeDecision consumes the decision stashed for a tool call (load + delete),
 // so it stamps exactly one rendered result and the handoff map holds only
 // in-flight calls. Returns nil when the call was not judged. Mirrors the
-// tool side-effect handoff (Tool.PopSideEffect), consumed at the same point in
+// tool side-effect handoff (tool.PopSideEffect), consumed at the same point in
 // OnToolResult.
 func (m *model) TakeJudgeDecision(callID string) *core.JudgeDecision {
 	// No empty-callID guard: recordDecision never stores under an empty key, so
@@ -339,7 +339,7 @@ func firstValidDuration(vals ...string) time.Duration {
 // disabledTools respects configured worker-messaging disables. Group sessions
 // additionally hold SendMessage on so their members remain reachable.
 func (m *model) disabledTools() map[string]bool {
-	disabled := maps.Clone(m.services.Setting.DisabledTools())
+	disabled := maps.Clone(m.features.Setting.DisabledTools())
 	for name := range toolsHeldOn() {
 		delete(disabled, name)
 	}
@@ -376,7 +376,7 @@ func (m *model) disabledToolsSignature() string {
 
 // ensureAgentRuntime starts the agent with its retained native conversation.
 func (m *model) ensureAgentRuntime() (tea.Cmd, error) {
-	if m.services.Agent.Active() {
+	if m.features.Agent.Active() {
 		// The toolset is fixed at agent-build time. If the enabled ReviewSkill
 		// capabilities or the disabled-tool set drifted since the build (a
 		// /memory save, a /tool toggle, an external settings edit), stop the
@@ -403,22 +403,22 @@ func (m *model) ensureAgentRuntime() (tea.Cmd, error) {
 	if err != nil {
 		return nil, err
 	}
-	if w := m.services.Session; w != nil && w.Err() != nil {
+	if w := m.features.Session; w != nil && w.Err() != nil {
 		return nil, w.Err()
 	}
 	if err := m.cancelManualCompaction(); err != nil {
 		return nil, err
 	}
-	projection := m.services.Session.Snapshot()
+	projection := m.features.Session.Snapshot()
 	if len(projection.ActiveMessages())+len(projection.Instructions())+len(projection.Tools())+len(projection.Skills()) > 0 {
-		_, err = m.services.Agent.Resume(params)
+		_, err = m.features.Agent.Resume(params)
 	} else {
-		err = m.services.Agent.Start(params, nil)
+		err = m.features.Agent.Start(params, nil)
 	}
 	if err != nil {
 		return nil, err
 	}
-	m.agentSession = m.services.Session
+	m.agentSession = m.features.Session
 	m.agentReloadPending = false
 	// Record what the toolset was built with, for the drift check above.
 	m.agentReviewCaps = m.autoSkillCapabilities()
@@ -430,8 +430,8 @@ func (m *model) ensureAgentRuntime() (tea.Cmd, error) {
 	m.wireAutoSkill(params)
 
 	cmds := []tea.Cmd{
-		chat.DrainAgentOutbox(m.services.Agent.Outbox()),
-		chat.PollPermGate(m.services.Agent.PermissionGate()),
+		chat.DrainAgentOutbox(m.features.Agent.Outbox()),
+		chat.PollPermGate(m.features.Agent.PermissionGate()),
 	}
 	return tea.Batch(cmds...), nil
 }
@@ -473,11 +473,11 @@ func (m *model) sendPendingMessagesSince(startedAt time.Time) tea.Cmd {
 	if !m.pendingMessages.CanDeliver(false) || m.pendingMessages.Len() == 0 {
 		return nil
 	}
-	if !m.services.Agent.Active() {
+	if !m.features.Agent.Active() {
 		return nil
 	}
 	if !m.conv.Stream.Active && m.agentReloadPending {
-		outbox := m.services.Agent.Outbox()
+		outbox := m.features.Agent.Outbox()
 		return func() tea.Msg { return pendingInputReadyMsg{outbox: outbox} }
 	}
 	if m.memoryInput != nil {
@@ -493,10 +493,10 @@ func (m *model) sendPendingMessagesSince(startedAt time.Time) tea.Cmd {
 			m.turnOpenedBy = head.ID
 		}
 		if m.pendingPluginRoot != "" {
-			m.services.Agent.SetPluginRoot(m.pendingPluginRoot)
+			m.features.Agent.SetPluginRoot(m.pendingPluginRoot)
 			m.pendingPluginRoot = ""
 		}
-		if err := m.pendingMessages.DeliverFirst(m.services.Agent.SendInput, m.attachPendingReminders); err != nil {
+		if err := m.pendingMessages.DeliverFirst(m.features.Agent.SendInput, m.attachPendingReminders); err != nil {
 			return tea.Batch(append(cmds, func() tea.Msg { return agentSendFailedMsg{err: err} })...)
 		}
 		if !m.conv.Stream.Active {
@@ -516,28 +516,28 @@ func (m *model) sendPendingMessagesSince(startedAt time.Time) tea.Cmd {
 // without invalidating the system-prompt cache prefix.
 func (m *model) attachPendingReminders(msg core.Message) core.Message {
 	// Reminders (the roster among them) precede held member messages.
-	return m.attachWaitingMessages(m.services.Reminder.PrepareInput(msg))
+	return m.attachWaitingMessages(m.features.Reminder.PrepareInput(msg))
 }
 
 // wireReminderProviders registers the harness providers attached once per
 // conversation. Each provider's render closure
-// captures the services struct pointer so it always reads the live state
+// captures the appFeatures struct pointer so it always reads the live state
 // — that way settings reload and skill toggles surface in the next emission
 // without ever mutating the cached system prompt.
 func (m *model) wireReminderProviders() {
 	// Skill.PromptSection already produces a self-introduced body
 	// ("Use the Skill tool to invoke these capabilities: ...") so it goes
 	// inside <system-reminder> verbatim, matching Claude Code's shape.
-	m.services.Reminder.Register(reminder.ProviderSkillsDirectory, func() string {
-		return m.services.Skill.PromptSection()
+	m.features.Reminder.Register(reminder.ProviderSkillsDirectory, func() string {
+		return m.features.Skill.PromptSection()
 	})
-	m.services.Reminder.Register(reminder.ProviderMemoryUser, func() string {
+	m.features.Reminder.Register(reminder.ProviderMemoryUser, func() string {
 		return m.env.CachedUserInstructions
 	})
-	m.services.Reminder.Register(reminder.ProviderMemoryProject, func() string {
+	m.features.Reminder.Register(reminder.ProviderMemoryProject, func() string {
 		return m.env.CachedProjectInstructions
 	})
-	m.services.Reminder.Register(reminder.ProviderGroup, group.Roster)
+	m.features.Reminder.Register(reminder.ProviderGroup, group.Roster)
 }
 
 const agentStopTimeout = 2 * time.Second
@@ -551,7 +551,7 @@ func (m *model) StopAgentRuntime() error {
 	m.pendingStopHook = nil
 	ctx, cancel := context.WithTimeout(context.Background(), agentStopTimeout)
 	defer cancel()
-	if err := m.services.Agent.Stop(ctx); err != nil {
+	if err := m.features.Agent.Stop(ctx); err != nil {
 		log.Logger().Warn("agent runtime shutdown incomplete", zap.Error(err))
 		return fmt.Errorf("stop agent runtime: %w", err)
 	}
@@ -569,7 +569,7 @@ func (m *model) ResetAgentRuntime() error {
 	m.pendingStopHook = nil
 	ctx, cancel := context.WithTimeout(context.Background(), agentStopTimeout)
 	defer cancel()
-	if err := m.services.Agent.Reset(ctx); err != nil {
+	if err := m.features.Agent.Reset(ctx); err != nil {
 		log.Logger().Warn("agent runtime reset incomplete", zap.Error(err))
 		return fmt.Errorf("reset agent runtime: %w", err)
 	}
@@ -578,7 +578,7 @@ func (m *model) ResetAgentRuntime() error {
 	m.resetUserPrompts()
 	// The next conversation carries neither the old notices nor, until its
 	// first message, the skills/memory reminders.
-	m.services.Reminder.ResetConversation()
+	m.features.Reminder.ResetConversation()
 	// Compaction must not restore the old conversation's files.
 	m.env.FileCache.Clear()
 	// Cancel any review owned by the discarded conversation.
@@ -590,10 +590,10 @@ func (m *model) ResetAgentRuntime() error {
 // Agent outbox and permission gate
 // ============================================================
 
-func (m *model) AgentOutbox() <-chan core.Event { return m.services.Agent.Outbox() }
+func (m *model) AgentOutbox() <-chan core.Event { return m.features.Agent.Outbox() }
 
 func (m *model) ListenForAgentEvents() tea.Cmd {
-	outbox := m.services.Agent.Outbox()
+	outbox := m.features.Agent.Outbox()
 	if outbox == nil {
 		return nil
 	}
@@ -602,7 +602,7 @@ func (m *model) ListenForAgentEvents() tea.Cmd {
 
 func (m *model) HandlePermGate(req *agentruntime.PermGateRequest) tea.Cmd {
 	if req == nil || (req.Context != nil && req.Context.Err() != nil) {
-		return chat.PollPermGate(m.services.Agent.PermissionGate())
+		return chat.PollPermGate(m.features.Agent.PermissionGate())
 	}
 	permissionView, err := m.preparePermissionRequest(req)
 	if err != nil {
@@ -613,12 +613,12 @@ func (m *model) HandlePermGate(req *agentruntime.PermGateRequest) tea.Cmd {
 		case req.Response <- agentruntime.PermGateResponse{Reason: fmt.Sprintf("cannot prepare %s approval: %v", req.ToolName, err)}:
 		default:
 		}
-		return chat.PollPermGate(m.services.Agent.PermissionGate())
+		return chat.PollPermGate(m.features.Agent.PermissionGate())
 	}
 	return tea.Batch(m.enqueueUserPrompt(&chat.UserPromptRequest{
 		Context: req.Context, Owner: m.conv.AgentToUI, Permission: req, PermissionView: permissionView,
 		Source: tool.AgentInteractionSource{WorkingDirectory: m.env.CWD, PermissionMode: m.env.SessionMode()},
-	}), chat.PollPermGate(m.services.Agent.PermissionGate()))
+	}), chat.PollPermGate(m.features.Agent.PermissionGate()))
 }
 
 // ============================================================
@@ -626,46 +626,46 @@ func (m *model) HandlePermGate(req *agentruntime.PermGateRequest) tea.Cmd {
 // ============================================================
 
 func (m *model) preparePermissionRequest(req *agentruntime.PermGateRequest) (*perm.PermissionRequest, error) {
-	return ask.PreparePermission(req, m.env.CWD, m.env.SessionMode(), m.services.Setting, m.env.SessionPermissions)
+	return ask.PreparePermission(req, m.env.CWD, m.env.SessionMode(), m.features.Setting, m.env.SessionPermissions)
 }
 
 // configureFlowPaths points Flow at the project definitions, then the user's.
 func (m *model) configureFlowPaths() {
-	if m.services.Flow == nil {
+	if m.features.Flow == nil {
 		return
 	}
 	dirs := []string{flow.DefinitionDir(confdir.Dir(m.env.CWD))}
 	if home, _ := os.UserHomeDir(); home != "" {
 		dirs = append(dirs, flow.DefinitionDir(confdir.Dir(home)))
 	}
-	m.services.Flow.SetSearchPaths(dirs)
+	m.features.Flow.SetSearchPaths(dirs)
 }
 
 func (m *model) ReconfigureAgentTool() {
 	m.configureFlowPaths()
-	if m.env.LLMProvider == nil || m.services.Session == nil {
+	if m.env.LLMProvider == nil || m.features.Session == nil {
 		return
 	}
 	m.ensureMemoryContextLoaded()
 
-	executor := subagent.NewExecutor(m.env.LLMProvider, m.env.CWD, m.env.GetModelID(), m.services.Hook)
+	executor := subagent.NewExecutor(m.env.LLMProvider, m.env.CWD, m.env.GetModelID(), m.features.Hook)
 	executor.SetInteractions(m.conv.AgentToUI)
-	executor.SetDefaultModel(m.services.Setting.SubagentModel())
-	executor.SetResolver(llm.NewProviderPool(m.services.LLM.Store()))
+	executor.SetDefaultModel(m.features.Setting.SubagentModel())
+	executor.SetResolver(llm.NewProviderPool(m.features.LLM.Store()))
 	perms := m.env.SessionPermissions
 	executor.SetParentPermissionMode(func() subagent.PermissionMode {
 		return subagent.InheritedPermissionMode(perms.CurrentMode())
 	})
-	if err := executor.SetSessions(m.services.SessionStore, m.services.Session); err != nil {
+	if err := executor.SetSessions(m.features.SessionStore, m.features.Session); err != nil {
 		m.conv.AddNotice("Cannot configure agents: " + err.Error())
 		return
 	}
-	settings, bridge := m.services.Setting, m.conv.AgentToUI
-	executor.ConfigureOwner(m.services.Task, m.services.Subagent, func(child *session.Session, _ bool, source tool.AgentInteractionSource) tool.Resolver {
+	settings, bridge := m.features.Setting, m.conv.AgentToUI
+	executor.ConfigureOwner(m.features.Task, m.features.Subagent, func(child *session.Session, _ bool, source tool.AgentInteractionSource) tool.Resolver {
 		return newWorkerResolver(settings, perms, bridge, child, source)
 	}, nil)
-	executor.SetTracker(m.services.Tracker)
-	parentHooks := m.services.Hook
+	executor.SetTracker(m.features.Tracker)
+	parentHooks := m.features.Hook
 	executor.SetChildHooks(func(owner *session.Session, provider llm.Provider, model string) (hook.Handler, func(llm.Provider, string), func()) {
 		return apphook.BindChild(apphook.ForChild(parentHooks, owner), provider, owner, model)
 	})
@@ -676,15 +676,15 @@ func (m *model) ReconfigureAgentTool() {
 		return nil
 	})
 	executor.SetProjectInstructions(m.env.CachedProjectInstructions)
-	executor.SetSkillsDirectory(m.services.Skill.PromptSection())
-	executor.SetMCPDependencies(m.services.MCP)
-	executor.SetDisabledTools(m.services.Setting.DisabledTools())
-	executor.SetParentTools(m.services.Agent.ParentToolSource(m.services.Session, m.promptParams().ToolSchemas()))
+	executor.SetSkillsDirectory(m.features.Skill.PromptSection())
+	executor.SetMCPDependencies(m.features.MCP)
+	executor.SetDisabledTools(m.features.Setting.DisabledTools())
+	executor.SetParentTools(m.features.Agent.ParentToolSource(m.features.Session, m.promptParams().ToolSchemas()))
 
 	adapter := subagent.NewExecutorAdapter(executor)
 	type executorSetter interface{ SetExecutor(tool.AgentExecutor) }
 	for _, name := range []string{tool.ToolAgent, tool.ToolSendMessage} {
-		t, ok := m.services.Tool.Get(name)
+		t, ok := m.features.Tool.Get(name)
 		if !ok {
 			continue
 		}
@@ -692,13 +692,13 @@ func (m *model) ReconfigureAgentTool() {
 			setter.SetExecutor(adapter)
 		}
 	}
-	if m.services.Flow != nil {
+	if m.features.Flow != nil {
 		// Use the same session-owned native executor as ordinary agent tools.
-		m.services.Flow.SetExecutor(adapter)
+		m.features.Flow.SetExecutor(adapter)
 		if m.flowMain == nil {
 			m.flowMain = newFlowMainBridge()
 		}
-		m.services.Flow.SetMainExecutor(m.flowMain.bind(m.services.Session))
+		m.features.Flow.SetMainExecutor(m.flowMain.bind(m.features.Session))
 	}
 }
 

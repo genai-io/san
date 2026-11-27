@@ -17,7 +17,7 @@ func TestSyncSettingsToHookEngineCarriesPluginHooks(t *testing.T) {
 	defer restore()
 
 	m := &model{
-		services: services{
+		features: appFeatures{
 			Setting: settingsWithNoHooks(t),
 			Hook:    hook.NewEngine(nil, "", "", ""),
 		},
@@ -25,7 +25,7 @@ func TestSyncSettingsToHookEngineCarriesPluginHooks(t *testing.T) {
 
 	m.syncSettingsToHookEngine()
 
-	if !m.services.Hook.HasHooks(hook.PreToolUse) {
+	if !m.features.Hook.HasHooks(hook.PreToolUse) {
 		t.Error("the engine received settings without the plugin's PreToolUse hook; " +
 			"it would never fire again after a reload")
 	}

@@ -97,13 +97,13 @@ func TestWorkerOverflowKeepsLatestErrorNotice(t *testing.T) {
 }
 
 func TestBackgroundWorkerProgressIsLiveAndDisplayOnly(t *testing.T) {
-	task.ResetDefaultTracker()
-	t.Cleanup(task.ResetDefaultTracker)
+	task.ResetDefault()
+	t.Cleanup(task.ResetDefault)
 	m := fixedComposerModel(80, 24)
-	m.services.Task = task.Default()
+	m.features.Task = task.Default()
 	worker := task.NewAgentTask("background-worker", "reviewer", "Review source", context.Background(), nil, "")
-	m.services.Task.RegisterTask(worker)
-	todo.TrackWorker(m.services.Tracker, worker.GetStatus())
+	m.features.Task.RegisterTask(worker)
+	todo.TrackWorker(m.features.Tracker, worker.GetStatus())
 	worker.AppendProgress("Read(LIVE_ACTIVITY_MARKER.go)")
 	worker.AppendProgress("Usage: input=10 output=2")
 	rows, _ := m.renderTrackerList()
@@ -117,15 +117,15 @@ func TestBackgroundWorkerProgressIsLiveAndDisplayOnly(t *testing.T) {
 }
 
 func TestFourBackgroundWorkerRowsStayVisible(t *testing.T) {
-	task.ResetDefaultTracker()
-	t.Cleanup(task.ResetDefaultTracker)
+	task.ResetDefault()
+	t.Cleanup(task.ResetDefault)
 	m := fixedComposerModel(80, 10)
-	m.services.Task = task.Default()
+	m.features.Task = task.Default()
 	for i := range 4 {
 		name := fmt.Sprintf("REVIEWER_%d", i)
 		worker := task.NewAgentTask(name, name, "Review source", context.Background(), nil, "")
-		m.services.Task.RegisterTask(worker)
-		todo.TrackWorker(m.services.Tracker, worker.GetStatus())
+		m.features.Task.RegisterTask(worker)
+		todo.TrackWorker(m.features.Tracker, worker.GetStatus())
 		worker.AppendProgress("Read(source.go)")
 	}
 	frame, _ := m.viewString()

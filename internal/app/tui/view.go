@@ -482,10 +482,10 @@ func (m *model) renderTrackerList() (rows, history string) {
 	if !m.conv.ShowTasks {
 		return "", ""
 	}
-	items := m.services.Tracker.List()
+	items := m.features.Tracker.List()
 	var running []task.BackgroundTask
-	if m.services.Task != nil {
-		running = m.services.Task.ListRunning()
+	if m.features.Task != nil {
+		running = m.features.Task.ListRunning()
 		liveFlowIDs := make(map[string]bool)
 		for _, bg := range running {
 			info := bg.GetStatus()
@@ -498,7 +498,7 @@ func (m *model) renderTrackerList() (rows, history string) {
 			for _, item := range items {
 				id := todo.BackgroundTaskID(item)
 				covered := liveFlowIDs[id]
-				if worker, ok := m.services.Task.Get(id); ok {
+				if worker, ok := m.features.Task.Get(id); ok {
 					// Only hide children represented by a visible scheduler graph.
 					// Unrelated workers (and children without a graph) keep their rows.
 					covered = covered || liveFlowIDs[worker.GetStatus().ParentTaskID]
@@ -515,14 +515,14 @@ func (m *model) renderTrackerList() (rows, history string) {
 		StreamActive:     m.conv.Stream.Active,
 		Width:            m.env.Width,
 		CompletionShown:  m.taskCompletionShown,
-		Blockers:         m.services.Tracker.OpenBlockers,
+		Blockers:         m.features.Tracker.OpenBlockers,
 		Executing:        m.executingTrackerItem,
 		Frame:            m.conv.Spinner.Frame(),
 		AgentColors:      m.agentColors(),
 		AwaitingApproval: m.pendingTaskApprovals(),
 		WorkerStatus: func(id string) task.TaskInfo {
-			if m.services.Task != nil {
-				if worker, ok := m.services.Task.Get(id); ok {
+			if m.features.Task != nil {
+				if worker, ok := m.features.Task.Get(id); ok {
 					return worker.GetStatus()
 				}
 			}
@@ -611,7 +611,7 @@ func styleFlowLiveView(live string, frame int) string {
 
 func (m model) renderModeStatus() string {
 	modelName := chat.ModelStatusLabel(m.env.GetModelDisplayName(), m.env.EffectiveThinkingEffort())
-	if status := m.services.Hook.CurrentStatusMessage(); status != "" {
+	if status := m.features.Hook.CurrentStatusMessage(); status != "" {
 		modelName = status
 	}
 	judgeApprovals := 0
@@ -626,7 +626,7 @@ func (m model) renderModeStatus() string {
 	if !m.userInput.LastCtrlC.IsZero() {
 		statusMessage = ctrlCExitHint
 	}
-	window, budget := widgets.GetContextLimits(m.services.LLM.Store(), m.env.CurrentModel)
+	window, budget := widgets.GetContextLimits(m.features.LLM.Store(), m.env.CurrentModel)
 	return chat.RenderModeStatus(chat.OperationModeParams{
 		Mode:              m.env.OperationMode,
 		ContextTokens:     m.env.ContextTokens,
@@ -685,8 +685,8 @@ func (m model) messageRenderParams() chat.RenderContext {
 	var activeAgentIDs []string
 	var managedAgents []chat.AgentView
 	waiting := m.pendingTaskApprovals()
-	if m.services.Task != nil {
-		for _, worker := range m.services.Task.List() {
+	if m.features.Task != nil {
+		for _, worker := range m.features.Task.List() {
 			info := worker.GetStatus()
 			if info.Type != task.TaskTypeAgent {
 				continue
@@ -756,7 +756,7 @@ func (m model) messageRenderParams() chat.RenderContext {
 		MemberColors:    m.grp.colors,
 		TaskActivity:    m.conv.TaskActivity,
 		ManagedAgents:   managedAgents,
-		TaskOwnerMap:    buildTaskOwnerMap(m.services.Tracker.List()),
+		TaskOwnerMap:    buildTaskOwnerMap(m.features.Tracker.List()),
 
 		// Modal interlock is left false here and set by
 		// renderDockedModalView, the only caller rendering under a modal.
@@ -764,7 +764,7 @@ func (m model) messageRenderParams() chat.RenderContext {
 }
 
 func (m model) agentColors() map[string]string {
-	return buildAgentColors(m.services.Subagent.ListConfigs())
+	return buildAgentColors(m.features.Subagent.ListConfigs())
 }
 
 func buildAgentColors(configs []*subagent.AgentConfig) map[string]string {

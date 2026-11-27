@@ -60,12 +60,12 @@ func TestWorktreeUsesCheckedOutMCPConfiguration(t *testing.T) {
 	if got := load(repo)["project"].Command; got != "main-only-change" {
 		t.Fatalf("worktree write changed main configuration: %q", got)
 	}
-	manager, err := NewSession(worktree, nil, nil)
+	servers, err := NewSession(worktree, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = manager.Close() })
-	server, ok := manager.Config("project")
+	t.Cleanup(func() { _ = servers.Close() })
+	server, ok := servers.Config("project")
 	if !ok || server.Command != "worktree-change" || server.CWD != worktree {
 		t.Fatalf("session MCP configuration = %+v, found=%v", server, ok)
 	}

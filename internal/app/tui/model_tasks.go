@@ -78,8 +78,8 @@ func (m *model) openFlowTask(msg input.FlowOpenTaskMsg) tea.Cmd {
 	}
 	var recorded *input.TaskViewItem
 	live := false
-	if m.services.Task != nil {
-		if worker, exists := m.services.Task.Get(msg.Execution.TaskID); exists {
+	if m.features.Task != nil {
+		if worker, exists := m.features.Task.Get(msg.Execution.TaskID); exists {
 			info := worker.GetStatus()
 			if info.AgentSessionID != msg.Execution.SessionID || (info.ParentSessionID != "" && info.ParentSessionID != m.sessionID()) {
 				m.userInput.Flow.TaskUnavailable()
@@ -110,8 +110,8 @@ func (m *model) openFlowTask(msg input.FlowOpenTaskMsg) tea.Cmd {
 
 func (m *model) taskSnapshots() []input.TaskViewItem {
 	var workers []task.BackgroundTask
-	if m.services.Task != nil {
-		workers = m.services.Task.List()
+	if m.features.Task != nil {
+		workers = m.features.Task.List()
 	}
 	infos := make([]task.TaskInfo, 0, len(workers))
 	seen := make(map[string]bool, len(workers))
@@ -130,8 +130,8 @@ func (m *model) taskSnapshots() []input.TaskViewItem {
 	}
 	// The session tracker survives process restart; its ended workers must still
 	// be inspectable after folding their old rows out of the inline tracker.
-	if m.services.Tracker != nil {
-		for _, item := range m.services.Tracker.List() {
+	if m.features.Tracker != nil {
+		for _, item := range m.features.Tracker.List() {
 			id := todo.BackgroundTaskID(item)
 			if id == "" || seen[id] || item.Status != todo.StatusCompleted {
 				continue
@@ -223,11 +223,11 @@ func (m *model) continueViewedTask(msg input.TaskContinueMsg) tea.Cmd {
 	if !m.consumeTaskAction(msg.ViewID) {
 		return nil
 	}
-	if m.services.Task == nil {
+	if m.features.Task == nil {
 		m.resumeTaskViewer()
 		return nil
 	}
-	worker, exists := m.services.Task.Get(msg.TaskID)
+	worker, exists := m.features.Task.Get(msg.TaskID)
 	if !exists {
 		m.resumeTaskViewer()
 		return nil
@@ -336,11 +336,11 @@ func (m *model) stopViewedTask(msg input.TaskStopMsg) tea.Cmd {
 	if !m.consumeTaskAction(msg.ViewID) {
 		return nil
 	}
-	if m.services.Task == nil {
+	if m.features.Task == nil {
 		m.resumeTaskViewer()
 		return nil
 	}
-	worker, known := m.services.Task.Get(msg.TaskID)
+	worker, known := m.features.Task.Get(msg.TaskID)
 	if !known {
 		m.resumeTaskViewer()
 		return nil
@@ -350,7 +350,7 @@ func (m *model) stopViewedTask(msg input.TaskStopMsg) tea.Cmd {
 		m.resumeTaskViewer()
 		return nil
 	}
-	manager, sessionID := m.services.Task, m.sessionID()
+	manager, sessionID := m.features.Task, m.sessionID()
 	m.tasks.stopID = msg.ViewID
 	return func() tea.Msg {
 		current, exists := manager.Get(msg.TaskID)

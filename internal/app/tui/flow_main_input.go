@@ -24,7 +24,7 @@ type flowMainInput struct {
 // checkpoint/admission failure leaves the queued amendments untouched. Only
 // accepted amendments enter the lease snapshot used by the next critic.
 func (m *model) flowMainWriterInput(prompt string) (core.Message, tea.Cmd, func() tea.Cmd, error) {
-	if blocked, reason := m.checkPromptHook(context.Background(), prompt); blocked {
+	if blocked, reason := m.runPromptSubmitHook(context.Background(), prompt); blocked {
 		return core.Message{}, nil, nil, fmt.Errorf("Flow writer prompt blocked: %s", reason)
 	}
 	if m.userInput.Queue.SelectIdx == 0 {
@@ -42,7 +42,7 @@ func (m *model) flowMainWriterInput(prompt string) (core.Message, tea.Cmd, func(
 	var prepared []input.QueueItem
 	var attachments []core.Attachment
 	for _, item := range m.flowMainAmendments() {
-		if blocked, reason := m.checkPromptHook(context.Background(), item.Content); blocked {
+		if blocked, reason := m.runPromptSubmitHook(context.Background(), item.Content); blocked {
 			return core.Message{}, nil, nil, fmt.Errorf("queued writer input blocked: %s", reason)
 		}
 		m.userInput.RestoreQueuedImages(item.Content, item.Images)
@@ -58,7 +58,7 @@ func (m *model) flowMainWriterInput(prompt string) (core.Message, tea.Cmd, func(
 		prompt += "\n\nUser amendments for this revision:\n\n" + strings.Join(amendments, "\n\n")
 	}
 	var start tea.Cmd
-	if !m.services.Agent.Active() {
+	if !m.features.Agent.Active() {
 		if m.env.LLMProvider == nil {
 			return core.Message{}, nil, nil, fmt.Errorf("main writer has no provider configured")
 		}
@@ -143,12 +143,12 @@ func (m *model) releaseFlowMainStepInput() (tea.Cmd, bool) {
 		return nil, false
 	}
 	head.Images = slices.Clone(head.Images)
-	if blocked, reason := m.checkPromptHook(context.Background(), head.Content); blocked {
+	if blocked, reason := m.runPromptSubmitHook(context.Background(), head.Content); blocked {
 		m.pendingMessages.Hold(nil)
 		m.conv.AddNotice("Queued Flow input was blocked: " + reason)
 		return tea.Batch(m.CommitMessages()...), false
 	}
-	if !m.services.Agent.Active() || r.msg.lease.owner.Err() != nil {
+	if !m.features.Agent.Active() || r.msg.lease.owner.Err() != nil {
 		m.pendingMessages.Hold(nil)
 		return nil, false
 	}
@@ -197,7 +197,7 @@ func (m *model) sendFlowMainStepInput(r *flowMainRequest, head input.QueueItem, 
 	p.RecallQuery = p.Message.Text()
 	p.Message = m.attachPendingReminders(p.Message)
 	canSend := r == m.flowMainRequest && m.flowMainWriterActive() && r.msg.ctx.Err() == nil
-	if !canSend || m.services.Agent.SendInput(p) != nil {
+	if !canSend || m.features.Agent.SendInput(p) != nil {
 		closeMemoryInput(p.Completion)
 		m.pendingMessages.Hold(nil)
 		return nil, false

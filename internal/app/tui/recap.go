@@ -59,7 +59,7 @@ type recapReadyMsg struct {
 // one.
 func (m *model) onBlur() tea.Cmd {
 	m.unfocusedSince = time.Now()
-	cfg := m.services.Setting.Recap()
+	cfg := m.features.Setting.Recap()
 	if !m.shouldAutoRecap(cfg) {
 		return nil
 	}
@@ -79,7 +79,7 @@ func (m *model) onFocus() tea.Cmd {
 // enough and the session is idle. Returning mid-turn skips this automatic
 // recap; it must not interrupt tool calls or appear unexpectedly later.
 func (m *model) recapOnReturn(since time.Time) tea.Cmd {
-	cfg := m.services.Setting.Recap()
+	cfg := m.features.Setting.Recap()
 	if since.IsZero() || time.Since(since) < cfg.AwayTime() ||
 		m.conv.Stream.Active || !m.shouldAutoRecap(cfg) {
 		return nil
@@ -124,7 +124,7 @@ func (m *model) deliverRecap() tea.Cmd {
 // prepareRecap runs when the cache window comes up or a turn goes idle.
 // Write ahead to use the warm cache, but don't show the result early.
 func (m *model) prepareRecap() tea.Cmd {
-	cfg := m.services.Setting.Recap()
+	cfg := m.features.Setting.Recap()
 	if m.unfocusedSince.IsZero() || time.Since(m.unfocusedSince) < min(cfg.AwayTime(), recapCacheWindow) ||
 		m.recap.busy || !m.shouldAutoRecap(cfg) || !m.sessionQuiet() || m.recapReady() {
 		return nil
@@ -137,7 +137,7 @@ func (m *model) prepareRecap() tea.Cmd {
 func (m *model) recapReady() bool {
 	r := m.recap.ready
 	return r.text != "" && r.sessionID == m.sessionID() && r.chainLen == m.chainLen() &&
-		r.owner == m.services.Session && (r.owner == nil || r.owner.Err() == nil)
+		r.owner == m.features.Session && (r.owner == nil || r.owner.Err() == nil)
 }
 
 // clearRecapCache resolves an unshown result against its original writer.
@@ -166,7 +166,7 @@ func (m *model) canRecap() bool {
 // from the recorded recap notice rather than process-local state, so a resumed
 // session does not recap the same completed work again.
 func (m *model) shouldAutoRecap(cfg setting.RecapSettings) bool {
-	owner := m.services.Session
+	owner := m.features.Session
 	if cfg.AfterMinutes < 0 || owner == nil || !m.canRecap() || m.hasDraft() {
 		return false
 	}
@@ -215,7 +215,7 @@ func (m *model) onRecapReady(msg recapReadyMsg) tea.Cmd {
 	m.recap.busy = false
 	show := m.recap.show
 	m.recap.show = false
-	if msg.sessionID != m.sessionID() || msg.owner != m.services.Session ||
+	if msg.sessionID != m.sessionID() || msg.owner != m.features.Session ||
 		(msg.owner != nil && msg.owner.Err() != nil) || msg.chainLen != m.chainLen() {
 		closeAside(msg.recording)
 		return nil
@@ -233,7 +233,7 @@ func (m *model) onRecapReady(msg recapReadyMsg) tea.Cmd {
 	}
 	m.clearRecapCache()
 	m.recap.ready = msg
-	cfg := m.services.Setting.Recap()
+	cfg := m.features.Setting.Recap()
 	if !m.unfocusedSince.IsZero() && time.Since(m.unfocusedSince) >= cfg.AwayTime() &&
 		m.recapReady() && m.sessionQuiet() && m.shouldAutoRecap(cfg) {
 		return m.showRecap(msg)
@@ -248,7 +248,7 @@ func (m *model) showRecap(r recapReadyMsg) tea.Cmd {
 		m.clearRecapCache()
 	}
 	m.recap.ready = recapReadyMsg{}
-	if r.recording != nil && (r.sessionID != m.sessionID() || r.owner != m.services.Session || r.chainLen != m.chainLen()) {
+	if r.recording != nil && (r.sessionID != m.sessionID() || r.owner != m.features.Session || r.chainLen != m.chainLen()) {
 		closeAside(r.recording)
 		return nil
 	}
@@ -257,7 +257,7 @@ func (m *model) showRecap(r recapReadyMsg) tea.Cmd {
 		return nil
 	}
 	if r.recording == nil && r.owner != nil {
-		if r.owner != m.services.Session || r.sessionID != m.sessionID() || r.chainLen != m.chainLen() {
+		if r.owner != m.features.Session || r.sessionID != m.sessionID() || r.chainLen != m.chainLen() {
 			return nil
 		}
 		if err := r.owner.Append(context.Background(), session.Event{Payload: session.AnnotationAddPayload{Text: notice}}); err != nil {
@@ -289,7 +289,7 @@ func (m *model) recapFacts() string {
 	if needed := m.waitingOn(); needed != "" {
 		facts = append(facts, needed+" needed")
 	}
-	if done, plans := chat.PlanProgress(m.services.Tracker.List()); plans > 0 {
+	if done, plans := chat.PlanProgress(m.features.Tracker.List()); plans > 0 {
 		facts = append(facts, "plan "+strconv.Itoa(done)+"/"+strconv.Itoa(plans))
 	}
 	if ap := m.env.AutoPilot; m.drivenMission() != "" {
@@ -303,7 +303,7 @@ func (m *model) recapFacts() string {
 		}
 		facts = append(facts, mission)
 	}
-	if n := len(m.services.Task.ListRunning()); n > 0 {
+	if n := len(m.features.Task.ListRunning()); n > 0 {
 		facts = append(facts, strconv.Itoa(n)+" in background")
 	}
 	return strings.Join(facts, " · ")
@@ -328,4 +328,4 @@ func (m *model) waitingOn() string {
 }
 
 // chainLen is the length of the agent's chain: what a recap was written from.
-func (m *model) chainLen() int { return len(m.services.Agent.Messages()) }
+func (m *model) chainLen() int { return len(m.features.Agent.Messages()) }

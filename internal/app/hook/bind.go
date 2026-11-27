@@ -26,11 +26,7 @@ func Bind(engine *hook.Engine, provider llm.Provider, owner *session.Session, mo
 // ForChild derives a hook engine in the child session's execution directory.
 func ForChild(parent *hook.Engine, owner *session.Session) *hook.Engine {
 	projection := owner.Snapshot()
-	cwd := projection.Identity().InitialCWD
-	if saved := projection.State().ExecutionCWD; saved != nil {
-		cwd = *saved
-	}
-	return parent.ForSession(owner.ID(), cwd, owner.Path())
+	return parent.ForSession(owner.ID(), projection.ExecutionCWD(), owner.Path())
 }
 
 // BindChild supplies the executor's initial binding, model switch and shutdown.

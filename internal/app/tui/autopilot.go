@@ -48,7 +48,7 @@ type autopilotRequestKey struct{}
 func (m *model) newAutopilotRequest() *autopilotRequest {
 	m.cancelAutopilot()
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	r := &autopilotRequest{owner: m.services.Session, id: m.sessionID(), outbox: m.AgentOutbox(), ctx: ctx, cancel: cancel}
+	r := &autopilotRequest{owner: m.features.Session, id: m.sessionID(), outbox: m.AgentOutbox(), ctx: ctx, cancel: cancel}
 	r.ctx = context.WithValue(ctx, autopilotRequestKey{}, r)
 	m.autopilotRequest = r
 	return r
@@ -104,7 +104,7 @@ func (m *model) currentAutopilot(r *autopilotRequest) bool {
 	r.mu.Lock()
 	closed := r.closed
 	r.mu.Unlock()
-	return !closed && m.autopilotRequest == r && r.owner == m.services.Session && r.id == m.sessionID() && r.outbox == m.AgentOutbox()
+	return !closed && m.autopilotRequest == r && r.owner == m.features.Session && r.id == m.sessionID() && r.outbox == m.AgentOutbox()
 }
 
 func (m *model) cancelAutopilot() {
@@ -115,12 +115,12 @@ func (m *model) cancelAutopilot() {
 	m.autopilotDeciding = false
 }
 
-// autopilotRuntime is the immutable snapshot the agent goroutine reads: the live
+// autopilotSnapshot is the immutable snapshot the agent goroutine reads: the live
 // judge, resolved config, and coherent workspace facts. All publishers run on
 // the UI goroutine; readers never access the mutable environment's workspace.
 // rebuildAutopilotJudge swaps it as one unit so the judge and steer gates
 // can never skew.
-type autopilotRuntime struct {
+type autopilotSnapshot struct {
 	sessionID string
 	judge     *judge.Judge
 	cfg       setting.AutoPilotSettings
@@ -137,13 +137,13 @@ func (m *model) rebuildAutopilotJudge() {
 	provider, info := m.resolveJudge(ar.Model)
 	rev := judge.New(provider, info.ModelID)
 	if ar.ThinkingEffort != "" {
-		rev.SetThinkingEffort(llm.ResolveThinkingEffortForModel(provider, m.services.LLM.Store(), info, ar.ThinkingEffort))
+		rev.SetThinkingEffort(llm.ResolveThinkingEffortForModel(provider, m.features.LLM.Store(), info, ar.ThinkingEffort))
 	}
 	rev.SetSteeringInstructions(m.autopilotSteeringInstructions())
 	// Publish the judge and the config it resolved from as one snapshot so the
 	// agent goroutine (steer gates + judge) never sees a judge/config skew;
 	// Clone keeps the snapshot independent of later UI-goroutine edits.
-	m.autopilot.Store(&autopilotRuntime{sessionID: m.sessionID(), judge: rev, cfg: ar.Clone(), cwd: m.env.CWD, underGit: m.env.IsGit})
+	m.autopilot.Store(&autopilotSnapshot{sessionID: m.sessionID(), judge: rev, cfg: ar.Clone(), cwd: m.env.CWD, underGit: m.env.IsGit})
 }
 
 // refreshAutopilotSnapshot republishes the runtime snapshot with the live config
@@ -157,7 +157,7 @@ func (m *model) refreshAutopilotSnapshot() {
 	if rt == nil {
 		return
 	}
-	m.autopilot.Store(&autopilotRuntime{sessionID: m.sessionID(), judge: rt.judge, cfg: m.env.AutoPilot.Clone(), cwd: m.env.CWD, underGit: m.env.IsGit})
+	m.autopilot.Store(&autopilotSnapshot{sessionID: m.sessionID(), judge: rt.judge, cfg: m.env.AutoPilot.Clone(), cwd: m.env.CWD, underGit: m.env.IsGit})
 }
 
 // autopilotSteeringInstructions resolves the customizable "how it drives" portion of
@@ -353,7 +353,7 @@ func (m *model) missionRefine(draft string) (func(context.Context) (string, erro
 			return strings.TrimSpace(resp.Content.Text()), nil
 		}, func() (bool, error) {
 			// The panel fences editor generations; cancellation still needs error delivery.
-			valid := r.owner == m.services.Session && r.id == m.sessionID()
+			valid := r.owner == m.features.Session && r.id == m.sessionID()
 			err := r.ctx.Err()
 			r.close()
 			return valid, err

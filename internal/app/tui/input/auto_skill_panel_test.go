@@ -124,7 +124,7 @@ func TestSkillPanelRenderShowsValidationError(t *testing.T) {
 
 func TestReflectionTabsPreserveDraftUntilClose(t *testing.T) {
 	cwd, svc := t.TempDir(), setting.New(nil)
-	c := NewReflectionSelector(ReflectionDeps{Workspace: func() (string, *setting.Settings) { return cwd, svc }})
+	c := NewReflectionSelector(ReflectionSources{Workspace: func() (string, *setting.Settings) { return cwd, svc }})
 	c.Enter(120, 40)
 	press := func(key rune) { c.HandleKeypress(tea.KeyPressMsg{Code: key}) }
 	if out := c.Render(); !strings.Contains(out, "Reflection") || !strings.Contains(out, "Repository memory") || strings.Contains(out, "Create new skills") {
@@ -241,7 +241,7 @@ func fakeLearnedStore(names ...string) LearnedSkillStore {
 }
 
 func newTestSkillPanelWith(store LearnedSkillStore) (*PanelPopup, *autoSkillPanel) {
-	c := NewReflectionSelector(ReflectionDeps{Learned: store})
+	c := NewReflectionSelector(ReflectionSources{Learned: store})
 	c.Enter(120, 40)
 	c.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyTab})
 	return &c, c.ActivePanel().(*autoSkillPanel)

@@ -494,8 +494,8 @@ func TestClearCancelsHistoryBeforeAndDuringNativePrint(t *testing.T) {
 		t.Run(fmt.Sprintf("started=%v", started), func(t *testing.T) {
 			m := &clearScrollbackRendererModel{model: fixedComposerModel(80, 24), started: started, settled: make(chan struct{}, 1)}
 			initClearSessionTest(t, m.model)
-			m.services.Agent = &runtime.Runtime{}
-			m.services.Reminder = reminder.NewQueue()
+			m.features.Agent = &runtime.Runtime{}
+			m.features.Reminder = reminder.NewQueue()
 			m.userInput.Textarea.SetValue("LIVE-DRAFT")
 			terminal := newTerminalHistoryState(80, 24)
 			output := &synchronizedOutput{writes: make(chan struct{}, 1)}
@@ -736,8 +736,8 @@ func TestFixedComposerKeepsRecentRepliesAndNativeHistory(t *testing.T) {
 			if managed {
 				// Create a real managed child before launching Bubble Tea: the app must
 				// project it into native conversation activity, not just a footer row.
-				m.services.Task = task.NewManager()
-				child := m.services.Task.CreateChildAgentTask("native-child", "scheduler", "reviewer", "CHILD-LIVE", task.WithSessionID(context.Background(), m.sessionID()), nil)
+				m.features.Task = task.NewRunSet()
+				child := m.features.Task.CreateChildAgentTask("native-child", "scheduler", "reviewer", "CHILD-LIVE", task.WithSessionID(context.Background(), m.sessionID()), nil)
 				child.AppendProgress("Read(CHILD-ACTIVITY-LIVE.go)")
 				t.Cleanup(func() { child.Complete(nil) })
 				liveMarkers = []string{"reviewer: CHILD-LIVE", "Read(CHILD-ACTIVITY-LIVE.go)"}
@@ -863,7 +863,7 @@ func TestFirstReplyKeepsUserRowInEveryTerminalFrame(t *testing.T) {
 	for _, height := range []int{24, 40} {
 		t.Run(fmt.Sprintf("height %d", height), func(t *testing.T) {
 			m := &fixedComposerRendererModel{model: fixedComposerModel(100, height), settled: make(chan struct{}, 1)}
-			m.services.Agent = &runtime.Runtime{}
+			m.features.Agent = &runtime.Runtime{}
 			m.welcomePending = true
 			m.conv.Append(core.ChatMessage{Role: core.ChatUser, Content: "hi"})
 			m.conv.Stream = chat.StreamState{Active: true, Waiting: true}
@@ -958,7 +958,7 @@ func TestStreamingHistoryHandoffKeepsVisibleText(t *testing.T) {
 			const width, height = 80, 24
 			const anchor, continuation = "LIVE-ANCHOR", "CONTINUATION"
 			m := &fixedComposerRendererModel{model: fixedComposerModel(width, height), settled: make(chan struct{}, 1)}
-			m.services.Agent = &runtime.Runtime{}
+			m.features.Agent = &runtime.Runtime{}
 			msg := m.conv.Append(core.ChatMessage{Role: core.ChatAssistant, Content: anchor})
 			m.conv.Stream = chat.StreamState{Active: true, MessageID: msg.ID}
 			var rows []string

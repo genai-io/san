@@ -36,16 +36,16 @@ func TestProviderSelectionStopTimeoutPreservesSelection(t *testing.T) {
 		t.Fatal(err)
 	}
 	m := fixedComposerModel(80, 24)
-	m.services.Skill = skill.NewRegistry()
-	m.services.Tool = tool.NewRegistry()
+	m.features.Skill = skill.NewRegistry()
+	m.features.Tool = tool.NewRegistry()
 	m.env.CachedUserInstructions = "test instructions"
-	m.services.LLM = &llm.Conn{}
-	m.services.LLM.SetCurrentModel(old)
-	m.services.LLM.SetProvider(previous)
+	m.features.LLM = &llm.Conn{}
+	m.features.LLM.SetCurrentModel(old)
+	m.features.LLM.SetProvider(previous)
 	m.env.CurrentModel, m.env.LLMProvider = old, previous
 	m.env.store, m.env.ThinkingEffort = store, "low"
 	sess := &runtime.Runtime{}
-	m.services.Agent = sess
+	m.features.Agent = sess
 	started, release := make(chan struct{}), make(chan struct{})
 	var once sync.Once
 	unblock := func() { once.Do(func() { close(release) }) }
@@ -60,7 +60,7 @@ func TestProviderSelectionStopTimeoutPreservesSelection(t *testing.T) {
 		t.Fatal(err)
 	}
 	<-started
-	deps := m.overlayDeps()
+	deps := m.panelContext()
 	commits := 0
 	commit := func() error {
 		commits++
@@ -73,7 +73,7 @@ func TestProviderSelectionStopTimeoutPreservesSelection(t *testing.T) {
 	if err := deps.SwitchProvider(selected, commit); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("switch = %v", err)
 	}
-	if commits != 0 || m.env.CurrentModel != old || m.env.LLMProvider != previous || m.services.LLM.CurrentModel() != old || m.services.LLM.Provider() != previous || m.env.ThinkingEffort != "low" {
+	if commits != 0 || m.env.CurrentModel != old || m.env.LLMProvider != previous || m.features.LLM.CurrentModel() != old || m.features.LLM.Provider() != previous || m.env.ThinkingEffort != "low" {
 		t.Fatal("failed stop changed selection")
 	}
 	persisted, err := llm.NewStore()
@@ -87,7 +87,7 @@ func TestProviderSelectionStopTimeoutPreservesSelection(t *testing.T) {
 	if err := deps.SwitchProvider(selected, commit); err != nil {
 		t.Fatal(err)
 	}
-	if commits != 1 || m.env.CurrentModel != next || m.env.LLMProvider != selected || m.services.LLM.CurrentModel() != next || m.services.LLM.Provider() != selected || m.env.ThinkingEffort != "high" {
+	if commits != 1 || m.env.CurrentModel != next || m.env.LLMProvider != selected || m.features.LLM.CurrentModel() != next || m.features.LLM.Provider() != selected || m.env.ThinkingEffort != "high" {
 		t.Fatal("successful selection did not commit once")
 	}
 	if err := persisted.Reload(); err != nil {

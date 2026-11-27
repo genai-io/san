@@ -39,7 +39,7 @@ func TestBashPromptRecording(t *testing.T) {
 				return aitest.Replies(ai.Response{Content: ai.TextContent(text), Usage: ai.Usage{Input: 17, Output: 4}, Err: callErr})(ctx, req)
 			})
 			provider := &compactHTTPProvider{client: ai.NewClientWithDriver(driver, ai.Model{ID: "resolved-judge"})}
-			m.autopilot.Store(&autopilotRuntime{judge: judge.New(provider, "alias"), sessionID: owner.ID()})
+			m.autopilot.Store(&autopilotSnapshot{judge: judge.New(provider, "alias"), sessionID: owner.ID()})
 			responder := bashPromptResponder{model: m, recording: owner, sessionID: owner.ID()}
 			if mode == "closed-admission" {
 				if err := owner.Close(); err != nil {
@@ -47,7 +47,7 @@ func TestBashPromptRecording(t *testing.T) {
 				}
 			}
 			if mode == "stale-session" {
-				m.autopilot.Store(&autopilotRuntime{judge: judge.New(provider, "alias"), sessionID: "replacement"})
+				m.autopilot.Store(&autopilotSnapshot{judge: judge.New(provider, "alias"), sessionID: "replacement"})
 			}
 			input, ok := responder.RequestAnswer(ctx, "go test ./...", "Continue? [Y/n]")
 			if ok != (mode == "answer") || ok && input != "y" || !ok && input != "" {

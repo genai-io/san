@@ -34,9 +34,8 @@ func (t *TrackerGetTool) Execute(ctx context.Context, params map[string]any, cwd
 
 	task, ok := store.Get(taskID)
 	if !ok {
-		// Fallback: background agent tasks use hex IDs from the task manager,
-		// stored as "background_task_id" metadata in tracker entries.
-		task = store.FindByMetadata("background_task_id", taskID)
+		// Background workers can also be looked up by their task manager ID.
+		task = store.FindByBackgroundTaskID(taskID)
 		if task == nil {
 			return toolresult.NewErrorResult(t.Name(), fmt.Sprintf("task %s not found", taskID))
 		}

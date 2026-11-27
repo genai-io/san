@@ -53,25 +53,20 @@ func (r *Registry) Load(ctx context.Context, cwd string) error {
 
 	// Load plugins from each scope in deterministic precedence order.
 	// Later scopes override earlier ones when the same plugin key exists.
-	dirsByScope := GetPluginDirs(cwd)
 	for _, scope := range scopes {
-		dirs := dirsByScope[scope]
-		for _, dir := range dirs {
-			plugins, err := LoadPluginsFromDir(dir, scope, "")
-			if err != nil {
-				continue
+		plugins, err := LoadPluginsFromDir(scopeDir(cwd, scope), scope, "")
+		if err != nil {
+			continue
+		}
+		for _, p := range plugins {
+			key := p.FullName()
+			if enabled, ok := enabledPlugins[key]; ok {
+				p.Enabled = enabled
+			} else {
+				// Default: user plugins enabled, others disabled
+				p.Enabled = scope == ScopeUser
 			}
-			for _, p := range plugins {
-				key := p.FullName()
-				// Check if enabled
-				if enabled, ok := enabledPlugins[key]; ok {
-					p.Enabled = enabled
-				} else {
-					// Default: user plugins enabled, others disabled
-					p.Enabled = scope == ScopeUser
-				}
-				r.plugins[key] = p
-			}
+			r.plugins[key] = p
 		}
 	}
 
@@ -329,14 +324,9 @@ var defaultRegistry = NewRegistry()
 // ProjectPluginFindings lists the plugins cwd's own scopes would load, for the
 // workspace trust prompt: a plugin can carry hooks and MCP servers.
 func ProjectPluginFindings(cwd string) []string {
-	dirsByScope := GetPluginDirs(cwd)
 	var out []string
 	for _, scope := range []Scope{ScopeProject, ScopeLocal} {
-		var plugins []*Plugin
-		for _, dir := range dirsByScope[scope] {
-			found, _ := LoadPluginsFromDir(dir, scope, "")
-			plugins = append(plugins, found...)
-		}
+		plugins, _ := LoadPluginsFromDir(scopeDir(cwd, scope), scope, "")
 		installed, _ := LoadInstalledPlugins(GetInstalledPluginsFile(cwd, scope), scope)
 		for _, p := range append(plugins, installed...) {
 			out = append(out, "load plugin "+p.FullName()+"  ("+string(scope)+" scope)")

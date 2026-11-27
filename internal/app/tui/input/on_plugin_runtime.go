@@ -12,7 +12,7 @@ import (
 )
 
 // Plugin intent messages each request one async mutating operation. They bridge
-// from keybindings / executeAction into UpdatePlugin, where deps (cwd, reload)
+// from keybindings / executeAction into UpdatePlugin, where overlay (cwd, reload)
 // and the spinner live.
 type pluginEnableMsg struct{ PluginName string }
 type pluginDisableMsg struct{ PluginName string }
@@ -37,7 +37,7 @@ type pluginOpResultMsg struct {
 }
 
 // UpdatePlugin routes plugin management messages.
-func UpdatePlugin(deps OverlayDeps, state *PluginSelector, msg tea.Msg) (tea.Cmd, bool) {
+func UpdatePlugin(panel PanelContext, state *PluginSelector, msg tea.Msg) (tea.Cmd, bool) {
 	switch msg := msg.(type) {
 	case pluginEnableMsg:
 		reg, name := state.registry, msg.PluginName
@@ -56,7 +56,7 @@ func UpdatePlugin(deps OverlayDeps, state *PluginSelector, msg tea.Msg) (tea.Cmd
 		), true
 
 	case pluginInstallMsg:
-		reg, cwd := state.registry, deps.Cwd
+		reg, cwd := state.registry, panel.Cwd
 		name, market, scope := msg.PluginName, msg.Marketplace, msg.Scope
 		return tea.Batch(
 			state.beginLoading("Installing "+name+"..."),
@@ -77,7 +77,7 @@ func UpdatePlugin(deps OverlayDeps, state *PluginSelector, msg tea.Msg) (tea.Cmd
 		), true
 
 	case pluginMarketplaceRemoveMsg:
-		mgr, id := state.marketplaceManager, msg.ID
+		mgr, id := state.marketplaceSources, msg.ID
 		return tea.Batch(
 			state.beginLoading("Removing "+id+"..."),
 			runPluginOp(pluginOpResultMsg{okMsg: "Removed " + id, errCtx: "remove " + id, pop: true},
@@ -96,7 +96,7 @@ func UpdatePlugin(deps OverlayDeps, state *PluginSelector, msg tea.Msg) (tea.Cmd
 		}
 		state.refreshAfterOp()
 		if msg.err == nil && msg.reload {
-			_ = deps.ReloadAfterPluginChange()
+			_ = panel.ReloadAfterPluginChange()
 		}
 		return nil, true
 

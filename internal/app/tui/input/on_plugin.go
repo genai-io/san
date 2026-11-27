@@ -370,7 +370,7 @@ func (s *PluginSelector) browseMarketplace() {
 	s.browseMarketplaceID = s.detailMarketplace.ID
 	s.browsePlugins = []pluginDiscoverItem{}
 
-	plugins, err := s.marketplaceManager.MarketplacePlugins(s.detailMarketplace.ID)
+	plugins, err := s.marketplaceSources.MarketplacePlugins(s.detailMarketplace.ID)
 	if err != nil {
 		s.setError(fmt.Sprintf("Failed to list plugins: %v", err))
 		return
@@ -391,7 +391,7 @@ func (s *PluginSelector) browseMarketplace() {
 
 // syncMarketplace clones or updates a marketplace, driving the shared spinner.
 func (s *PluginSelector) syncMarketplace(id string) tea.Cmd {
-	mgr := s.marketplaceManager
+	mgr := s.marketplaceSources
 	return tea.Batch(
 		s.beginLoading("Syncing "+id+"..."),
 		runPluginOp(pluginOpResultMsg{okMsg: "Synced " + id, errCtx: "sync " + id},
@@ -450,7 +450,7 @@ func (s *PluginSelector) EnterSelect(width, height int) error {
 
 	s.maxVisible = max(4, height-14)
 
-	if err := s.marketplaceManager.Load(); err != nil {
+	if err := s.marketplaceSources.Load(); err != nil {
 		s.setError(fmt.Sprintf("Failed to load marketplaces: %v", err))
 	}
 	_ = s.installer.LoadMarketplaces() // Non-fatal
@@ -532,8 +532,8 @@ func (s *PluginSelector) refreshDiscoverPlugins() {
 	s.discoverPlugins = []pluginDiscoverItem{}
 	installedNames := s.getInstalledNames()
 
-	for _, marketplaceID := range s.marketplaceManager.List() {
-		plugins, err := s.marketplaceManager.MarketplacePlugins(marketplaceID)
+	for _, marketplaceID := range s.marketplaceSources.List() {
+		plugins, err := s.marketplaceSources.MarketplacePlugins(marketplaceID)
 		if err != nil {
 			continue
 		}
@@ -566,8 +566,8 @@ func (s *PluginSelector) refreshMarketplaces() {
 		}
 	}
 
-	for _, id := range s.marketplaceManager.List() {
-		entry, ok := s.marketplaceManager.Get(id)
+	for _, id := range s.marketplaceSources.List() {
+		entry, ok := s.marketplaceSources.Get(id)
 		if !ok {
 			continue
 		}
@@ -585,7 +585,7 @@ func (s *PluginSelector) refreshMarketplaces() {
 			item.Source = entry.Source.Path
 		}
 
-		if plugins, err := s.marketplaceManager.MarketplacePlugins(id); err == nil {
+		if plugins, err := s.marketplaceSources.MarketplacePlugins(id); err == nil {
 			item.Available = len(plugins)
 		}
 
@@ -644,7 +644,7 @@ func applyMarketplacePlugin(item *pluginDiscoverItem, mp coreplugin.MarketplaceP
 // simply keep the marketplace metadata.
 func (s *PluginSelector) enrichDiscoverItem(item *pluginDiscoverItem) {
 	fullName := item.Name + "@" + item.Marketplace
-	pluginPath, err := s.marketplaceManager.PluginPath(item.Marketplace, item.Name)
+	pluginPath, err := s.marketplaceSources.PluginPath(item.Marketplace, item.Name)
 	if err != nil {
 		return
 	}
@@ -726,7 +726,7 @@ func (s *PluginSelector) addMarketplace() tea.Cmd {
 			absPath = filepath.Join(home, source[1:])
 		}
 		id = filepath.Base(absPath)
-		err = s.marketplaceManager.AddDirectory(id, absPath)
+		err = s.marketplaceSources.AddDirectory(id, absPath)
 	} else if after, ok := strings.CutPrefix(source, "https://github.com/"); ok {
 		repo := after
 		repo = strings.TrimSuffix(repo, ".git")
@@ -734,7 +734,7 @@ func (s *PluginSelector) addMarketplace() tea.Cmd {
 		parts := strings.Split(repo, "/")
 		if len(parts) >= 2 {
 			id = parts[len(parts)-1]
-			err = s.marketplaceManager.AddGitHub(id, repo)
+			err = s.marketplaceSources.AddGitHub(id, repo)
 		} else {
 			s.setError("Invalid GitHub URL format")
 			return nil
@@ -742,7 +742,7 @@ func (s *PluginSelector) addMarketplace() tea.Cmd {
 	} else if strings.Contains(source, "/") && !strings.Contains(source, "://") {
 		parts := strings.Split(source, "/")
 		id = parts[len(parts)-1]
-		err = s.marketplaceManager.AddGitHub(id, source)
+		err = s.marketplaceSources.AddGitHub(id, source)
 	} else {
 		s.setError("Invalid source format. Use owner/repo, https://github.com/owner/repo, or ./path")
 		return nil

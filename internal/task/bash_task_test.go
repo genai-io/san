@@ -254,7 +254,7 @@ func TestBashTaskStopIsNotAFailure(t *testing.T) {
 
 // Bash exposes the task's process-group ID, so the model can send this same
 // SIGTERM directly from a later Bash invocation. The real *exec.ExitError
-// from that death must classify as stopped, same as a Manager.Kill call.
+// from that death must classify as stopped, same as a RunSet.Kill call.
 func TestBashTaskDirectGracefulTerminationIsNotAFailure(t *testing.T) {
 	task := newRunningBashTask(t, "direct-stop-id", "sleep 100", "Long task")
 
@@ -351,7 +351,7 @@ func TestStopRefusedAfterReap(t *testing.T) {
 
 // A background command that never stops talking used to have every byte it
 // ever printed held in memory for the life of the process: BashTask skipped
-// the cap AgentTask applied, and the manager never forgets a task.
+// the cap AgentTask applied, and the run set never forgets a task.
 func TestBashTaskOutputIsCapped(t *testing.T) {
 	task := newRunningBashTask(t, "cap-id", "chatty", "Chatty task")
 

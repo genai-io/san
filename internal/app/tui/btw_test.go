@@ -3,7 +3,7 @@ package tui
 import "testing"
 
 func TestBtwAnswerAfterSessionChangeIsDropped(t *testing.T) {
-	m := &model{services: services{sessionID: "new"}}
+	m := &model{features: appFeatures{sessionID: "new"}}
 	ask := btwAsk{question: "why?", sessionID: "old"}
 	m.btw = []btwAsk{ask}
 

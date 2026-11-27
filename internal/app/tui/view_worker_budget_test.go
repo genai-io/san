@@ -13,7 +13,7 @@ import (
 
 func TestFlowFooterSuppressesOnlyGraphManagedTrackerRows(t *testing.T) {
 	for _, mixed := range []bool{false, true} {
-		mgr := task.NewManager()
+		mgr := task.NewRunSet()
 		tracker := todo.NewStore()
 		ctx := context.Background()
 		flow := mgr.CreateSchedulerTask("footer-flow", "flow", "DUPLICATE_SCHEDULER", ctx, nil)
@@ -30,7 +30,7 @@ func TestFlowFooterSuppressesOnlyGraphManagedTrackerRows(t *testing.T) {
 			todo.TrackWorker(tracker, uncovered.GetStatus())
 		}
 		m := fixedComposerModel(80, 24)
-		m.services.Task, m.services.Tracker = mgr, tracker
+		m.features.Task, m.features.Tracker = mgr, tracker
 		m.conv.ShowTasks = true
 		rows, _ := m.renderTrackerList()
 		view := ansi.Strip(rows)
@@ -79,16 +79,16 @@ func TestWorkerOverflowPreservesOrdinaryToolSibling(t *testing.T) {
 }
 
 func TestFlowIndicatorsCannotHideAllForegroundWorkers(t *testing.T) {
-	task.ResetDefaultTracker()
-	t.Cleanup(task.ResetDefaultTracker)
+	task.ResetDefault()
+	t.Cleanup(task.ResetDefault)
 	for _, height := range []int{10, 24} {
-		task.ResetDefaultTracker()
+		task.ResetDefault()
 		m := fixedComposerModel(80, height)
-		m.services.Task = task.Default()
+		m.features.Task = task.Default()
 		flow := task.NewAgentTask("live-flow", "flow", "Run flow", context.Background(), nil, "")
 		flow.MarkScheduler()
 		flow.SetLiveView(strings.Repeat("WORKFLOW_ACTIVITY\n", 40))
-		m.services.Task.RegisterTask(flow)
+		m.features.Task.RegisterTask(flow)
 		calls := reviewerCalls(4)
 		m.conv.Messages = []core.ChatMessage{
 			{Role: core.ChatAssistant, ToolCalls: calls, ToolCallsExpanded: true},

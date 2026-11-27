@@ -38,11 +38,11 @@ func AllowAllSkillActions() SkillPermissions {
 	return SkillPermissions{AllowCreate: true, AllowUpdate: true, AllowDelete: true}
 }
 
-// SkillManager is the L1-only skill write surface. Skills live directly in
+// Editor is the L1-only skill write surface. Skills live directly in
 // san's existing user/project scopes — ~/.san/skills/<name>/ and
 // ./.san/skills/<name>/ — distinguished by the origin frontmatter field, not a
 // subdirectory.
-type SkillManager struct {
+type Editor struct {
 	userDir    string
 	projectDir string
 	perms      SkillPermissions
@@ -50,17 +50,17 @@ type SkillManager struct {
 	mu sync.Mutex
 }
 
-// NewSkillManager returns the manager for cwd with the given action
+// NewEditor returns the editor for cwd with the given action
 // permissions. The skill dirs are created lazily on first create. When
 // the user home directory is unavailable (sandboxed exec, unset HOME),
 // userDir is left empty and any user-scope write fails loudly via
 // dirFor — better than silently aliasing user-scope onto cwd/.san/skills.
-func NewSkillManager(cwd string, perms SkillPermissions) *SkillManager {
+func NewEditor(cwd string, perms SkillPermissions) *Editor {
 	userDir := ""
 	if home, err := os.UserHomeDir(); err == nil && home != "" {
 		userDir = filepath.Join(confdir.Dir(home), "skills")
 	}
-	return &SkillManager{
+	return &Editor{
 		userDir:    userDir,
 		projectDir: filepath.Join(confdir.Dir(cwd), "skills"),
 		perms:      perms,
@@ -68,7 +68,7 @@ func NewSkillManager(cwd string, perms SkillPermissions) *SkillManager {
 }
 
 // Perms returns the current action permissions (read-only snapshot).
-func (m *SkillManager) Perms() SkillPermissions { return m.perms }
+func (m *Editor) Perms() SkillPermissions { return m.perms }
 
 // SkillInfo is a one-line summary of an existing skill, used to brief the
 // reviewer so it prefers updating over creating and never re-derives a skill
@@ -94,7 +94,7 @@ func (i SkillInfo) Editable() bool { return i.Origin == agentOrigin }
 // would not see skills the reviewer just created in earlier passes, which
 // would cause it to re-create duplicates. Reading the on-disk state
 // directly is the correct freshness for this caller.
-func (m *SkillManager) Inventory() []SkillInfo {
+func (m *Editor) Inventory() []SkillInfo {
 	seen := make(map[string]bool)
 	var out []SkillInfo
 	for _, scope := range []struct {
@@ -138,7 +138,7 @@ func (m *SkillManager) Inventory() []SkillInfo {
 	return out
 }
 
-func (m *SkillManager) dirFor(level string) (string, error) {
+func (m *Editor) dirFor(level string) (string, error) {
 	switch strings.TrimSpace(level) {
 	case "", "user":
 		if m.userDir == "" {
@@ -154,7 +154,7 @@ func (m *SkillManager) dirFor(level string) (string, error) {
 
 // resolve finds an existing skill's SKILL.md by name, project scope first
 // (higher priority), then user. Returns the path or an error if absent.
-func (m *SkillManager) resolve(name string) (string, error) {
+func (m *Editor) resolve(name string) (string, error) {
 	// Validate names before using them as directory components.
 	if !skillNameRe.MatchString(name) {
 		return "", fmt.Errorf("invalid skill name %q", name)
@@ -172,7 +172,7 @@ func (m *SkillManager) resolve(name string) (string, error) {
 }
 
 // Read returns the full SKILL.md content for preview, project scope first.
-func (m *SkillManager) Read(name string) (string, error) {
+func (m *Editor) Read(name string) (string, error) {
 	path, err := m.resolve(name)
 	if err != nil {
 		return "", err
@@ -195,7 +195,7 @@ type parsed struct {
 // parseSkill resolves name and parses its SKILL.md frontmatter exactly
 // once. Returns the path, the origin field (empty ⇒ user-created), the
 // raw frontmatter block, and the body.
-func (m *SkillManager) parseSkill(name string) (parsed, error) {
+func (m *Editor) parseSkill(name string) (parsed, error) {
 	path, err := m.resolve(name)
 	if err != nil {
 		return parsed{}, err
@@ -216,7 +216,7 @@ func (m *SkillManager) parseSkill(name string) (parsed, error) {
 }
 
 // requireAgentOwned loads a skill and checks that Auto Skill may modify it.
-func (m *SkillManager) requireAgentOwned(name string) (parsed, error) {
+func (m *Editor) requireAgentOwned(name string) (parsed, error) {
 	p, err := m.parseSkill(name)
 	if err != nil {
 		return parsed{}, err
@@ -227,7 +227,7 @@ func (m *SkillManager) requireAgentOwned(name string) (parsed, error) {
 	return p, nil
 }
 
-func (m *SkillManager) Create(name, description, body, level string) (string, error) {
+func (m *Editor) Create(name, description, body, level string) (string, error) {
 	if !m.perms.AllowCreate {
 		return "", errActionDenied("create", "allowCreate=false")
 	}
@@ -275,7 +275,7 @@ func (m *SkillManager) Create(name, description, body, level string) (string, er
 	return fmt.Sprintf("Created skill %q.", name), nil
 }
 
-func (m *SkillManager) patch(name, oldText, newText string, expected parsed) (string, error) {
+func (m *Editor) patch(name, oldText, newText string, expected parsed) (string, error) {
 	if !m.perms.AllowUpdate {
 		return "", errActionDenied("patch", "allowUpdate=false")
 	}
@@ -310,11 +310,11 @@ func (m *SkillManager) patch(name, oldText, newText string, expected parsed) (st
 	return fmt.Sprintf("Patched skill %q.", name), nil
 }
 
-func (m *SkillManager) Delete(name string) (string, error) {
+func (m *Editor) Delete(name string) (string, error) {
 	return m.delete(name, nil)
 }
 
-func (m *SkillManager) delete(name string, expected *parsed) (string, error) {
+func (m *Editor) delete(name string, expected *parsed) (string, error) {
 	if !m.perms.AllowDelete {
 		return "", errActionDenied("delete", "allowDelete=false")
 	}

@@ -68,7 +68,7 @@ func TestObsoleteTaskCompletionDoesNotWakeMain(t *testing.T) {
 	} {
 		t.Run(state.name, func(t *testing.T) {
 			m, provider := noticeDeliveryModel(t)
-			m.services.Task = task.NewManager()
+			m.features.Task = task.NewRunSet()
 			worker := viewerWorker(m, "continued", "", time.Now())
 			worker.info.Status, worker.info.Attempt = task.StatusFailed, 1
 			worker.info.Error, worker.info.AgentSessionID = "obsolete attempt failed", "child"
@@ -99,7 +99,7 @@ func TestTaskCompletionFenceKeepsGenuineNotices(t *testing.T) {
 		t.Run(kind, func(t *testing.T) {
 			m, provider := noticeDeliveryModel(t)
 			m.conv.Stream.Active = true // This fixture already has a live agent session.
-			m.services.Task = task.NewManager()
+			m.features.Task = task.NewRunSet()
 			worker := viewerWorker(m, "continued", "", time.Now())
 			worker.info.Status, worker.info.Attempt = task.StatusFailed, 2
 			worker.info.Error, worker.info.AgentSessionID = "current failure", "child"
@@ -147,7 +147,7 @@ func TestBackgroundNoticeAfterManualStopWaitsForUser(t *testing.T) {
 func TestViewedContinuationOnlyAsksMainAndRejectsStaleAttempt(t *testing.T) {
 	for _, stale := range []bool{false, true} {
 		m := userPromptModel()
-		m.services.sessionID = "parent"
+		m.features.sessionID = "parent"
 		worker := viewerWorker(m, "stable", "parent", time.Now())
 		worker.info.Status = task.StatusFailed
 		worker.info.AgentSessionID, worker.info.Attempt, worker.info.Error = "child", 1, "provider unavailable"

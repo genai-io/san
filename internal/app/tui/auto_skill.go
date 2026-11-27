@@ -39,10 +39,10 @@ func (c *learnedStoreContext) Update(cwd string, settings *setting.Settings) {
 
 // resolveAutoSkillConfig gates both the reviewer and the ReviewSkill tool.
 func (m *model) resolveAutoSkillConfig() (reflectskill.Config, error) {
-	if m.services.Setting == nil || setting.AutoSkillDisabledByEnv() || !m.services.Setting.ReviewSkillEnabled() {
+	if m.features.Setting == nil || setting.AutoSkillDisabledByEnv() || !m.features.Setting.ReviewSkillEnabled() {
 		return reflectskill.Config{}, nil
 	}
-	return reflectskill.ResolveSettings(m.services.Setting.AutoSkill())
+	return reflectskill.ResolveSettings(m.features.Setting.AutoSkill())
 }
 
 // wireAutoSkill binds the reviewer to the current session, model and strategy.
@@ -58,10 +58,10 @@ func (m *model) wireAutoSkill(params runtime.BuildParams) {
 	}
 
 	reviewCtx, cancelReview := context.WithCancel(context.Background())
-	owner, notices := m.services.Session, m.mainNotices
-	runtime, cwd := m.services.Agent, m.env.CWD
+	owner, notices := m.features.Session, m.mainNotices
+	runtime, cwd := m.features.Agent, m.env.CWD
 	provider, modelID, effort := params.Provider, params.ModelID, params.ThinkingEffort
-	settings, config := m.services.Setting, m.services.Setting.AutoSkill()
+	settings, config := m.features.Setting, m.features.Setting.AutoSkill()
 	authorizeWrite := func() bool {
 		return reviewCtx.Err() == nil && runtime.Active() && !setting.AutoSkillDisabledByEnv() &&
 			settings.ReviewSkillEnabled() && settings.AutoSkill() == config
@@ -73,7 +73,7 @@ func (m *model) wireAutoSkill(params runtime.BuildParams) {
 		// Restrict the reviewer to the actions allowed for this turn.
 		notice, err := (reflectskill.SideReview{
 			Provider: provider, Model: modelID, Effort: effort,
-			Recording: owner, Skills: reflectskill.NewSkillManager(cwd, permissions), Strategy: cfg.Strategy, AuthorizeWrite: authorizeWrite,
+			Recording: owner, Skills: reflectskill.NewEditor(cwd, permissions), Strategy: cfg.Strategy, AuthorizeWrite: authorizeWrite,
 		}).Run(reviewCtx, snapshot)
 		if reviewCtx.Err() != nil {
 			return
@@ -85,7 +85,7 @@ func (m *model) wireAutoSkill(params runtime.BuildParams) {
 		queueAutoSkillNotice(reviewCtx, notices, owner, notice)
 	}
 
-	m.services.AutoSkill.session = &autoSkillSession{
+	m.features.AutoSkill.session = &autoSkillSession{
 		reviewer: reflectskill.NewSessionReviewer(reviewCtx, cfg, review),
 		cancel:   cancelReview,
 	}
@@ -107,7 +107,7 @@ func queueAutoSkillNotice(ctx context.Context, notices chan<- mainNotice, owner 
 // notifyAutoSkillOverride reports actions whose effective permissions differ
 // from the settings just saved in the Auto Skill tab.
 func (m *model) notifyAutoSkillOverride(msg input.ConfigSavedMsg) {
-	live := m.services.Setting.AutoSkill().Skills
+	live := m.features.Setting.AutoSkill().Skills
 	var actions []string
 	if msg.SavedAutoSkill.Skills.AllowCreate() != live.AllowCreate() {
 		actions = append(actions, "Skill create")
@@ -133,14 +133,14 @@ func (m *model) notifyAutoSkillOverride(msg input.ConfigSavedMsg) {
 // user-initiated operations aren't subject to the reviewer's permissions, but
 // only agent-created skills are shown or editable.
 func newLearnedSkillStore(source func() (string, *setting.Settings)) input.LearnedSkillStore {
-	mgr := func() *reflectskill.SkillManager {
+	editor := func() *reflectskill.Editor {
 		cwd, _ := source()
-		return reflectskill.NewSkillManager(cwd, reflectskill.AllowAllSkillActions())
+		return reflectskill.NewEditor(cwd, reflectskill.AllowAllSkillActions())
 	}
 	return input.LearnedSkillStore{
 		List: func() []reflectskill.SkillInfo {
 			var out []reflectskill.SkillInfo
-			for _, s := range mgr().Inventory() {
+			for _, s := range editor().Inventory() {
 				if s.Editable() {
 					out = append(out, s)
 				}
@@ -148,19 +148,19 @@ func newLearnedSkillStore(source func() (string, *setting.Settings)) input.Learn
 			return out
 		},
 		Read: func(name string) (string, error) {
-			return mgr().Read(name)
+			return editor().Read(name)
 		},
 		Delete: func(name string) error {
-			_, err := mgr().Delete(name)
+			_, err := editor().Delete(name)
 			return err
 		},
 	}
 }
 
 func (m *model) teardownAutoSkill() {
-	if active := m.services.AutoSkill.session; active != nil {
+	if active := m.features.AutoSkill.session; active != nil {
 		active.cancel()
-		m.services.AutoSkill.session = nil
+		m.features.AutoSkill.session = nil
 	}
 }
 

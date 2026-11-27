@@ -18,7 +18,7 @@ func TestFlowQuestionsKeepNodeOriginAndAnswers(t *testing.T) {
 	if err := task.Initialize(task.Options{OutputDir: t.TempDir()}); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(task.ResetDefaultTracker)
+	t.Cleanup(task.ResetDefault)
 	bridge := chat.NewAgentToUI(4)
 	defer bridge.Close()
 	question := testutil.ToolCallResponse(tool.ToolAskUserQuestion, "question-call", `{"question":"Choose an answer","options":["first","second"]}`)
@@ -27,7 +27,7 @@ func TestFlowQuestionsKeepNodeOriginAndAnswers(t *testing.T) {
 	}}
 	executor := newIntegrationExecutor(t, provider, t.TempDir(), "fake-model", nil)
 	executor.SetInteractions(bridge)
-	flows := flow.NewService(task.Default())
+	flows := flow.NewScheduler(task.Default())
 	flows.SetExecutor(subagent.NewExecutorAdapter(executor))
 	definition := "---\nname: questions\n---\n```mermaid\nflowchart LR\n  first\n  second\n```\n\n## first\nAsk first\n\n## second\nAsk second\n"
 	runID := testutil.LaunchFlow(t, flows, definition, nil)

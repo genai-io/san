@@ -1,4 +1,4 @@
-// chat.Runtime implementation: callbacks the agent's outbox event pump calls
+// chat.UI implementation: callbacks the agent's outbox event pump calls
 // on the main bubbletea goroutine — turn start, token accounting, tool
 // results, turn end, and stop. The actual side effects (committing
 // scrollback, draining queues, firing hooks) live in adjacent model_*
@@ -52,14 +52,14 @@ func (m *model) OnInference(resp *ai.Response) {
 
 // HasRunningTasks gates the progress-hub tick's spinner batching. Like
 // needsSpinner it reads live runtime state, not persisted tracker status.
-func (m *model) HasRunningTasks() bool { return m.services.Task.HasRunning() }
+func (m *model) HasRunningTasks() bool { return m.features.Task.HasRunning() }
 
 // OnStepEnd releases pending work into a still-running turn at a step
 // boundary (a PostTool, where the turn continues): one queued user message — the
 // cap keeps the queue editable until release. Counterpart to drainTurnQueues,
 // which runs once the turn has ended.
 func (m *model) OnStepEnd() tea.Cmd {
-	if !m.services.Agent.Active() {
+	if !m.features.Agent.Active() {
 		return nil
 	}
 	admitted := m.confirmFlowMainInput()
@@ -85,8 +85,8 @@ func (m *model) OnToolResult(tr core.ToolResult) *core.ToolResult {
 		m.skillReviewRequested = true
 	}
 
-	sideEffect := m.services.Tool.PopSideEffect(tr.ToolCallID)
-	agentruntime.PostTool(tr, sideEffect, m.services.Hook, agentruntime.WorkspaceCallbacks{
+	sideEffect := tool.PopSideEffect(tr.ToolCallID)
+	agentruntime.PostTool(tr, sideEffect, m.features.Hook, agentruntime.WorkspaceCallbacks{
 		ChangeCwd:      m.changeCwd,
 		ReloadPersonas: m.reloadPersonasIfChanged,
 		TouchFile: func(path string) {
@@ -105,7 +105,7 @@ func (m *model) OnToolResult(tr core.ToolResult) *core.ToolResult {
 }
 
 func (m *model) OnTurnEnd(result core.Result) tea.Cmd {
-	if m.agentSession != nil && m.agentSession != m.services.Session {
+	if m.agentSession != nil && m.agentSession != m.features.Session {
 		result.Finalization.Acknowledge(errors.New("opened session replaced before turn finalization"))
 		return m.ListenForAgentEvents()
 	}
@@ -126,17 +126,17 @@ func (m *model) OnTurnEnd(result core.Result) tea.Cmd {
 	// the list alive and growing for the rest of the session. That is why the
 	// tracker windows on its newest rows (see maxVisibleTasks) rather than
 	// assuming it renders a single turn's worth.
-	if m.services.Tracker.AllMarkedCompleted() && !slices.ContainsFunc(m.services.Tracker.List(), func(item *todo.Item) bool {
+	if m.features.Tracker.AllMarkedCompleted() && !slices.ContainsFunc(m.features.Tracker.List(), func(item *todo.Item) bool {
 		return !m.taskCompletionShown(todo.BackgroundTaskID(item))
 	}) {
-		m.services.Tracker.Reset()
+		m.features.Tracker.Reset()
 	}
 	// The turn reached its end, so whatever failure the copilot was recovering
 	// from is behind us — give a later failure its full recovery budget again.
 	m.autopilotRecoveries = 0
-	m.services.Agent.SetPluginRoot("")
+	m.features.Agent.SetPluginRoot("")
 	// Review only settled turns that requested Auto Skill.
-	if s := m.services.AutoSkill.session; s != nil {
+	if s := m.features.AutoSkill.session; s != nil {
 		s.reviewer.Observe(result, m.skillUsedThisTurn, m.skillReviewRequested)
 	}
 	m.skillUsedThisTurn = false

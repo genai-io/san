@@ -187,8 +187,8 @@ func TestHistoryLoadReadsStoreAndSurfacesCorruption(t *testing.T) {
 		t.Fatal(err)
 	}
 	m := commitTestModel(core.ChatMessage{Role: core.ChatUser, Content: "only the current context"})
-	m.services.SessionStore = store
-	m.services.sessionID = "history"
+	m.features.SessionStore = store
+	m.features.sessionID = "history"
 	load := m.openHistory()
 	m.historyLoaded(load().(historyLoadedMsg))
 	if !strings.Contains(ansi.Strip(m.userInput.Transcript.Render()), "out stored") {
@@ -203,7 +203,7 @@ func TestHistoryLoadReadsStoreAndSurfacesCorruption(t *testing.T) {
 		t.Fatal("corrupt history must be reported, not silently replaced with current context")
 	}
 	// The unsaved first turn still has its in-memory messages.
-	m.services.sessionID = "not-saved-yet"
+	m.features.sessionID = "not-saved-yet"
 	load = m.openHistory()
 	m.historyLoaded(load().(historyLoadedMsg))
 	if !strings.Contains(ansi.Strip(m.userInput.Transcript.Render()), "only the current context") {

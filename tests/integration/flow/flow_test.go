@@ -105,7 +105,7 @@ func run(t *testing.T, provider llm.Provider, params map[string]any) task.TaskIn
 		t.Fatal(err)
 	}
 	executor.ConfigureOwner(task.Default(), nil, nil, nil)
-	wt := flow.NewService(task.Default())
+	wt := flow.NewScheduler(task.Default())
 	wt.SetExecutor(subagent.NewExecutorAdapter(executor))
 	inputs := map[string]string{}
 	if values, ok := params["inputs"].(map[string]any); ok {

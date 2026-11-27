@@ -34,7 +34,7 @@ func TestBackgroundPermissionsAreResolvedBeforeLaunch(t *testing.T) {
 			if err := task.Initialize(task.Options{OutputDir: t.TempDir()}); err != nil {
 				t.Fatal(err)
 			}
-			t.Cleanup(task.ResetDefaultTracker)
+			t.Cleanup(task.ResetDefault)
 			cwd := t.TempDir()
 			path := filepath.Join(cwd, "result.txt")
 			input, err := json.Marshal(map[string]any{"file_path": path, "content": "written"})

@@ -51,7 +51,7 @@ func (e *Engine) getMatchingHooks(event EventType, input *HookInput, snapshots .
 				Command: &cmdCopy,
 				Source:  source.Source,
 			}
-			if !e.shouldRunHook(hook) {
+			if !e.claimHookRun(hook) {
 				continue
 			}
 			matched = append(matched, hook)
@@ -69,7 +69,7 @@ func (e *Engine) getMatchingHooks(event EventType, input *HookInput, snapshots .
 				Func:    &fnCopy,
 				Source:  source.Source,
 			}
-			if !e.shouldRunHook(hook) {
+			if !e.claimHookRun(hook) {
 				continue
 			}
 			matched = append(matched, hook)
@@ -115,13 +115,13 @@ func (e *Engine) matchesIfCondition(cmd setting.HookCmd, input HookInput) bool {
 	}
 }
 
-func (e *Engine) shouldRunHook(hook matchedHook) bool {
+func (e *Engine) claimHookRun(hook matchedHook) bool {
 	if !hookRunsOnce(hook) {
 		return true
 	}
 
 	key := fmt.Sprintf("%s|%s|%s|%s|%s", hook.Event, hook.Source, hook.Matcher, matchedHookType(hook), matchedHookIdentity(hook))
-	return e.store.CheckOnce(key)
+	return e.store.claimOnce(key)
 }
 
 func hookRunsOnce(hook matchedHook) bool {

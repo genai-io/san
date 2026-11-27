@@ -79,19 +79,19 @@ func AllProviders() []Meta {
 			Name:           ProviderTavily,
 			DisplayName:    "Tavily",
 			RequiresAPIKey: true,
-			EnvVars:        []string{"TAVILY_API_KEY"},
+			EnvVars:        []string{tavilyEnvKey},
 		},
 		{
 			Name:           ProviderSerper,
 			DisplayName:    "Serper (Google)",
 			RequiresAPIKey: true,
-			EnvVars:        []string{"SERPER_API_KEY"},
+			EnvVars:        []string{serperEnvKey},
 		},
 		{
 			Name:           ProviderBrave,
 			DisplayName:    "Brave Search",
 			RequiresAPIKey: true,
-			EnvVars:        []string{"BRAVE_API_KEY"},
+			EnvVars:        []string{braveEnvKey},
 		},
 	}
 }

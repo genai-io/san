@@ -20,7 +20,7 @@ func DefaultStrategy() string {
 // actions the trigger scoped for this pass: a create pass (no skill was used)
 // frames capturing a technique from new work; a skill-use pass frames a single
 // integrated decision about the used skill — keep, refine, or retire it. The
-// SkillManager's permission gate remains the hard floor.
+// Editor's permission gate remains the hard floor.
 func skillSectionFor(perms SkillPermissions) string {
 	var b strings.Builder
 	b.WriteString(skillPreamble)
@@ -86,7 +86,7 @@ const skillWriteScope = `Write only your own (agent-created) skills; read the us
 
 const skillAntiPatterns = `NEVER a skill: environment-specific failures, "tool X is broken" claims, transient errors that passed on retry, one-off task narratives. If that's all you have, save nothing.`
 
-func renderInventory(skills *SkillManager) string {
+func renderInventory(skills *Editor) string {
 	if skills == nil {
 		return "(none)"
 	}

@@ -42,10 +42,10 @@ func (m *retiringMain) Close(err error) { m.closed <- err }
 func TestMainLeaseRetiresWithOutcome(t *testing.T) {
 	for _, kind := range []string{"success", "failed", "canceled", "setup-store-failure", "open-failure", "exhausted"} {
 		t.Run(kind, func(t *testing.T) {
-			tasks := task.NewManager()
+			tasks := task.NewRunSet()
 			tasks.SetSessionID("native-session")
-			s := NewService(tasks)
-			s.store = NewStore(t.TempDir())
+			s := NewScheduler(tasks)
+			s.store = newRunStore(t.TempDir())
 			lease := &retiringMain{closed: make(chan error, 1)}
 			source := "```mermaid\nflowchart LR\n answer\n```\n## answer\nexecutor: main\n\nwrite\n"
 			switch kind {

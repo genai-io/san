@@ -38,7 +38,7 @@ func TestSwitchProviderUpdatesConnectionUsedBySlashCommands(t *testing.T) {
 				Provider: llm.Moonshot,
 			},
 		},
-		services: services{
+		features: appFeatures{
 			LLM:  conn,
 			Hook: hook.NewEngine(nil, "", "", ""),
 		},

@@ -15,17 +15,17 @@ import (
 	"github.com/genai-io/san/internal/task"
 )
 
-func (s *Service) runStore() *Store {
+func (s *Scheduler) runStore() *runStore {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.store == nil {
-		s.store = NewStore("")
+		s.store = newRunStore("")
 	}
 	return s.store
 }
 
 // Runs lists run records, newest first, with orphaned runs reconciled.
-func (s *Service) Runs() ([]RunRecord, error) {
+func (s *Scheduler) Runs() ([]RunRecord, error) {
 	records, err := s.runStore().List()
 	if err != nil {
 		return nil, err
@@ -45,7 +45,7 @@ func (s *Service) Runs() ([]RunRecord, error) {
 
 // GetRun returns a run by run ID or by the task ID shown at launch, with an
 // orphaned run reconciled first.
-func (s *Service) GetRun(id string) (*RunRecord, error) {
+func (s *Scheduler) GetRun(id string) (*RunRecord, error) {
 	r, err := s.lookup(id)
 	if err != nil {
 		return nil, err
@@ -55,7 +55,7 @@ func (s *Service) GetRun(id string) (*RunRecord, error) {
 
 // reconcile marks a record still running with no lock holder as interrupted:
 // its executor is gone, in this process or another.
-func (s *Service) reconcile(r *RunRecord) (*RunRecord, error) {
+func (s *Scheduler) reconcile(r *RunRecord) (*RunRecord, error) {
 	if r.Status != RunRunning {
 		return r, nil
 	}
@@ -81,7 +81,7 @@ func (s *Service) reconcile(r *RunRecord) (*RunRecord, error) {
 }
 
 // lookup resolves a run ID, falling back to the task ID of its latest execution.
-func (s *Service) lookup(id string) (*RunRecord, error) {
+func (s *Scheduler) lookup(id string) (*RunRecord, error) {
 	st := s.runStore()
 	r, err := st.Get(id)
 	if err == nil {
@@ -98,7 +98,7 @@ func (s *Service) lookup(id string) (*RunRecord, error) {
 }
 
 // StopRun stops a live run named by run ID or task ID.
-func (s *Service) StopRun(id string) error {
+func (s *Scheduler) StopRun(id string) error {
 	s.mu.Lock()
 	bg := s.live[id]
 	if bg == nil {
@@ -117,7 +117,7 @@ func (s *Service) StopRun(id string) error {
 
 // ResumeRun reruns a stored snapshot — failed roots and their descendants, or
 // from and its descendants when from is set — and returns the new task ID.
-func (s *Service) ResumeRun(id, from string, width int) (string, error) {
+func (s *Scheduler) ResumeRun(id, from string, width int) (string, error) {
 	st := s.runStore()
 	found, err := s.lookup(id)
 	if err != nil {
@@ -174,14 +174,14 @@ func (b *Blueprint) ExplicitRerunNode(nodes map[string]Checkpoint) string {
 }
 
 // start persists a snapshot before launching its background task.
-func (s *Service) start(b *Blueprint, inputs map[string]string, description string, width int) (string, error) {
+func (s *Scheduler) start(b *Blueprint, inputs map[string]string, description string, width int) (string, error) {
 	if err := s.runStore().Prune(maxFinishedRuns); err != nil {
 		log.Logger().Warn("flow: pruning run history failed", zap.Error(err))
 	}
 	return s.startRecord(b, RunRecord{ID: task.NewID(), Name: b.Name, Definition: b.Source, Inputs: maps.Clone(inputs)}, description, width)
 }
 
-func (s *Service) startRecord(b *Blueprint, r RunRecord, description string, width int) (string, error) {
+func (s *Scheduler) startRecord(b *Blueprint, r RunRecord, description string, width int) (string, error) {
 	release, err := s.runStore().Acquire(r.ID)
 	if err != nil {
 		return "", err
@@ -189,11 +189,11 @@ func (s *Service) startRecord(b *Blueprint, r RunRecord, description string, wid
 	return s.launchRecord(b, r, description, release, width)
 }
 
-func (s *Service) launchRecord(b *Blueprint, r RunRecord, description string, release func(), width int) (string, error) {
+func (s *Scheduler) launchRecord(b *Blueprint, r RunRecord, description string, release func(), width int) (string, error) {
 	return s.scheduleRecord(b, r, description, release, width, false)
 }
 
-func (s *Service) scheduleRecord(b *Blueprint, r RunRecord, description string, release func(), width int, resume bool) (string, error) {
+func (s *Scheduler) scheduleRecord(b *Blueprint, r RunRecord, description string, release func(), width int, resume bool) (string, error) {
 	st := s.runStore()
 	ctx, cancel := context.WithCancel(context.Background())
 	id := task.NewID()

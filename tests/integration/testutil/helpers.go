@@ -117,7 +117,7 @@ func (f *fakeTool) Execute(_ context.Context, _ map[string]any, _ string) toolre
 
 // LaunchFlow saves definition as a project flow and launches it by name, the
 // way users start one, returning the scheduler task ID.
-func LaunchFlow(t testing.TB, flows *flow.Service, definition string, inputs map[string]string) string {
+func LaunchFlow(t testing.TB, flows *flow.Scheduler, definition string, inputs map[string]string) string {
 	t.Helper()
 	dir := flow.DefinitionDir(filepath.Join(t.TempDir(), ".san"))
 	flows.SetSearchPaths([]string{dir})

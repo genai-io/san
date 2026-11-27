@@ -11,7 +11,7 @@ import (
 func TestFlowMainWriterInputConsumesOnlyOnAdmission(t *testing.T) {
 	m, _ := compactQueueModel(t)
 	m.flowMain = newFlowMainBridge()
-	lease, err := m.flowMain.bind(m.services.Session).Open(context.Background(), flow.MainRunInfo{ID: "run", SessionID: m.sessionID()})
+	lease, err := m.flowMain.bind(m.features.Session).Open(context.Background(), flow.MainRunInfo{ID: "run", SessionID: m.sessionID()})
 	if err != nil {
 		t.Fatal(err)
 	}

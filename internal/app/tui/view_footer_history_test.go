@@ -38,16 +38,16 @@ func TestTaskHistorySharesInferenceRow(t *testing.T) {
 
 func addPastTasks(m *model, statuses ...task.TaskStatus) {
 	m.conv.ShowTasks = true
-	m.services.Task = task.NewManager()
+	m.features.Task = task.NewRunSet()
 	m.taskCompletionsShown = make(map[string]bool)
 	for i, status := range statuses {
 		worker := viewerWorker(m, fmt.Sprintf("old-%d", i), "", time.Now())
-		todo.TrackWorker(m.services.Tracker, worker.info)
+		todo.TrackWorker(m.features.Tracker, worker.info)
 		worker.info.Status = status
 		if status == task.StatusFailed {
 			worker.info.Error = "past fixture error"
 		}
-		todo.CompleteWorker(m.services.Tracker, worker.info)
+		todo.CompleteWorker(m.features.Tracker, worker.info)
 		m.taskCompletionsShown[taskCompletionKey(worker.GetID(), 0)] = true
 	}
 }
@@ -95,7 +95,7 @@ func TestFooterIntegratedHistoryQueueAndInferenceOrder(t *testing.T) {
 				addPastTasks(m, task.StatusFailed, task.StatusStopped, todo.StatusDetailInterrupted)
 				live := viewerWorker(m, "live", "", time.Now())
 				live.info.Description = "active-footer-worker"
-				todo.TrackWorker(m.services.Tracker, live.info)
+				todo.TrackWorker(m.features.Tracker, live.info)
 				m.userInput.Queue.Enqueue("pending-msg", nil)
 				view := m.View()
 				plain := ansi.Strip(view.Content)

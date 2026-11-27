@@ -14,7 +14,7 @@ func TestRecapPanelEditAndReopen(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
 	svc := setting.New(nil)
-	popup := NewReflectionSelector(ReflectionDeps{Workspace: func() (string, *setting.Settings) { return cwd, svc }})
+	popup := NewReflectionSelector(ReflectionSources{Workspace: func() (string, *setting.Settings) { return cwd, svc }})
 	popup.Enter(100, 30)
 	press := func(code rune) { popup.HandleKeypress(tea.KeyPressMsg{Code: code}) }
 	press(tea.KeyTab)

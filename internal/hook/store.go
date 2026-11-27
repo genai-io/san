@@ -130,7 +130,7 @@ func (s *hookStore) CollectFunctionHooks(event EventType) []functionHookSource {
 	return hooks
 }
 
-func (s *hookStore) CheckOnce(key string) bool {
+func (s *hookStore) claimOnce(key string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if _, ok := s.executedOnce[key]; ok {

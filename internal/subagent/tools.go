@@ -29,8 +29,8 @@ func within(names []string, name string) bool { return names == nil || slices.Co
 // workerSchemas is shared by preparation and every attempt (initial, fallback or continuation).
 func (e *Executor) workerSchemas(config *AgentConfig, mode PermissionMode, ceiling []string) []core.ToolSchema {
 	var mcp func() []core.ToolSchema
-	if e.mcpManager != nil {
-		mcp = e.mcpManager.ToolSchemas
+	if e.mcpServers != nil {
+		mcp = e.mcpServers.ToolSchemas
 	}
 	set := newAgentToolSet(config.AllowTools.Names(), config.DenyTools.BareNames(), e.disabledToolsSnapshot(), mcp)
 	schemas := filterSchemasForPermission(set.Tools(), mode, config.AllowTools, e.interactions != nil || e.permissionResolver != nil)

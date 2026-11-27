@@ -46,23 +46,23 @@ func TestCancelledTurnFinalizationConsumerAndSession(t *testing.T) {
 	for _, mode := range []string{"saved", "natural", "essential-write-failed", "write-failed", "session-replaced", "outbox-replaced"} {
 		t.Run(mode, func(t *testing.T) {
 			m, store := resumedModel(t, []core.Message{core.UserMessage("history", nil)})
-			m.userInput = input.New(m.env.CWD, 80, nil, input.SelectorDeps{Setting: m.services.Setting})
+			m.userInput = input.New(m.env.CWD, 80, nil, input.SelectorBindings{Setting: m.features.Setting})
 			llm := aitest.Always(aitest.Hangs())
 			if mode == "natural" {
 				llm = aitest.Always(aitest.Says("done"))
 			}
 			naturalEnd := make(chan struct{})
-			opened := m.services.Session
+			opened := m.features.Session
 			m.agentSession = opened
 			p := &finalizationProvider{client: llm.Client()}
-			if err := m.services.Agent.Start(runtime.BuildParams{Provider: p, ModelID: "m", Recording: opened, PermissionRules: (runtime.PermissionPolicy{}).Decide, OnEvent: func(ev core.Event) {
+			if err := m.features.Agent.Start(runtime.BuildParams{Provider: p, ModelID: "m", Recording: opened, PermissionRules: (runtime.PermissionPolicy{}).Decide, OnEvent: func(ev core.Event) {
 				if _, ok := ev.(core.TurnEnded); ok && mode == "natural" {
 					close(naturalEnd)
 				}
-			}}, m.services.Agent.Messages()); err != nil {
+			}}, m.features.Agent.Messages()); err != nil {
 				t.Fatal(err)
 			}
-			if err := m.services.Agent.Send(core.UserMessage("work", nil)); err != nil {
+			if err := m.features.Agent.Send(core.UserMessage("work", nil)); err != nil {
 				t.Fatal(err)
 			}
 			deadline := time.After(2 * time.Second)
@@ -106,11 +106,11 @@ func TestCancelledTurnFinalizationConsumerAndSession(t *testing.T) {
 			if m.userInput.Queue.Len() != 1 || llm.Calls() != 1 {
 				t.Fatal("cancel released queued input before terminal cleanup")
 			}
-			receipt := m.services.Agent.Cancel()
+			receipt := m.features.Agent.Cancel()
 			if receipt == nil {
 				t.Fatal("missing receipt")
 			}
-			outbox := m.services.Agent.Outbox()
+			outbox := m.features.Agent.Outbox()
 			var end core.TurnEnded
 		drain:
 			for {
@@ -139,7 +139,7 @@ func TestCancelledTurnFinalizationConsumerAndSession(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				m.services.Session = replacement
+				m.features.Session = replacement
 			}
 			if mode == "outbox-replaced" {
 				outbox = make(chan core.Event)
@@ -156,7 +156,7 @@ func TestCancelledTurnFinalizationConsumerAndSession(t *testing.T) {
 				}
 			}
 			if mode == "saved" {
-				m.services.Agent.SetPluginRoot("old-plugin")
+				m.features.Agent.SetPluginRoot("old-plugin")
 				m.skillUsedThisTurn = true
 				m.pendingPluginRoot = "next-plugin"
 				m.sendToAgent(pendingMessage{Message: core.UserMessage("explicit continuation", nil), FromUser: true})
@@ -193,7 +193,7 @@ func TestCancelledTurnFinalizationConsumerAndSession(t *testing.T) {
 				t.Fatal("cancellation released background hold")
 			}
 			if mode == "saved" {
-				if m.skillUsedThisTurn || m.services.Agent.PluginRoot() != "next-plugin" {
+				if m.skillUsedThisTurn || m.features.Agent.PluginRoot() != "next-plugin" {
 					t.Fatal("old cleanup overwrote successor scope")
 				}
 				until := time.Now().Add(time.Second)

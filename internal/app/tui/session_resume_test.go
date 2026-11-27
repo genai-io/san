@@ -51,28 +51,28 @@ func resumedModel(t *testing.T, messages []core.Message) (*model, *session.Store
 		t.Fatal(err)
 	}
 	m := &model{
-		services: services{
+		features: appFeatures{
 			Agent: &agentruntime.Runtime{}, Session: opened, SessionStore: store, LLM: &llm.Conn{},
 			sessionID: opened.ID(),
 			Setting:   setting.New(setting.NewData()),
 			Tracker:   todo.NewStore(), Reminder: reminder.NewQueue(),
 			Subagent: subagent.NewRegistry(),
-			Task:     task.NewManager(),
+			Task:     task.NewRunSet(),
 			Hook:     hook.NewEngine(nil, "s", "", opened.Path()),
 		},
 		conv:      chat.NewModel(80),
-		autopilot: new(atomic.Pointer[autopilotRuntime]),
+		autopilot: new(atomic.Pointer[autopilotSnapshot]),
 	}
 	m.env.CWD = cwd
 	m.env.FileCache = filecache.New()
 	m.env.SessionPermissions = setting.NewSessionPermissions()
 	m.env.CurrentModel = &llm.CurrentModelInfo{ModelID: "m"}
 	history := opened.Snapshot()
-	m.services.Agent.SetMessages(history.ActiveMessages())
+	m.features.Agent.SetMessages(history.ActiveMessages())
 	m.conv.Messages = store.ChatRows(history)
 	t.Cleanup(func() {
-		if m.services.Session != nil {
-			_ = m.services.Session.Close()
+		if m.features.Session != nil {
+			_ = m.features.Session.Close()
 		}
 		_ = opened.Close()
 	})
@@ -90,7 +90,7 @@ func TestResumeDiscardsPreviousSessionNotices(t *testing.T) {
 	if err := testutil.ImportSession(store, session.CreateOptions{ID: "other"}, []core.Message{ai.UserMessage("other conversation")}); err != nil {
 		t.Fatal(err)
 	}
-	m.services.Reminder.Enqueue("context belonging to the previous session")
+	m.features.Reminder.Enqueue("context belonging to the previous session")
 	if err := m.loadSessionByID("other"); err != nil {
 		t.Fatal(err)
 	}
@@ -115,7 +115,7 @@ func TestResumeInstructionNotice(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			m, store := resumedModel(t, nil)
 			t.Cleanup(group.Forget)
-			m.services.MCP = mcp.NewManagerForTest(nil)
+			m.features.MCP = mcp.NewServerSetForTest(nil)
 			m.conv.OnNotice = m.recordNotice
 			target := mustCreateSession(t, store, session.CreateOptions{ID: "other", InitialCWD: m.env.CWD})
 			if !tc.legacy {
@@ -167,12 +167,12 @@ func TestResumeInstructionNotice(t *testing.T) {
 			} else if len(m.conv.Messages) != wantMessages {
 				t.Fatalf("unexpected notices: %+v", m.conv.Messages)
 			}
-			if rows := store.ChatRows(m.services.Session.Snapshot()); len(rows) != wantMessages || len(m.services.Agent.Messages()) != wantMessages {
+			if rows := store.ChatRows(m.features.Session.Snapshot()); len(rows) != wantMessages || len(m.features.Agent.Messages()) != wantMessages {
 				t.Fatal("resume notice leaked into durable history or model context")
 			}
 			if tc.wantNotice && !tc.useContinue {
-				m.services.Skill = skill.NewRegistry()
-				m.services.Tool = tool.Default()
+				m.features.Skill = skill.NewRegistry()
+				m.features.Tool = tool.Default()
 				m.env.LLMProvider = &testutil.FakeProvider{}
 				if _, err := m.ensureAgentRuntime(); err != nil {
 					t.Fatal(err)
@@ -271,22 +271,22 @@ func TestSessionOpeningFencesReplacementAndPreservesInitialBinding(t *testing.T)
 			m, _ := resumedModel(t, parallelResultChain())
 			t.Cleanup(group.Forget)
 			if action == "closed-session" {
-				if err := m.services.Session.Close(); err != nil {
+				if err := m.features.Session.Close(); err != nil {
 					t.Fatal(err)
 				}
 			}
 			if action == "first-open" {
-				if err := m.services.Session.Close(); err != nil {
+				if err := m.features.Session.Close(); err != nil {
 					t.Fatal(err)
 				}
-				m.services.Session = nil
-				m.services.sessionID = "fresh"
-				m.services.Agent.SetMessages(nil)
+				m.features.Session = nil
+				m.features.sessionID = "fresh"
+				m.features.Agent.SetMessages(nil)
 				m.conv.Messages = nil
 			}
 			ui := m.conv.AgentToUI
 			permissions := m.env.SessionPermissions
-			m.services.Reminder.Enqueue("pending context for this identity")
+			m.features.Reminder.Enqueue("pending context for this identity")
 			var err error
 			switch action {
 			case "same-session", "closed-session":
@@ -333,17 +333,17 @@ func parallelResultChain() []core.Message {
 func TestResumedParallelResultsSurviveFailureAndRetry(t *testing.T) {
 	history := parallelResultChain()
 	m, store := resumedModel(t, history)
-	w := m.services.Session
+	w := m.features.Session
 	stopped := make(chan error, 1)
 	params := agentruntime.BuildParams{Provider: &failedTurnProvider{}, ModelID: "m", Recording: w, PermissionRules: (agentruntime.PermissionPolicy{}).Decide, OnEvent: func(event core.Event) {
 		if event, ok := event.(core.AgentStopped); ok {
 			stopped <- event.Err
 		}
 	}}
-	if err := m.services.Agent.Start(params, m.services.Agent.Messages()); err != nil {
+	if err := m.features.Agent.Start(params, m.features.Agent.Messages()); err != nil {
 		t.Fatal(err)
 	}
-	if err := m.services.Agent.Send(withID("failed", core.UserMessage("continue", nil))); err != nil {
+	if err := m.features.Agent.Send(withID("failed", core.UserMessage("continue", nil))); err != nil {
 		t.Fatal(err)
 	}
 	select {
@@ -355,15 +355,15 @@ func TestResumedParallelResultsSurviveFailureAndRetry(t *testing.T) {
 		t.Fatal("runtime did not report its failure")
 	}
 	m.StopAgentRuntime() // waits until execute has retired the failed run
-	seed := m.services.Agent.Messages()
+	seed := m.features.Agent.Messages()
 	if len(seed) != 4 || !reflect.DeepEqual(seed[:3], history) {
 		t.Fatalf("retry lost the native parallel-result chain: %+v", seed)
 	}
 	provider := &restartStubProvider{requests: make(chan []core.Message, 1)}
-	if err := m.services.Agent.Start(agentruntime.BuildParams{Provider: provider, ModelID: "m", Recording: w, PermissionRules: (agentruntime.PermissionPolicy{}).Decide}, seed); err != nil {
+	if err := m.features.Agent.Start(agentruntime.BuildParams{Provider: provider, ModelID: "m", Recording: w, PermissionRules: (agentruntime.PermissionPolicy{}).Decide}, seed); err != nil {
 		t.Fatal(err)
 	}
-	if err := m.services.Agent.Send(withID("retry", core.UserMessage("retry", nil))); err != nil {
+	if err := m.features.Agent.Send(withID("retry", core.UserMessage("retry", nil))); err != nil {
 		t.Fatal(err)
 	}
 	select {
@@ -394,7 +394,7 @@ func TestCompactBeforeResumedRuntimeStartsPersistsTheNativeBoundary(t *testing.T
 		t.Fatalf("summary output lost: %q", result.Summary)
 	}
 	m.HandleCompactResult(result)
-	seed := m.services.Agent.Messages()
+	seed := m.features.Agent.Messages()
 	if len(seed) != 1 || seed[0].Text() != core.FormatCompactSummary(result.Summary) {
 		t.Fatalf("inactive compaction retained old inference context: %+v", seed)
 	}
@@ -405,9 +405,9 @@ func TestCompactBeforeResumedRuntimeStartsPersistsTheNativeBoundary(t *testing.T
 	if err != nil || !reflect.DeepEqual(loaded.ActiveMessages(), seed) {
 		t.Fatalf("compaction was not durable: %+v, %v", loaded, err)
 	}
-	w := m.services.Session
+	w := m.features.Session
 	provider := &restartStubProvider{requests: make(chan []core.Message, 1)}
-	if err := m.services.Agent.Start(agentruntime.BuildParams{Provider: provider, ModelID: "m", Recording: w, PermissionRules: (agentruntime.PermissionPolicy{}).Decide}, seed); err != nil {
+	if err := m.features.Agent.Start(agentruntime.BuildParams{Provider: provider, ModelID: "m", Recording: w, PermissionRules: (agentruntime.PermissionPolicy{}).Decide}, seed); err != nil {
 		t.Fatal(err)
 	}
 	m.StopAgentRuntime()
@@ -426,11 +426,11 @@ func TestTextOnlyModelSwitchPreservesDurableImages(t *testing.T) {
 	m, store := resumedModel(t, history)
 	provider := &textOnlyStubProvider{restartStubProvider{requests: make(chan []core.Message, 1)}}
 	m.env.LLMProvider = provider
-	w := m.services.Session
-	if err := m.services.Agent.Start(agentruntime.BuildParams{Provider: provider, ModelID: "m", Recording: w, PermissionRules: (agentruntime.PermissionPolicy{}).Decide}, m.services.Agent.Messages()); err != nil {
+	w := m.features.Session
+	if err := m.features.Agent.Start(agentruntime.BuildParams{Provider: provider, ModelID: "m", Recording: w, PermissionRules: (agentruntime.PermissionPolicy{}).Decide}, m.features.Agent.Messages()); err != nil {
 		t.Fatal(err)
 	}
-	if err := m.services.Agent.Send(withID("text", core.UserMessage("describe again", nil))); err != nil {
+	if err := m.features.Agent.Send(withID("text", core.UserMessage("describe again", nil))); err != nil {
 		t.Fatal(err)
 	}
 	select {
@@ -446,9 +446,9 @@ func TestTextOnlyModelSwitchPreservesDurableImages(t *testing.T) {
 	if err != nil || len(loaded.ActiveMessages()) < 3 || !reflect.DeepEqual(loaded.ActiveMessages()[:2], history) {
 		t.Fatalf("model switch erased durable image history: %+v, %v", loaded, err)
 	}
-	m.services.Agent.SetMessages(loaded.ActiveMessages())
+	m.features.Agent.SetMessages(loaded.ActiveMessages())
 	m.env.LLMProvider = &restartStubProvider{}
-	if imageBlocks(m.services.Agent.Messages()[0]) != 1 {
+	if imageBlocks(m.features.Agent.Messages()[0]) != 1 {
 		t.Fatal("vision model could not recover the historical image")
 	}
 }
@@ -458,23 +458,23 @@ func TestRenameKeepsTheOpenedSessionForFollowingMessages(t *testing.T) {
 		{ID: "u1", Role: ai.RoleUser, Content: ai.TextContent("first prompt")},
 		{ID: "a1", Role: ai.RoleAssistant, Content: ai.TextContent("first response")},
 	})
-	w := m.services.Session
+	w := m.features.Session
 	provider := &restartStubProvider{requests: make(chan []core.Message, 1)}
 	stopped := make(chan error, 1)
-	if err := m.services.Agent.Start(agentruntime.BuildParams{Provider: provider, ModelID: "m", Recording: w, PermissionRules: (agentruntime.PermissionPolicy{}).Decide, OnEvent: func(event core.Event) {
+	if err := m.features.Agent.Start(agentruntime.BuildParams{Provider: provider, ModelID: "m", Recording: w, PermissionRules: (agentruntime.PermissionPolicy{}).Decide, OnEvent: func(event core.Event) {
 		if event, ok := event.(core.AgentStopped); ok {
 			stopped <- event.Err
 		}
-	}}, m.services.Agent.Messages()); err != nil {
+	}}, m.features.Agent.Messages()); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := m.renameSession("renamed", ""); err != nil {
 		t.Fatal(err)
 	}
-	if !m.services.Agent.Active() || m.services.Session != w {
+	if !m.features.Agent.Active() || m.features.Session != w {
 		t.Fatal("renaming retired the live runtime or its writer")
 	}
-	if err := m.services.Agent.Send(withID("after-name", core.UserMessage("continue", nil))); err != nil {
+	if err := m.features.Agent.Send(withID("after-name", core.UserMessage("continue", nil))); err != nil {
 		t.Fatal(err)
 	}
 	select {
@@ -545,11 +545,11 @@ func TestPendingInputSurvivesUnconfiguredProviderInNativeForm(t *testing.T) {
 	m.conv.Append(core.ChatMessage{ID: "display-only", Role: core.ChatUser, Content: "must not become history"})
 	added := make(chan core.Message, 2)
 	provider := &restartStubProvider{requests: make(chan []core.Message, 4)}
-	if err := m.services.Agent.Start(agentruntime.BuildParams{Provider: provider, ModelID: "m", OnEvent: func(e core.Event) {
+	if err := m.features.Agent.Start(agentruntime.BuildParams{Provider: provider, ModelID: "m", OnEvent: func(e core.Event) {
 		if v, ok := e.(sdkagent.MessageAdded); ok && v.Message.Role == ai.RoleUser {
 			added <- v.Message
 		}
-	}}, m.services.Agent.Messages()); err != nil {
+	}}, m.features.Agent.Messages()); err != nil {
 		t.Fatal(err)
 	}
 	m.sendToAgent(pendingMessage{Message: withID("next", core.UserMessage("continue", nil))})

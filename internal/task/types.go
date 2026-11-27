@@ -56,7 +56,7 @@ type BackgroundTask interface {
 
 	// Stop asks the task to exit on its own and returns without waiting for
 	// it to. Escalation is the caller's job, not the implementer's:
-	// Manager.Kill waits gracefulStopTimeout and then calls Kill, so a Stop
+	// RunSet.Kill waits gracefulStopTimeout and then calls Kill, so a Stop
 	// must not enforce a deadline of its own.
 	//
 	// An implementation must not let its own hard-kill path pre-empt the

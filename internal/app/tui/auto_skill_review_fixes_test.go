@@ -23,7 +23,7 @@ import (
 )
 
 func TestFailedReviewSkillResultDoesNotRequestAutoSkill(t *testing.T) {
-	m := &model{services: services{
+	m := &model{features: appFeatures{
 		Tool: tool.NewRegistry(),
 		Hook: hook.NewEngine(setting.NewData(), "", t.TempDir(), ""),
 	}}
@@ -42,7 +42,7 @@ func TestFailedReviewSkillResultDoesNotRequestAutoSkill(t *testing.T) {
 func TestAutoSkillCapabilitiesHonorHardDisable(t *testing.T) {
 	data := setting.NewData()
 	data.DisabledTools[tool.ToolReviewSkill] = false
-	m := &model{services: services{Setting: setting.New(data)}}
+	m := &model{features: appFeatures{Setting: setting.New(data)}}
 
 	t.Setenv("SAN_DISABLE_SELF_LEARN", "")
 	if caps := m.autoSkillCapabilities(); !caps.Active() {
@@ -67,7 +67,7 @@ func TestAutoSkillAndAutoMemoryEnableIndependently(t *testing.T) {
 				DenyCreate: !skillOn, DenyUpdate: !skillOn, DenyDelete: !skillOn,
 			}
 			svc := setting.New(data)
-			m := &model{services: services{Setting: svc}}
+			m := &model{features: appFeatures{Setting: svc}}
 			if gotMemory, gotSkill := svc.AutoMemory(), len(m.autoSkillExtraTools()) != 0; gotMemory != memoryOn || gotSkill != skillOn {
 				t.Fatalf("Auto Memory = %v, Auto Skill = %v; want memory = %v, skill = %v", gotMemory, gotSkill, memoryOn, skillOn)
 			}
@@ -77,8 +77,8 @@ func TestAutoSkillAndAutoMemoryEnableIndependently(t *testing.T) {
 	t.Setenv("SAN_DISABLE_AUTO_MEMORY", "1")
 	data := setting.NewData()
 	data.DisabledTools[tool.ToolReviewSkill] = false
-	m := &model{services: services{Setting: setting.New(data)}}
-	if m.services.Setting.AutoMemory() || len(m.autoSkillExtraTools()) == 0 {
+	m := &model{features: appFeatures{Setting: setting.New(data)}}
+	if m.features.Setting.AutoMemory() || len(m.autoSkillExtraTools()) == 0 {
 		t.Fatal("forcing Auto Memory off should not disable Auto Skill")
 	}
 }
@@ -89,7 +89,7 @@ func TestAutoSkillRechecksAuthorizationBeforeWriting(t *testing.T) {
 	m, _ := resumedModel(t, nil)
 	settingsPath := filepath.Join(m.env.CWD, ".san", "settings.json")
 	writeTestFile(t, settingsPath, `{"disabledTools":{"ReviewSkill":false}}`)
-	if err := m.services.Setting.Reload(m.env.CWD); err != nil {
+	if err := m.features.Setting.Reload(m.env.CWD); err != nil {
 		t.Fatal(err)
 	}
 	started, release := make(chan struct{}), make(chan struct{})
@@ -104,12 +104,12 @@ func TestAutoSkillRechecksAuthorizationBeforeWriting(t *testing.T) {
 		}
 	})
 	params := runtime.BuildParams{Provider: &finalizationProvider{client: driver.Client()}, ModelID: "m",
-		Recording: m.services.Session, PermissionRules: (runtime.PermissionPolicy{}).Decide}
-	if err := m.services.Agent.Start(params, nil); err != nil {
+		Recording: m.features.Session, PermissionRules: (runtime.PermissionPolicy{}).Decide}
+	if err := m.features.Agent.Start(params, nil); err != nil {
 		t.Fatal(err)
 	}
 	m.wireAutoSkill(params)
-	reviewer := m.services.AutoSkill.session
+	reviewer := m.features.AutoSkill.session
 	if reviewer == nil {
 		t.Fatal("reviewer not wired")
 	}
@@ -123,7 +123,7 @@ func TestAutoSkillRechecksAuthorizationBeforeWriting(t *testing.T) {
 	}
 	// Reload directly so this exercises the write-time guard, not cancellation.
 	writeTestFile(t, settingsPath, `{"disabledTools":{"ReviewSkill":true}}`)
-	if err := m.services.Setting.Reload(m.env.CWD); err != nil {
+	if err := m.features.Setting.Reload(m.env.CWD); err != nil {
 		t.Fatal(err)
 	}
 	close(release)
@@ -131,7 +131,7 @@ func TestAutoSkillRechecksAuthorizationBeforeWriting(t *testing.T) {
 		if ctx.Err() != nil {
 			t.Fatal("review did not finish")
 		}
-		snapshot := m.services.Session.Snapshot()
+		snapshot := m.features.Session.Snapshot()
 		for _, event := range snapshot.Events() {
 			if _, ok := event.Payload.(*session.InferenceFinishPayload); ok {
 				path := filepath.Join(m.env.CWD, ".san", "skills", "test-workflow", "SKILL.md")
@@ -157,7 +157,7 @@ func TestAutoSkillCapabilitiesRejectInvalidSettings(t *testing.T) {
 	if err := settings.Reload(cwd); err != nil {
 		t.Fatal(err)
 	}
-	m := &model{services: services{Setting: settings}}
+	m := &model{features: appFeatures{Setting: settings}}
 	if caps := m.autoSkillCapabilities(); caps.Active() {
 		t.Fatalf("invalid settings advertised ReviewSkill: %+v", caps)
 	}
@@ -178,7 +178,7 @@ func TestNotifyAutoSkillOverrideChecksIndividualSkillActions(t *testing.T) {
 		t.Fatal(err)
 	}
 	m := &model{
-		services: services{Setting: settings},
+		features: appFeatures{Setting: settings},
 		conv:     chat.NewModel(80),
 	}
 	m.notifyAutoSkillOverride(input.ConfigSavedMsg{

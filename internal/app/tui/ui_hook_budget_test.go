@@ -24,7 +24,7 @@ func modelWithPromptHook(t *testing.T, command string) *model {
 		}},
 	}
 	return &model{
-		services: services{
+		features: appFeatures{
 			Hook:     hook.NewEngine(data, "test-session", t.TempDir(), ""),
 			Reminder: reminder.NewQueue(),
 			Setting:  setting.New(data),
@@ -40,7 +40,7 @@ func TestPromptHookCannotFreezeTheUI(t *testing.T) {
 	m := modelWithPromptHook(t, "sleep 30")
 
 	start := time.Now()
-	blocked, _ := m.checkPromptHook(t.Context(), "hello")
+	blocked, _ := m.runPromptSubmitHook(t.Context(), "hello")
 	elapsed := time.Since(start)
 
 	if elapsed > defaultUIHookBudget+2*time.Second {
@@ -56,7 +56,7 @@ func TestPromptHookCannotFreezeTheUI(t *testing.T) {
 func TestPromptHookStillBlocksWhenItSaysSo(t *testing.T) {
 	m := modelWithPromptHook(t, "echo 'nope' >&2; exit 2")
 
-	blocked, reason := m.checkPromptHook(t.Context(), "hello")
+	blocked, reason := m.runPromptSubmitHook(t.Context(), "hello")
 
 	if !blocked {
 		t.Fatal("a hook exiting 2 should block the prompt")
@@ -70,7 +70,7 @@ func TestPromptHookStillBlocksWhenItSaysSo(t *testing.T) {
 func TestPromptHookAllowsAFastPermit(t *testing.T) {
 	m := modelWithPromptHook(t, "exit 0")
 
-	if blocked, _ := m.checkPromptHook(t.Context(), "hello"); blocked {
+	if blocked, _ := m.runPromptSubmitHook(t.Context(), "hello"); blocked {
 		t.Error("a successful hook blocked the prompt")
 	}
 }
@@ -93,7 +93,7 @@ func TestUIHookBudgetHonorsSetting(t *testing.T) {
 	for _, tc := range cases {
 		data := setting.NewData()
 		data.HookUITimeout = tc.raw
-		m := &model{services: services{Setting: setting.New(data)}}
+		m := &model{features: appFeatures{Setting: setting.New(data)}}
 		if got := m.uiHookBudget(); got != tc.want {
 			t.Errorf("hookUITimeout=%q: budget=%v, want %v", tc.raw, got, tc.want)
 		}

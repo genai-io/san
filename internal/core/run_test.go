@@ -441,7 +441,7 @@ func waitFor(t *testing.T, what string, cond func() bool) {
 // property each tool declares. What is checked here is the translation: a tool
 // that may touch shared state comes back marked, and one that only looks comes
 // back as it went in.
-func TestOnlyTheToolsThatMayTouchAnythingAreMarkedSequential(t *testing.T) {
+func TestToolParallelEligibility(t *testing.T) {
 	tools := []Tool{
 		namedTool("Read"), namedTool("WebFetch"), namedTool("WebSearch"), namedTool("LSP"),
 		namedTool("Agent"), namedTool("SendMessage"),
@@ -462,12 +462,12 @@ func TestOnlyTheToolsThatMayTouchAnythingAreMarkedSequential(t *testing.T) {
 
 	for _, name := range []string{"Read", "WebFetch", "WebSearch", "LSP", "Agent", "SendMessage"} {
 		if !unmarked[name] {
-			t.Errorf("%s was marked sequential; it only looks at things", name)
+			t.Errorf("%s was marked sequential; want parallel eligible", name)
 		}
 	}
 	for _, name := range []string{"Edit", "Bash", "Write"} {
 		if unmarked[name] {
-			t.Errorf("%s was not marked sequential; it may touch shared state", name)
+			t.Errorf("%s was not marked sequential; want sequential", name)
 		}
 	}
 }

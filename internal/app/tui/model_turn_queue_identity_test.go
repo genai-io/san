@@ -12,7 +12,7 @@ import (
 func TestAsyncHookContinuationKeepsContextInDeliveredTurn(t *testing.T) {
 	m, provider := noticeDeliveryModel(t)
 	m.env.LLMProvider = provider
-	m.services.Setting = setting.New(setting.NewData())
+	m.features.Setting = setting.New(setting.NewData())
 	m.agentReviewCaps = m.autoSkillCapabilities()
 	m.agentDisabledToolsSignature = m.disabledToolsSignature()
 	m.autoMemory = m.currentAutoMemory()

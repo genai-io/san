@@ -42,7 +42,7 @@ const (
 	skillTabUser
 )
 
-// SkillSelector holds the state for the skill selector overlay. The tab/filter/
+// SkillSelector holds the state for the skill selector panel. The tab/filter/
 // keypress/frame mechanics live in the embedded tabbedList; this type owns
 // skill loading, the row layout, and the state-cycling action.
 type SkillSelector struct {

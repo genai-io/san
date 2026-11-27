@@ -43,7 +43,7 @@ func TestMainPermissionBoundaryRejectsInvalidShellBeforeApproval(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			m := userPromptModel()
-			m.services.Agent = &runtime.Runtime{}
+			m.features.Agent = &runtime.Runtime{}
 			m.env.CWD = t.TempDir()
 			gate := runtime.NewPermissionGate(func(string, map[string]any) runtime.PermDecisionResult {
 				return runtime.PermDecisionResult{Decision: perm.Prompt, Reason: "mode: default requires confirmation"}

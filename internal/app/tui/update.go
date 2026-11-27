@@ -164,7 +164,7 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.syncMCPTools()
 		return m, awaitMCPToolsChanged(m.mcpToolsChanged)
 	case chat.PermGateMsg:
-		if msg.Gate != nil && msg.Gate != m.services.Agent.PermissionGate() {
+		if msg.Gate != nil && msg.Gate != m.features.Agent.PermissionGate() {
 			return m, nil
 		}
 		return m, m.HandlePermGate(msg.Request)
@@ -288,8 +288,8 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// the Providers tab) clears the store's CurrentModel and updates
 		// llm.Default — but the per-turn env fields would stay stale until
 		// the next explicit model selection without this refresh.
-		m.env.CurrentModel = m.services.LLM.CurrentModel()
-		m.env.LLMProvider = m.services.LLM.Provider()
+		m.env.CurrentModel = m.features.LLM.CurrentModel()
+		m.env.LLMProvider = m.features.LLM.Provider()
 		return m, nil
 	case input.ContextLimitUpdatedMsg:
 		if err := m.applyContextLimitUpdate(msg); err != nil {
@@ -303,10 +303,10 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// tool filters at agent-build time) reflects it; ensureAgentRuntime then
 		// rebuilds on the next turn when the disabled set drifts, so the toggle
 		// takes effect without interrupting an in-flight turn.
-		if err := m.services.Setting.Reload(m.env.CWD); err != nil {
+		if err := m.features.Setting.Reload(m.env.CWD); err != nil {
 			log.Logger().Warn("reload settings after tool toggle failed", zap.Error(err))
 		}
-		if !m.services.Setting.ReviewSkillEnabled() {
+		if !m.features.Setting.ReviewSkillEnabled() {
 			m.teardownAutoSkill()
 		}
 		return m, nil
@@ -362,14 +362,14 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case input.ConfigSavedMsg:
 		// Retire the old permission snapshot before installing the saved settings.
 		m.teardownAutoSkill()
-		if err := m.services.Setting.Reload(m.env.CWD); err != nil {
+		if err := m.features.Setting.Reload(m.env.CWD); err != nil {
 			log.Logger().Warn("reload settings after config save failed", zap.Error(err))
 			return m, nil
 		}
 		m.conv.AddNotice("Auto Skill settings saved (" + string(msg.Scope) + ")")
 		m.notifyAutoSkillOverride(msg)
 		// Rewire Auto Skill now; the next turn reconciles ReviewSkill availability.
-		if m.services.Agent.Active() {
+		if m.features.Agent.Active() {
 			params, err := m.buildAgentParams()
 			if err != nil {
 				log.Logger().Warn("could not configure Auto Skill", zap.Error(err))
@@ -381,7 +381,7 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case input.ThemeSavedMsg:
 		// The panel already applied (widgets.InitTheme) and persisted the theme;
 		// refresh the in-memory handle so re-opening /settings reflects it.
-		if err := m.services.Setting.Reload(m.env.CWD); err != nil {
+		if err := m.features.Setting.Reload(m.env.CWD); err != nil {
 			log.Logger().Warn("reload settings after theme save failed", zap.Error(err))
 		}
 		m.conv.AddNotice("Theme set to " + msg.Theme)
@@ -390,7 +390,7 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Update the live display flag so the status line reflects the choice
 		// immediately, then refresh the in-memory handle for re-opens.
 		m.env.ShowContextBar = msg.On
-		if err := m.services.Setting.Reload(m.env.CWD); err != nil {
+		if err := m.features.Setting.Reload(m.env.CWD); err != nil {
 			log.Logger().Warn("reload settings after context-bar save failed", zap.Error(err))
 		}
 		if msg.On {
@@ -401,10 +401,10 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case input.GitBarSavedMsg:
 		m.env.ShowGitBar = msg.On
-		if err := m.services.Setting.Reload(m.env.CWD); err != nil {
+		if err := m.features.Setting.Reload(m.env.CWD); err != nil {
 			log.Logger().Warn("reload settings after Git-bar save failed", zap.Error(err))
 		} else {
-			m.env.ShowGitBar = m.services.Setting.Snapshot().ShowGitBar()
+			m.env.ShowGitBar = m.features.Setting.Snapshot().ShowGitBar()
 		}
 		state := "off"
 		if m.env.ShowGitBar {
@@ -422,7 +422,7 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// re-opens. Already-committed reasoning in native scrollback is
 		// immutable (ADR-0002), so this applies from here on.
 		m.env.ThinkingDisplay = msg.Mode
-		if err := m.services.Setting.Reload(m.env.CWD); err != nil {
+		if err := m.features.Setting.Reload(m.env.CWD); err != nil {
 			log.Logger().Warn("reload settings after thinking-display save failed", zap.Error(err))
 		}
 		m.conv.AddNotice("Thinking: " + msg.Mode)
@@ -430,7 +430,7 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case input.BashPreviewSavedMsg:
 		// Applies to rows drawn from here on; committed scrollback is immutable.
 		m.env.BashPreviewLines = msg.Lines
-		if err := m.services.Setting.Reload(m.env.CWD); err != nil {
+		if err := m.features.Setting.Reload(m.env.CWD); err != nil {
 			log.Logger().Warn("reload settings after shell-preview save failed", zap.Error(err))
 		}
 		preview := "off"
@@ -445,7 +445,7 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case input.AgentPreviewSavedMsg:
 		// Applies to future rendering; committed native scrollback is immutable.
 		m.env.AgentPreviewLines = msg.Lines
-		if err := m.services.Setting.Reload(m.env.CWD); err != nil {
+		if err := m.features.Setting.Reload(m.env.CWD); err != nil {
 			log.Logger().Warn("reload settings after agent-preview save failed", zap.Error(err))
 		}
 		preview := "off"
@@ -458,12 +458,12 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.conv.AddNotice("Agent preview: " + preview)
 		return m, nil
 	case input.AutoUpdateSavedMsg:
-		if err := m.services.Setting.Reload(m.env.CWD); err != nil {
+		if err := m.features.Setting.Reload(m.env.CWD); err != nil {
 			log.Logger().Warn("reload settings after auto-update save failed", zap.Error(err))
 		}
 		// Report the effective value: a project-level autoUpdate outranks the
 		// user level the panel writes.
-		on := m.services.Setting.AutoUpdate()
+		on := m.features.Setting.AutoUpdate()
 		state := "off"
 		if on {
 			state = "on"
@@ -475,7 +475,7 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case input.AllowBypassSavedMsg:
-		if err := m.services.Setting.Reload(m.env.CWD); err != nil {
+		if err := m.features.Setting.Reload(m.env.CWD); err != nil {
 			// The in-memory handle still holds the pre-save value, and it is
 			// what cycleOperationMode consults — so a lock that cannot be
 			// re-read has not taken effect. Say so instead of claiming it did.
@@ -487,7 +487,7 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// the user level, but a project-level allowBypass outranks it. Demoting
 		// on msg.Allowed alone would kick a session out of YOLO mode that
 		// shift+tab can walk straight back into.
-		allowed := m.services.Setting.AllowBypass()
+		allowed := m.features.Setting.AllowBypass()
 		if !allowed && m.env.OperationMode == setting.ModeBypassPermissions {
 			// persistOperationMode too, or lastOperationMode stays "bypass" and
 			// the next launch restores YOLO behind the user's back.
@@ -513,7 +513,7 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Why re-emit on toggle: the skills directory rides in
 		// <system-reminder>, which is sent once per conversation. Without
 		// this nudge the LLM sees stale state until the next one.
-		m.services.Reminder.RequeueSystemReminders()
+		m.features.Reminder.RequeueSystemReminders()
 		return m, nil
 	case input.AgentToggleMsg:
 		// Why stop on toggle: the agents directory lives in the Agent tool's
@@ -523,7 +523,7 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// orphan in-flight tool calls and the partial assistant turn —
 		// leave the toggle pending; ensureAgentRuntime will see the updated
 		// store the next time it actually rebuilds.
-		if m.services.Agent.Active() && !m.conv.Stream.Active {
+		if m.features.Agent.Active() && !m.conv.Stream.Active {
 			if err := m.StopAgentRuntime(); err != nil {
 				m.conv.AddNotice(err.Error())
 				return m, tea.Batch(m.CommitMessages()...)
@@ -537,7 +537,7 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var cmds []tea.Cmd
 		if msg.err != nil && msg.err != core.ErrTurnCompleted {
 			log.Logger().Warn("cancelled turn finalization incomplete", zap.Error(msg.err))
-			if msg.outbox == m.services.Agent.Outbox() {
+			if msg.outbox == m.features.Agent.Outbox() {
 				m.conv.AddNotice("Turn finalization failed: " + msg.err.Error())
 				cmds = append(cmds, m.CommitMessages()...)
 			}
@@ -546,12 +546,12 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.queueContinuation = nil
 		if m.pendingMessages.Len() > 0 && m.pendingMessages.CanDeliver(false) {
 			cmds = append(cmds, m.sendPendingMessages())
-		} else if continuation != nil && msg.outbox == m.services.Agent.Outbox() {
+		} else if continuation != nil && msg.outbox == m.features.Agent.Outbox() {
 			// Never transfer Enter's permission to a deleted or edited successor.
 			if head, ok := m.userInput.Queue.At(0); ok && reflect.DeepEqual(head, *continuation) {
 				cmds = append(cmds, m.sendNextQueuedInput(true))
 			}
-		} else if (msg.err == nil || msg.err == core.ErrTurnCompleted) && msg.outbox == m.services.Agent.Outbox() {
+		} else if (msg.err == nil || msg.err == core.ErrTurnCompleted) && msg.outbox == m.features.Agent.Outbox() {
 			// Queued user input already carries explicit intent to continue. Wait
 			// for cancellation cleanup and persistence before admitting one item
 			// through the normal user-submit path. Do not drain cron/hook queues
@@ -560,7 +560,7 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, tea.Batch(cmds...)
 	case pendingInputReadyMsg:
-		if msg.outbox != m.services.Agent.Outbox() || m.conv.Stream.Active ||
+		if msg.outbox != m.features.Agent.Outbox() || m.conv.Stream.Active ||
 			!m.pendingMessages.CanDeliver(false) || m.pendingMessages.Len() == 0 {
 			return m, nil
 		}
@@ -652,7 +652,7 @@ func (m *model) routeToSubModel(msg tea.Msg) (tea.Cmd, bool) {
 	if cmd, ok := m.updateMode(msg); ok {
 		return cmd, true
 	}
-	if cmd, ok := input.Update(m.overlayDeps(), msg); ok {
+	if cmd, ok := input.Update(m.panelContext(), msg); ok {
 		return cmd, true
 	}
 	switch msg.(type) {
@@ -676,7 +676,7 @@ func (m *model) needsSpinner() bool {
 		m.flowDraft != nil ||
 		m.btwWaiting() ||
 		m.recap.show ||
-		m.services.Task.HasRunning()
+		m.features.Task.HasRunning()
 }
 
 // executingTrackerItem reports whether the executor behind a tracker item is
@@ -688,10 +688,10 @@ func (m *model) executingTrackerItem(t *todo.Item) bool {
 	if todo.BackgroundTaskID(t) == "" {
 		return m.conv.Stream.Active
 	}
-	if m.services.Task == nil {
+	if m.features.Task == nil {
 		return false
 	}
-	worker, known := m.services.Task.Get(todo.BackgroundTaskID(t))
+	worker, known := m.features.Task.Get(todo.BackgroundTaskID(t))
 	return known && worker.IsRunning()
 }
 

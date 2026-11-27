@@ -52,7 +52,6 @@ func (t *WebSearchTool) Execute(ctx context.Context, params map[string]any, cwd 
 		NumResults:     numResults,
 		AllowedDomains: allowedDomains,
 		BlockedDomains: blockedDomains,
-		Timeout:        30 * time.Second,
 	}
 
 	results, err := searchProvider.Search(ctx, query, opts)

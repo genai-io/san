@@ -68,7 +68,7 @@ func TestWorkerCompletionStaysInOriginalSession(t *testing.T) {
 	t.Cleanup(func() { task.SetLifecycleHandler(nil); mail.Unregister(mail.Main) })
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	worker := m.services.Task.CreateAgentTask("old-worker", "Audit", "old session job", ctx, cancel)
+	worker := m.features.Task.CreateAgentTask("old-worker", "Audit", "old session job", ctx, cancel)
 	worker.AppendOutput([]byte("result-only-for-original-session"))
 	// A notice can already be queued while the selector switches conversations.
 	queued, _ := taskCompletionMessage(task.TaskInfo{ID: "queued", ParentSessionID: m.sessionID(), Status: task.StatusCompleted, Output: "old result"})
@@ -81,7 +81,7 @@ func TestWorkerCompletionStaysInOriginalSession(t *testing.T) {
 		t.Fatalf("old worker emitted a notice into the new session: %+v", n)
 	default:
 	}
-	if len(m.conv.Messages) != before || m.pendingMessages.Len() != 0 || m.conv.Stream.Active || len(m.services.Tracker.List()) != 0 {
+	if len(m.conv.Messages) != before || m.pendingMessages.Len() != 0 || m.conv.Stream.Active || len(m.features.Tracker.List()) != 0 {
 		t.Fatal("old worker changed the new session's conversation or tasks")
 	}
 }

@@ -28,12 +28,12 @@ func TestWorkerSelectsOneMCPTool(t *testing.T) {
 	}
 	endpoint := httptest.NewServer(sdk.NewStreamableHTTPHandler(func(*http.Request) *sdk.Server { return server }, nil))
 	defer endpoint.Close()
-	manager := mcp.NewManagerForTest(map[string]mcp.ServerConfig{"docs": {URL: endpoint.URL}})
-	defer manager.Close()
-	if err := manager.Connect(t.Context(), "docs"); err != nil {
+	servers := mcp.NewServerSetForTest(map[string]mcp.ServerConfig{"docs": {URL: endpoint.URL}})
+	defer servers.Close()
+	if err := servers.Connect(t.Context(), "docs"); err != nil {
 		t.Fatal(err)
 	}
-	if len(manager.ToolSchemas()) != 2 {
+	if len(servers.ToolSchemas()) != 2 {
 		t.Fatal("expected both server tools before delegation")
 	}
 	ask := func(name string) func(context.Context, *ai.Request) iter.Seq2[ai.Delta, error] {
@@ -48,7 +48,7 @@ func TestWorkerSelectsOneMCPTool(t *testing.T) {
 	e := NewExecutor(continuationProvider{driver}, t.TempDir(), "aitest", nil)
 	store, parent := continuationSessions(t, "owner")
 	bindContinuationSessions(t, e, store, parent)
-	e.SetMCPDependencies(manager)
+	e.SetMCPDependencies(servers)
 	e.SetParentTools(func() []string { return []string{selected, sibling} })
 	e.SetParentPermissionMode(func() PermissionMode { return PermissionBypass })
 	req := tool.AgentExecRequest{Prompt: "use docs", AllowTools: []string{selected, sibling}, DenyTools: []string{sibling}}

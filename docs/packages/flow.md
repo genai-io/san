@@ -15,7 +15,7 @@ Workers (not `executor: main`) may narrow inherited tools with `allow_tools: [Re
 
 ## Purpose
 
-`Service` is the direct slash-command boundary: named scheduling, preflight, definitions and run recovery. It receives the native task manager and
+`Scheduler` is the direct slash-command boundary: named scheduling, preflight, definitions and run recovery. It receives the native task manager and
 subagent executor explicitly; it has no tool schema or registry entry. The
 package owns definition format, dependency validation, scheduling, checkpoints,
 run storage and final summary. Native child task/session references live in
@@ -37,7 +37,7 @@ quote boundaries and `command.QuoteArgument`. `Blueprint.InputNames` derives
 input keys from node templates. In the TUI, missing slash-run inputs open the
 same guided form as Review; supplied values are retained. The form confirms a
 summary before launch and checks the saved source has not changed. Direct
-service callers still get missing-input errors. Stop bypasses the foreground
+scheduler callers still get missing-input errors. Stop bypasses the foreground
 input queue while its display-only result passes through the app's held-notice queue.
 
 ## Contract
@@ -45,16 +45,16 @@ input queue while its display-only result passes through the app's held-notice q
 ```go
 package flow
 
-// The app injects the native task manager and executor into the direct service.
-func NewService(tasks *task.Manager) *Service
+// The app injects the native task manager and executor into the scheduler.
+func NewScheduler(tasks *task.RunSet) *Scheduler
 // Launch runs a saved, reviewed definition and returns the scheduler task ID.
 // GetRun, ResumeRun and StopRun accept a run ID or that task ID. GetRun and
 // Runs reconcile a record still "running" with no lock holder to "interrupted".
-func (s *Service) Launch(name string, inputs map[string]string, width int) (taskID string, err error)
-func (s *Service) GetRun(id string) (*RunRecord, error)
-func (s *Service) Runs() ([]RunRecord, error)
-func (s *Service) ResumeRun(id, from string, width int) (taskID string, err error)
-func (s *Service) StopRun(id string) error
+func (s *Scheduler) Launch(name string, inputs map[string]string, width int) (taskID string, err error)
+func (s *Scheduler) GetRun(id string) (*RunRecord, error)
+func (s *Scheduler) Runs() ([]RunRecord, error)
+func (s *Scheduler) ResumeRun(id, from string, width int) (taskID string, err error)
+func (s *Scheduler) StopRun(id string) error
 
 // ListDefinitions lists the `*.md` definitions in dirs, earliest directory
 // winning when a name appears twice, sorted by name.
@@ -123,7 +123,7 @@ structs. `Checkpoint` (current state) and `Attempt` (history) both embed one
 
 The graph engine (`parse.go`, `expand.go`, `run.go`, `view.go`,
 `authoring.go`) imports nothing from San, so it can move to sdk-go;
-`engine_imports_test.go` enforces that. The service files bind it to San.
+`engine_imports_test.go` enforces that. The scheduler files bind it to San.
 
 - `parse.go` — frontmatter (`name`, `description`, `max_parallel`) via
   yaml; a line-oriented mermaid subset (`flowchart` header, bare ids,
@@ -146,7 +146,7 @@ The graph engine (`parse.go`, `expand.go`, `run.go`, `view.go`,
   `max_workers` fails the node rather than losing its tail — which is the
   only place that bound is enforced, so the fan-out needs no gate of its own
   and queues for the run's shared slots like any other node. `Bounds` counts
-  the worst case for execution-limit displays and service previews/launch summaries.
+  the worst case for execution-limit displays and scheduler previews/launch summaries.
 - `run.go` — one goroutine per node waiting on its upstreams' done
   channels, a semaphore of `MaxParallel` held only while a turn executes
   (never while waiting, so a for_each node cannot deadlock against its own
@@ -169,11 +169,11 @@ The graph engine (`parse.go`, `expand.go`, `run.go`, `view.go`,
   exclusive executor ownership. Listing reads only frontmatter; `FindDefinition` does the
   full parse. Search paths come from the caller. `store_unix.go` /
   `store_windows.go` contain only platform-specific owner checks. An empty run
-  directory uses memory for embedded callers and tests. Each `Store` owns its
+  directory uses memory for embedded callers and tests. Each run store owns its
   mutex and memory-mode locks; `SetSearchPaths` keeps one store per run
   directory so live runs and lookups share it.
-- `service.go` — typed service configuration, executor preflight, launch,
-  definitions and preview. `service_run.go` owns run lifecycle (list, reconcile,
+- `scheduler.go` — typed scheduler configuration, executor preflight, launch,
+  definitions and preview. `scheduler_run.go` owns run lifecycle (list, reconcile,
   resume, stop, launch) and live graph progress; `node_runner.go` runs one node
   as a native subagent turn, setting `AgentExecRequest.ParentTaskID` so the
   executor registers it as a scheduler-owned child. No tool adapter package or
@@ -229,7 +229,7 @@ unit tests stub out; graph semantics stay with the unit tests.
 `Parse` is pure. `Run` blocks until every node has settled and is safe to
 call concurrently on distinct blueprints; the host owns the context, and
 cancelling it fails nodes that have not started (or that observe it) while
-finished results are kept. `Run` itself retains no state; `Service` persists
+finished results are kept. `Run` itself retains no state; `Scheduler` persists
 checkpoints through its callback. Run snapshots fix definition and inputs,
 not external workspace state. Retries may repeat side effects; locks prevent
 concurrent ownership, not exactly-once external actions.
@@ -263,8 +263,8 @@ internal/flow/loop_test.go   — unrolled shape, previous-round binding, early e
 internal/flow/view_test.go   — compact branches, circular progress, conditional fallback and preview width.
 internal/flow/resume_test.go — branch/round/worker reuse, invalidation, attempt history, cancellation and checkpoint write failure.
 internal/flow/store_test.go — exact definition source, validated saves, concurrent editors, atomic run persistence, private run files, IDs, OS-lock ownership and crash release, unreadable-record skipping, pruning.
-internal/flow/service_test.go — preflight, node requests, native callbacks, stream cleanup and task outcomes.
-internal/flow/service_run_test.go — snapshot recovery, unpersisted activity, retry roots, stop, task-ID lookup, interruption and write failures.
+internal/flow/scheduler_test.go — preflight, node requests, native callbacks, stream cleanup and task outcomes.
+internal/flow/scheduler_run_test.go — snapshot recovery, unpersisted activity, retry roots, stop, task-ID lookup, interruption and write failures.
 internal/flow/definitions_test.go — validation, stale saves, filename collisions and project copies.
 internal/flow/authoring_test.go — prompt framing and draft unwrapping.
 internal/flow/engine_imports_test.go — the engine stays San-free.

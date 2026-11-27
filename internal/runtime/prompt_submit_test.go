@@ -13,7 +13,7 @@ import (
 	"github.com/genai-io/san/internal/setting"
 )
 
-func TestCheckPromptStagesContextBeforeDecision(t *testing.T) {
+func TestRunPromptSubmitHookStagesContextBeforeDecision(t *testing.T) {
 	for _, blocked := range []bool{false, true} {
 		for _, extra := range []string{"", "hook context"} {
 			t.Run(strings.Join([]string{map[bool]string{false: "accepted", true: "blocked"}[blocked], extra}, "/"), func(t *testing.T) {
@@ -31,7 +31,7 @@ func TestCheckPromptStagesContextBeforeDecision(t *testing.T) {
 				})
 				r := reminder.NewQueue()
 				r.Enqueue("already pending")
-				got, reason := CheckPrompt(t.Context(), "raw prompt", engine, r)
+				got, reason := RunPromptSubmitHook(t.Context(), "raw prompt", engine, r)
 				if got != blocked || (blocked && reason != "policy reason") || calls != 1 {
 					t.Fatalf("decision = %v, %q; calls = %d", got, reason, calls)
 				}
@@ -55,7 +55,7 @@ func TestCheckPromptStagesContextBeforeDecision(t *testing.T) {
 	}
 }
 
-func TestCheckPromptHookBudgetIsNotPromptCancellation(t *testing.T) {
+func TestRunPromptSubmitHookHookBudgetIsNotPromptCancellation(t *testing.T) {
 	engine := hook.NewEngine(setting.NewData(), "session", t.TempDir(), "")
 	engine.AddSessionFunctionHook(hook.UserPromptSubmit, "", hook.FunctionHook{
 		Callback: func(ctx context.Context, _ hook.HookInput) (hook.HookOutput, error) {
@@ -67,7 +67,7 @@ func TestCheckPromptHookBudgetIsNotPromptCancellation(t *testing.T) {
 	hookCtx, cancel := context.WithTimeout(promptCtx, time.Millisecond)
 	defer cancel()
 	r := reminder.NewQueue()
-	if blocked, reason := CheckPrompt(hookCtx, "hello", engine, r); blocked || reason != "" {
+	if blocked, reason := RunPromptSubmitHook(hookCtx, "hello", engine, r); blocked || reason != "" {
 		t.Fatalf("budget expiry blocked prompt: %v %q", blocked, reason)
 	}
 	if !errors.Is(hookCtx.Err(), context.DeadlineExceeded) || promptCtx.Err() != nil {

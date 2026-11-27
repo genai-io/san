@@ -58,10 +58,10 @@ type Executor struct {
 	projectInstructions        string              // project memory (AGENTS.md) for edit-capable subagents
 	skillsPrompt               string              // available skills section for capable subagents
 	resolveSkill               func(string) string // nil uses the TUI registry
-	mcpManager                 *mcp.Manager        // tool schemas, execution, per-subagent server sets
+	mcpServers                 *mcp.ServerSet      // tool schemas, execution, per-subagent server sets
 	disabledToolsMu            sync.RWMutex
 	disabledTools              map[string]bool // effective global disabled tools, copied on set/read
-	tasks                      *task.Manager
+	tasks                      *task.RunSet
 	tracker                    *todo.Store // nil leaves the task-tracker tools unavailable
 	messaging                  bool
 	permissionResolver         func(*session.Session, bool, tool.AgentInteractionSource) tool.Resolver
@@ -103,7 +103,7 @@ func (e *Executor) SetTracker(tracker *todo.Store) {
 // ConfigureOwner binds a host's worker resources before launching any runs.
 // Permission must enforce the parent policy even for child bypass/allow rules.
 // Background policies must never retain a prompt-scoped transport receiver.
-func (e *Executor) ConfigureOwner(tasks *task.Manager, registry *Registry, permission func(*session.Session, bool, tool.AgentInteractionSource) tool.Resolver, toolContext func(context.Context, string) context.Context) {
+func (e *Executor) ConfigureOwner(tasks *task.RunSet, registry *Registry, permission func(*session.Session, bool, tool.AgentInteractionSource) tool.Resolver, toolContext func(context.Context, string) context.Context) {
 	e.tasks, e.registry, e.permissionResolver, e.toolContext = tasks, registry, permission, toolContext
 }
 
@@ -122,7 +122,7 @@ func (e *Executor) SetPostTool(post func(hook.Handler, core.ToolResult, any) err
 	e.postTool = post
 }
 
-func (e *Executor) taskPool() *task.Manager {
+func (e *Executor) taskPool() *task.RunSet {
 	if e.tasks != nil {
 		return e.tasks
 	}
@@ -170,8 +170,8 @@ func (e *Executor) SetSkillsDirectory(skillsPrompt string) {
 }
 
 // SetMCPDependencies wires MCP tool access and server connections.
-func (e *Executor) SetMCPDependencies(registry *mcp.Manager) {
-	e.mcpManager = registry
+func (e *Executor) SetMCPDependencies(registry *mcp.ServerSet) {
+	e.mcpServers = registry
 }
 
 // SetDisabledTools supplies the effective global disabled-tool policy inherited
@@ -605,8 +605,8 @@ func (e *Executor) buildAgent(ctx context.Context, run *preparedRun, onToolExec 
 	servers := slices.DeleteFunc(slices.Clone(rc.config.McpServers), func(server string) bool {
 		return !slices.ContainsFunc(rc.ceiling, func(name string) bool { return strings.HasPrefix(name, "mcp__"+server+"__") })
 	})
-	if len(servers) > 0 && e.mcpManager != nil {
-		mcpCleanup, errs := mcp.ConnectServers(ctx, e.mcpManager, servers)
+	if len(servers) > 0 && e.mcpServers != nil {
+		mcpCleanup, errs := mcp.ConnectServers(ctx, e.mcpServers, servers)
 		if mcpCleanup != nil {
 			cleanup = mcpCleanup
 		}
@@ -638,7 +638,7 @@ func (e *Executor) buildAgent(ctx context.Context, run *preparedRun, onToolExec 
 			return "", fmt.Errorf("worker execution directory was not authorized")
 		}),
 		tool.WithToolContext(func(ctx context.Context) context.Context {
-			ctx = task.WithManager(task.WithSessionID(ctx, run.parentID()), e.taskPool())
+			ctx = task.WithRunSet(task.WithSessionID(ctx, run.parentID()), e.taskPool())
 			if e.tracker != nil {
 				ctx = todo.WithStore(ctx, e.tracker)
 			}
@@ -670,8 +670,8 @@ func (e *Executor) buildAgent(ctx context.Context, run *preparedRun, onToolExec 
 	tools := tool.AdaptToolRegistry(schemas, run.currentCwd, adaptOpts...)
 
 	// Add MCP tool executors
-	if e.mcpManager != nil {
-		for _, t := range mcp.AsCoreTools(schemas, e.mcpManager) {
+	if e.mcpServers != nil {
+		for _, t := range mcp.AsCoreTools(schemas, e.mcpServers) {
 			tools.Add(t, "mcp:"+t.Schema().Name)
 		}
 	}

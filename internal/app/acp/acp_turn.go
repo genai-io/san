@@ -51,7 +51,7 @@ func (s *acpSession) prompt(ctx context.Context, turn *acp.Turn, req protocol.Pr
 	}
 	ctx = plugin.WithRoot(ctx, pluginRoot)
 	hookCtx, cancelHook := context.WithTimeout(ctx, 5*time.Second)
-	blocked, reason := runtime.CheckPrompt(hookCtx, text.String(), s.hooks, s.reminders)
+	blocked, reason := runtime.RunPromptSubmitHook(hookCtx, text.String(), s.hooks, s.reminders)
 	cancelHook()
 	if blocked {
 		return response, fmt.Errorf("prompt blocked: %s", reason)
@@ -299,7 +299,7 @@ func acpEvent(event core.Event) (protocol.SessionUpdate, bool) {
 }
 
 func acpToolUpdate(id, name, text string, status protocol.ToolCallStatus, details any) protocol.SessionUpdate {
-	// ToolEnd contains the original result, before the native ResultPager.
+	// ToolEnd contains the original result, before the runtime shortens it for the model.
 	// Bound its display separately so a large result cannot close the transport.
 	const preview = 64 << 10
 	if len(text) > preview {

@@ -31,7 +31,7 @@ func TestAutoSkillNotice(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			owner := new(session.Session)
 			m := &model{
-				services:    services{Session: owner, Subagent: subagent.NewRegistry(), Tracker: todo.NewStore()},
+				features:    appFeatures{Session: owner, Subagent: subagent.NewRegistry(), Tracker: todo.NewStore()},
 				mainNotices: make(chan mainNotice, 1),
 				conv:        chat.NewModel(80),
 			}
@@ -53,11 +53,11 @@ func TestAutoSkillNotice(t *testing.T) {
 				t.Fatalf("expected a display-only notice for the original owner: %+v", notice)
 			}
 			if tc.cancelPending {
-				m.services.AutoSkill.session = &autoSkillSession{cancel: cancel}
+				m.features.AutoSkill.session = &autoSkillSession{cancel: cancel}
 				m.teardownAutoSkill()
 			}
 			if tc.switchSession {
-				m.services.Session = new(session.Session)
+				m.features.Session = new(session.Session)
 			}
 			m.dispatch(mainNoticeMsg{notice: notice})
 			if !tc.wantDisplay {

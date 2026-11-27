@@ -79,7 +79,7 @@ type groupJoinOptions struct {
 // the second missed a change.
 func groupTick(stamp, fullRead time.Time, known map[string]rosterEntry) tea.Cmd {
 	return tea.Tick(time.Second, func(time.Time) tea.Msg {
-		msg := memberMsg{status: group.Check(), stamp: stamp, fullRead: fullRead}
+		msg := memberMsg{status: group.CheckMembership(), stamp: stamp, fullRead: fullRead}
 		if msg.status != group.Joined {
 			return msg
 		}
@@ -355,9 +355,9 @@ func (m *model) deliverGroupReminder(line, text string) tea.Cmd {
 		}
 		return m.deliverNotice(mainNotice{Display: line, Content: content})
 	}
-	if text != "" && m.services.Reminder.Prepared() {
+	if text != "" && m.features.Reminder.Prepared() {
 		// Before that, the first message carries the whole roster instead.
-		m.services.Reminder.Enqueue(text)
+		m.features.Reminder.Enqueue(text)
 	}
 	m.conv.AddNotice(line)
 	return tea.Batch(m.CommitMessages()...)
@@ -429,8 +429,8 @@ func (m *model) releaseGroupOnSwitch() {
 	group.Release()
 	m.grp = groupState{polling: m.grp.polling}
 	m.conv.AddNotice(m.fitLines(fmt.Sprintf("Out of group %s: @%s stays with the previous session; /resume it to return", g, self.Name)))
-	if m.services.Reminder.Prepared() { // otherwise no group context has been prepared
-		m.services.Reminder.Enqueue("This session is not in group " + g + group.NoSendMessage)
+	if m.features.Reminder.Prepared() { // otherwise no group context has been prepared
+		m.features.Reminder.Enqueue("This session is not in group " + g + group.NoSendMessage)
 	}
 }
 
@@ -496,7 +496,7 @@ func (m *model) groupNativeCommand(sub, rest string) (string, tea.Cmd) {
 			return err.Error(), nil
 		}
 		m.reconcileMembership()
-		m.services.Reminder.Enqueue("You left group " + g + group.NoSendMessage)
+		m.features.Reminder.Enqueue("You left group " + g + group.NoSendMessage)
 		return "Left group " + g + ".", nil
 	case "hold":
 		if rest != "on" && rest != "off" {
@@ -532,7 +532,7 @@ func (m *model) groupNativeCommand(sub, rest string) (string, tea.Cmd) {
 		}
 		if mine == rest {
 			m.reconcileMembership()
-			m.services.Reminder.Enqueue("Group " + rest + " was disbanded" + group.NoSendMessage)
+			m.features.Reminder.Enqueue("Group " + rest + " was disbanded" + group.NoSendMessage)
 		}
 		return "Disbanded group " + rest + "; its members leave.", nil
 	}
@@ -560,9 +560,9 @@ func (m *model) finishJoin(msg groupJoinOptions) string {
 		return "Could not join: " + err.Error()
 	}
 	m.reconcileMembership()
-	if m.services.Reminder.Prepared() {
+	if m.features.Reminder.Prepared() {
 		// Initial context is already prepared; queue the new roster.
-		m.services.Reminder.Enqueue(group.Roster())
+		m.features.Reminder.Enqueue(group.Roster())
 	}
 	return m.fitLines(fmt.Sprintf("Joined %s as @%s · %s%s", msg.group, self.Name, group.MemberCount(len(group.Members(msg.group))), holdTag(self.Hold)))
 }
@@ -590,8 +590,8 @@ func (m *model) renameMember(name, role string) string {
 	}
 	m.grp.blob = currentMembership() // renameSession's append persists it
 	_, now := group.Current()
-	if (now.Name != self.Name || now.Role != self.Role) && m.services.Reminder.Prepared() {
-		m.services.Reminder.Enqueue(fmt.Sprintf("Group %s: you are now @%s — %s", g, now.Name, now.Role))
+	if (now.Name != self.Name || now.Role != self.Role) && m.features.Reminder.Prepared() {
+		m.features.Reminder.Enqueue(fmt.Sprintf("Group %s: you are now @%s — %s", g, now.Name, now.Role))
 	}
 	notes = append([]string{fmt.Sprintf("@%s in %s — %s", now.Name, g, now.Role)}, notes...)
 	return strings.Join(notes, " · ")

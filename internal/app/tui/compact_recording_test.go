@@ -29,14 +29,14 @@ func recordedCompactModel(t *testing.T, turn aitest.Turn) (*model, *session.Sess
 	}
 	t.Cleanup(func() { _ = owner.Close() })
 	m := newRecapModel(t)
-	m.services.Reminder = reminder.NewQueue()
+	m.features.Reminder = reminder.NewQueue()
 	m.env.CWD = t.TempDir()
-	m.services.Session, m.services.SessionStore, m.services.sessionID = owner, store, owner.ID()
+	m.features.Session, m.features.SessionStore, m.features.sessionID = owner, store, owner.ID()
 	messages := []core.Message{core.UserMessage("first", nil), core.UserMessage("second", nil), core.UserMessage("third", nil)}
 	for i := range messages {
 		messages[i].ID = core.NewMessageID()
 	}
-	m.services.Agent.SetMessages(messages)
+	m.features.Agent.SetMessages(messages)
 	if err := owner.Append(t.Context(), session.Event{Payload: session.MessageAppendPayload{Messages: messages}}); err != nil {
 		t.Fatal(err)
 	}
@@ -57,7 +57,7 @@ func TestManualCompactionRecordingAcceptance(t *testing.T) {
 				text = " "
 			}
 			m, owner := recordedCompactModel(t, aitest.Replies(ai.Response{Content: ai.TextContent(text), Usage: ai.Usage{Input: 17, Output: 4}}))
-			before := m.services.Agent.Messages()
+			before := m.features.Agent.Messages()
 			req := m.BuildCompactRequest("keep the goal", "manual")
 			msg := chat.CompactCmd(req)().(chat.CompactResultMsg)
 			p := owner.Snapshot()
@@ -66,14 +66,14 @@ func TestManualCompactionRecordingAcceptance(t *testing.T) {
 			}
 			switch mode {
 			case "switched":
-				m.services.Session = nil
+				m.features.Session = nil
 			case "superseded":
 				m.BuildCompactRequest("new focus", "manual")
 			case "advanced":
 				next := core.UserMessage("later", nil)
 				next.ID = core.NewMessageID()
 				before = append(before, next)
-				m.services.Agent.SetMessages(before)
+				m.features.Agent.SetMessages(before)
 				if err := owner.Append(t.Context(), session.Event{Payload: session.MessageAppendPayload{Messages: []core.Message{next}}}); err != nil {
 					t.Fatal(err)
 				}
@@ -95,7 +95,7 @@ func TestManualCompactionRecordingAcceptance(t *testing.T) {
 				switch payload := event.Payload.(type) {
 				case *session.ContextCompactPayload:
 					compacts++
-					if payload.Summary.Text() != core.FormatCompactSummary(msg.Summary) || payload.Summary.ID != m.services.Agent.Messages()[0].ID {
+					if payload.Summary.Text() != core.FormatCompactSummary(msg.Summary) || payload.Summary.ID != m.features.Agent.Messages()[0].ID {
 						t.Fatal("recorded a different native summary")
 					}
 				case *session.InferenceFinishPayload:
@@ -108,7 +108,7 @@ func TestManualCompactionRecordingAcceptance(t *testing.T) {
 			want := 0
 			if mode == "accepted" {
 				want = 1
-				assertCompactionCommittedWithFinish(t, m.services.SessionStore, owner.ID())
+				assertCompactionCommittedWithFinish(t, m.features.SessionStore, owner.ID())
 			}
 			if compacts != want {
 				t.Fatalf("context boundaries=%d want=%d", compacts, want)
@@ -116,7 +116,7 @@ func TestManualCompactionRecordingAcceptance(t *testing.T) {
 			if mode != "closed" && finishes != 1 {
 				t.Fatalf("finishes=%d", finishes)
 			}
-			if mode != "accepted" && !reflect.DeepEqual(before, m.services.Agent.Messages()) {
+			if mode != "accepted" && !reflect.DeepEqual(before, m.features.Agent.Messages()) {
 				t.Fatal("discarded/failed compaction replaced native history")
 			}
 			if mode == "closed" && !m.conv.Compact.LastError {
@@ -141,7 +141,7 @@ func TestManualCompactionRejectsForeignStoreOwner(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = foreign.Close() })
-	m.services.Session = foreign
+	m.features.Session = foreign
 	req := m.BuildCompactRequest("", "manual")
 	result := req.Run()
 	if result.Err == nil {

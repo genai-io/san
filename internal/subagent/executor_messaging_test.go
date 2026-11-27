@@ -130,7 +130,7 @@ func TestOwnedExecutorAcceptsStartupAndRunningMessages(t *testing.T) {
 
 func TestOwnedExecutorWithoutMessaging(t *testing.T) {
 	store, parent := continuationSessions(t, "headless-parent")
-	pool := task.NewManager()
+	pool := task.NewRunSet()
 	driver := aitest.New(aitest.Says("done"))
 	e := NewExecutor(continuationProvider{driver}, t.TempDir(), "aitest", nil)
 	e.ConfigureOwner(pool, Default(), nil, nil)

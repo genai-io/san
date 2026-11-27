@@ -270,13 +270,8 @@ func (r *Registry) store(scope setting.Scope) *Store {
 	return r.projectStore
 }
 
-// SkillsSection generates the body of the skills directory for the system
-// prompt. Only includes active skills (progressive loading — full instructions
-// arrive only when the Skill tool is invoked).
-//
-// Returns plain body text without the outer XML tag; the system catalog
-// wraps it in <skills>…</skills>.
-func (r *Registry) SkillsSection() string {
+// PromptSection renders active skill descriptions; instructions are loaded on invocation.
+func (r *Registry) PromptSection() string {
 	active := r.ListActive()
 	if len(active) == 0 {
 		return ""
@@ -390,12 +385,6 @@ func (r *Registry) DisabledAt(scope setting.Scope) map[string]bool {
 		}
 	}
 	return result
-}
-
-// PromptSection returns the rendered skills section for the system prompt.
-// This is an alias for GetSkillsSection to satisfy the Service interface.
-func (r *Registry) PromptSection() string {
-	return r.SkillsSection()
 }
 
 // NewRegistryForTest creates a Registry with pre-populated skills and stores.

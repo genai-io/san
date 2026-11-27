@@ -48,13 +48,13 @@ func TestLiveFlowGraphAppearsWithTasks(t *testing.T) {
 func TestBackgroundAgentProgressStaysWithItsTrackerRow(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	mgr := task.NewManager()
+	mgr := task.NewRunSet()
 	tracker := todo.NewStore()
 	worker := mgr.CreateAgentTask("review-1", "Reviewer", "Audit", ctx, cancel)
 	worker.SetLiveView("Read(main.go) failed: file missing\n" + strings.Repeat("diagnostics", 1000))
 	todo.TrackWorker(tracker, worker.GetStatus())
 	m := fixedComposerModel(80, 40)
-	m.services.Task, m.services.Tracker = mgr, tracker
+	m.features.Task, m.features.Tracker = mgr, tracker
 	m.conv.ShowTasks = true
 	rows, _ := m.renderTrackerList()
 	view := ansi.Strip(rows)
@@ -166,10 +166,10 @@ func TestLiveFlowSpacingKeepsPendingAndComposerVisible(t *testing.T) {
 		t.Fatal(err)
 	}
 	m := fixedComposerModel(80, 24)
-	m.services.Task = task.NewManager()
+	m.features.Task = task.NewRunSet()
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	wf := m.services.Task.CreateSchedulerTask("loop-spacing", "flow", "write", ctx, cancel)
+	wf := m.features.Task.CreateSchedulerTask("loop-spacing", "flow", "write", ctx, cancel)
 	statuses := map[string]flow.Status{"writer#1": flow.StatusRunning}
 	wf.SetLiveView(b.CompactProgressView(statuses, 80))
 	wf.SetLiveViewRenderer(func(width int) string { return b.CompactProgressView(statuses, width) })
@@ -191,12 +191,12 @@ func TestLiveFlowSpacingKeepsPendingAndComposerVisible(t *testing.T) {
 func TestLiveFlowReplacesItsBackgroundTrackerRow(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	mgr := task.NewManager()
+	mgr := task.NewRunSet()
 	tracker := todo.NewStore()
 	wf := mgr.CreateSchedulerTask("wf-tracker", "flow", "/flow demo", ctx, cancel)
 	wf.SetLiveView("Flow demo · 0/1 finished\n  ● map")
 	todo.TrackWorker(tracker, wf.GetStatus())
-	m := &model{env: env{Width: 100}, services: services{Tracker: tracker, Task: mgr, Subagent: subagent.NewRegistry()}, conv: chat.NewModel(100)}
+	m := &model{env: env{Width: 100}, features: appFeatures{Tracker: tracker, Task: mgr, Subagent: subagent.NewRegistry()}, conv: chat.NewModel(100)}
 	m.conv.ShowTasks = true
 	view, _ := m.renderTrackerList()
 	if strings.Contains(view, "Background") || !strings.Contains(view, "Flow demo · 0/1 finished") {
@@ -226,7 +226,7 @@ func TestComposerCursorAlignsWithEveryRow(t *testing.T) {
 			m := &model{
 				env:       env{Width: width, Height: 24, Ready: true},
 				conv:      chat.NewModel(width),
-				userInput: input.New("", width, nil, input.SelectorDeps{}),
+				userInput: input.New("", width, nil, input.SelectorBindings{}),
 			}
 			m.userInput.Textarea.SetWidth(width - 4 - 2)
 			m.userInput.Textarea.SetValue(tt.value)
@@ -314,12 +314,12 @@ func TestPendingToolCallsFollowTheConversation(t *testing.T) {
 func fixedComposerModel(width, height int) *model {
 	m := &model{
 		env:       env{Width: width, Height: height, Ready: true},
-		autopilot: new(atomic.Pointer[autopilotRuntime]),
+		autopilot: new(atomic.Pointer[autopilotSnapshot]),
 		conv:      chat.NewModel(width),
 		userInput: input.New("", width, func(string) []suggest.Suggestion {
 			return []suggest.Suggestion{{Name: "help", Description: "Show commands"}, {Name: "history", Description: "Inspect conversation"}}
-		}, input.SelectorDeps{}),
-		services: services{
+		}, input.SelectorBindings{}),
+		features: appFeatures{
 			Tracker: todo.NewStore(), Subagent: subagent.NewRegistry(),
 			Setting: &setting.Settings{}, Hook: hook.NewEngine(nil, "", "", ""), LLM: &llm.Conn{},
 		},
@@ -334,7 +334,7 @@ func TestFirstTurnKeepsMessageRowsAcrossCommit(t *testing.T) {
 		t.Run(fmt.Sprintf("height %d", height), func(t *testing.T) {
 			m := fixedComposerModel(80, height)
 			attachTurnSession(t, m)
-			m.services.Agent = &runtime.Runtime{}
+			m.features.Agent = &runtime.Runtime{}
 			m.welcomePending = true
 			deliver := func(event core.Event) {
 				chat.Update(m, &m.conv, chat.AgentOutboxMsg{Event: event})
@@ -400,7 +400,7 @@ func TestPendingMessagesAboveTasks(t *testing.T) {
 			const width = 80
 			m := fixedComposerModel(width, tt.height)
 			for range tt.tasks {
-				m.services.Tracker.Create("Current task", "", "", nil)
+				m.features.Tracker.Create("Current task", "", "", nil)
 			}
 			pending := []string{"First pending message", "Second pending message"}
 			for _, text := range pending[:tt.queued] {
@@ -469,7 +469,7 @@ func TestPendingMessagesAboveTasks(t *testing.T) {
 
 func TestPendingMessagesStayAboveTasksDuringInference(t *testing.T) {
 	m := fixedComposerModel(80, 40)
-	m.services.Tracker.Create("Current task", "", "", nil)
+	m.features.Tracker.Create("Current task", "", "", nil)
 	m.userInput.Queue.Enqueue("Pending sentinel", nil)
 	m.conv.Stream = chat.StreamState{Active: true, Waiting: true}
 	frame, cursor := m.viewString()
@@ -488,13 +488,13 @@ func TestPendingMessagesStayAboveTasksDuringInference(t *testing.T) {
 func TestSubmissionShowsSpinnerBeforeAgentEvents(t *testing.T) {
 	m := fixedComposerModel(80, 24)
 	provider := &restartStubProvider{requests: make(chan []core.Message, 1)}
-	m.services.Agent = &runtime.Runtime{}
-	if err := m.services.Agent.Start(runtime.BuildParams{Provider: provider, ModelID: "test"}, nil); err != nil {
+	m.features.Agent = &runtime.Runtime{}
+	if err := m.features.Agent.Start(runtime.BuildParams{Provider: provider, ModelID: "test"}, nil); err != nil {
 		t.Fatal(err)
 	}
-	defer stopRuntime(t, m.services.Agent)
+	defer stopRuntime(t, m.features.Agent)
 	m.env.LLMProvider = provider
-	m.services.Reminder = reminder.NewQueue()
+	m.features.Reminder = reminder.NewQueue()
 	m.agentReviewCaps = m.autoSkillCapabilities()
 	m.agentDisabledToolsSignature = m.disabledToolsSignature()
 	m.autoMemory = m.currentAutoMemory()
@@ -534,11 +534,11 @@ func TestFailedSubmissionClearsWaitingSpinner(t *testing.T) {
 
 func TestWaitingSubmissionCanBeCancelled(t *testing.T) {
 	m := fixedComposerModel(80, 24)
-	m.services.Agent = &runtime.Runtime{}
-	m.services.Reminder = reminder.NewQueue()
+	m.features.Agent = &runtime.Runtime{}
+	m.features.Reminder = reminder.NewQueue()
 	provider := &restartStubProvider{requests: make(chan []core.Message, 2)}
 	started, release := make(chan struct{}), make(chan struct{})
-	if err := m.services.Agent.Start(runtime.BuildParams{
+	if err := m.features.Agent.Start(runtime.BuildParams{
 		Provider: provider, ModelID: "test",
 		OnEvent: func(event core.Event) {
 			if _, ok := event.(core.AgentStarted); ok {
@@ -549,7 +549,7 @@ func TestWaitingSubmissionCanBeCancelled(t *testing.T) {
 	}, nil); err != nil {
 		t.Fatal(err)
 	}
-	defer stopRuntime(t, m.services.Agent)
+	defer stopRuntime(t, m.features.Agent)
 	defer func() {
 		select {
 		case <-release:
@@ -617,14 +617,14 @@ func addTallFlowActivity(t *testing.T, m *model) {
 	wf := task.NewAgentTask("flow-height", "flow", "review", ctx, cancel, "")
 	wf.MarkScheduler()
 	wf.SetLiveView(w.CompactProgressView(nil, m.env.Width))
-	m.services.Task = task.NewManager()
-	m.services.Task.RegisterTask(wf)
+	m.features.Task = task.NewRunSet()
+	m.features.Task.RegisterTask(wf)
 }
 
 func TestActivityReservesComposerAndModalSpace(t *testing.T) {
 	m := fixedComposerModel(80, 24)
 	for i := 0; i < 9; i++ {
-		m.services.Tracker.Create(fmt.Sprintf("TASK-%d", i), "", "", nil)
+		m.features.Tracker.Create(fmt.Sprintf("TASK-%d", i), "", "", nil)
 	}
 	m.userInput.Textarea.SetValue(strings.TrimSuffix(strings.Repeat("draft line\n", 10), "\n"))
 	m.userInput.Textarea.CursorEnd()
@@ -717,8 +717,8 @@ func dockedModalModelWithCalls(t *testing.T, rationale string, batch []core.Tool
 	m := &model{
 		env:       env{Width: width, Height: height, Ready: true},
 		conv:      chat.NewModel(width),
-		userInput: input.New("", width, nil, input.SelectorDeps{}),
-		services:  services{Tracker: todo.NewStore(), Subagent: subagent.NewRegistry(), Setting: &setting.Settings{}},
+		userInput: input.New("", width, nil, input.SelectorBindings{}),
+		features:  appFeatures{Tracker: todo.NewStore(), Subagent: subagent.NewRegistry(), Setting: &setting.Settings{}},
 	}
 	// The stream is still open across a permission gate — it clears only on a
 	// text-only final chunk — so the live tail believes it is mid-turn.
@@ -821,8 +821,8 @@ func TestDockedModalDoesNotShowTheGatedCallAsRunning(t *testing.T) {
 // of the call it gates — the whole point of routing it through the modal.
 func TestHandlePermGateMarksTheCallItAsksAbout(t *testing.T) {
 	m := dockedModalModel(t, "about to check the disk")
-	m.services.Agent = &runtime.Runtime{}
-	m.services.Session = nil
+	m.features.Agent = &runtime.Runtime{}
+	m.features.Session = nil
 	m.env.SessionPermissions = setting.NewSessionPermissions()
 	m.userInput.Approval.Hide()
 	m.conv.Tool.ClearAwaitingApproval()
@@ -847,8 +847,8 @@ func TestHandlePermGateMarksTheCallItAsksAbout(t *testing.T) {
 // seam that would degrade first.
 func TestHandlePermGateWithoutCallIDFallsBackToTheModalFreeze(t *testing.T) {
 	m := dockedModalModel(t, "about to check the disk")
-	m.services.Agent = &runtime.Runtime{}
-	m.services.Session = nil
+	m.features.Agent = &runtime.Runtime{}
+	m.features.Session = nil
 	m.env.SessionPermissions = setting.NewSessionPermissions()
 	m.userInput.Approval.Hide()
 

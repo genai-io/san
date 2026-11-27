@@ -64,7 +64,7 @@ func TestSetStorageDirKeepsRunningWorker(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	pool := task.NewManager()
+	pool := task.NewRunSet()
 	running := pool.CreateAgentTask("live-worker", "Explore", "Audit deps", ctx, cancel)
 	t.Cleanup(func() { running.Complete(nil) })
 

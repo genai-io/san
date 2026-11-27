@@ -25,7 +25,7 @@ func (m *model) handleStopHookResult(msg stopHookResultMsg) tea.Cmd {
 		return nil
 	}
 	m.pendingStopHook = nil
-	if msg.pending.session != m.services.Session || msg.pending.outbox != m.AgentOutbox() ||
+	if msg.pending.session != m.features.Session || msg.pending.outbox != m.AgentOutbox() ||
 		m.conv.Stream.Active || m.pendingMessages.Held() || m.pendingMessages.Len() > 0 || m.userInput.Queue.Len() > 0 {
 		return nil
 	}
@@ -100,7 +100,7 @@ func (m *model) releaseQueuedMessage() (tea.Cmd, bool) {
 		return m.releaseFlowMainStepInput()
 	}
 	if head, ok := m.userInput.Queue.At(0); ok && head.NeedsPromptAdmission {
-		if blocked, reason := m.checkPromptHook(context.Background(), head.Content); blocked {
+		if blocked, reason := m.runPromptSubmitHook(context.Background(), head.Content); blocked {
 			m.pendingMessages.Hold(nil)
 			m.conv.AddNotice("Queued input was blocked: " + reason)
 			return tea.Batch(m.CommitMessages()...), false
@@ -213,11 +213,11 @@ func taskCompletionKey(id string, attempt int) string {
 }
 
 func (m *model) taskCompletionShown(id string) bool {
-	if id == "" || m.services.Task == nil {
+	if id == "" || m.features.Task == nil {
 		return true
 	}
 	// Resumed records whose workers are gone have no live notice to wait for.
-	worker, known := m.services.Task.Get(id)
+	worker, known := m.features.Task.Get(id)
 	if !known {
 		return true
 	}
@@ -246,7 +246,7 @@ func (m *model) onMainNotice(n mainNotice) tea.Cmd {
 // deliverNotice shows the notice immediately; its content reaches the running
 // agent at the next step boundary (see notify.go).
 func (m *model) deliverNotice(n mainNotice) tea.Cmd {
-	if n.Destination != nil && n.Destination != m.services.Session {
+	if n.Destination != nil && n.Destination != m.features.Session {
 		return nil
 	}
 	if n.SessionID != "" && n.SessionID != m.sessionID() {
@@ -255,8 +255,8 @@ func (m *model) deliverNotice(n mainNotice) tea.Cmd {
 	if n.FinishedTaskID != "" {
 		// A completion can wait in the broker/UI queue while the same logical
 		// task starts a new attempt. Do not wake main with obsolete recovery work.
-		if n.FinishedAttempt > 0 && m.services.Task != nil {
-			if worker, known := m.services.Task.Get(n.FinishedTaskID); known && worker.GetStatus().Attempt > n.FinishedAttempt {
+		if n.FinishedAttempt > 0 && m.features.Task != nil {
+			if worker, known := m.features.Task.Get(n.FinishedTaskID); known && worker.GetStatus().Attempt > n.FinishedAttempt {
 				return nil
 			}
 		}

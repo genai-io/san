@@ -33,7 +33,8 @@ var (
 // directory: a crash leaves a session live or trashed, never split.
 type library struct{ root string }
 
-func (l library) sessionDir(id string) string { return filepath.Join(l.root, sessionsDirName, id) }
+func (l library) sessionsRoot() string        { return filepath.Join(l.root, sessionsDirName) }
+func (l library) sessionDir(id string) string { return filepath.Join(l.sessionsRoot(), id) }
 func (l library) trashRoot() string           { return filepath.Join(l.root, trashDirName) }
 func (l library) trashDir(id string) string   { return filepath.Join(l.trashRoot(), id) }
 func (l library) cacheFile(id string) string  { return filepath.Join(l.root, "cache", id+".json") }

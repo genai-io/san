@@ -13,11 +13,11 @@ import (
 
 func TestTaskHistoryRecordedFailuresRemainInspectable(t *testing.T) {
 	m := userPromptModel()
-	m.services.sessionID = "current"
+	m.features.sessionID = "current"
 	info := task.TaskInfo{ID: "previous-process", Type: task.TaskTypeBash, Description: "Previous validation", Status: task.StatusRunning}
-	todo.TrackWorker(m.services.Tracker, info)
+	todo.TrackWorker(m.features.Tracker, info)
 	info.Status, info.Error = task.StatusFailed, "exit status 2: invalid fixture"
-	todo.CompleteWorker(m.services.Tracker, info)
+	todo.CompleteWorker(m.features.Tracker, info)
 	items := m.taskSnapshots()
 	if len(items) != 1 || !items[0].Recorded || items[0].Status != task.StatusFailed || items[0].Error != info.Error || items[0].CanContinue || items[0].Output != "" || items[0].OutputFile != "" {
 		t.Fatalf("recorded history lost evidence or fabricated live state: %+v", items)
@@ -40,10 +40,10 @@ func TestTaskHistoryRecordedFailuresRemainInspectable(t *testing.T) {
 			t.Fatalf("recorded history allowed live action %q", key)
 		}
 	}
-	if item := m.services.Tracker.List()[0]; todo.BackgroundError(item) != info.Error || todo.BackgroundStatusDetail(item) != "failed" {
+	if item := m.features.Tracker.List()[0]; todo.BackgroundError(item) != info.Error || todo.BackgroundStatusDetail(item) != "failed" {
 		t.Fatal("browsing history changed the persisted failure")
 	}
-	m.services.Task = nil
+	m.features.Task = nil
 	if items = m.taskSnapshots(); len(items) != 1 || !items[0].Recorded {
 		t.Fatal("recorded history depends on a live manager")
 	}
@@ -51,20 +51,20 @@ func TestTaskHistoryRecordedFailuresRemainInspectable(t *testing.T) {
 
 func TestTaskHistoryLiveWorkerOverridesRecordedEntry(t *testing.T) {
 	m := userPromptModel()
-	m.services.sessionID = "current"
+	m.features.sessionID = "current"
 	live := viewerWorker(m, "same", "current", time.Now())
 	live.info.OutputFile = "/tmp/live-task-output.log"
-	todo.TrackWorker(m.services.Tracker, live.info)
+	todo.TrackWorker(m.features.Tracker, live.info)
 	old := live.info
 	old.Status, old.Error = task.StatusFailed, "old failure"
-	todo.CompleteWorker(m.services.Tracker, old)
+	todo.CompleteWorker(m.features.Tracker, old)
 	foreign := viewerWorker(m, "foreign", "other", time.Now())
-	todo.TrackWorker(m.services.Tracker, foreign.info)
+	todo.TrackWorker(m.features.Tracker, foreign.info)
 	old = foreign.info
 	old.Status = task.StatusFailed
-	todo.CompleteWorker(m.services.Tracker, old)
-	plan := m.services.Tracker.Create("Unrelated plan", "", "", nil)
-	_ = m.services.Tracker.Update(plan.ID, todo.WithStatus(todo.StatusCompleted))
+	todo.CompleteWorker(m.features.Tracker, old)
+	plan := m.features.Tracker.Create("Unrelated plan", "", "", nil)
+	_ = m.features.Tracker.Update(plan.ID, todo.WithStatus(todo.StatusCompleted))
 	items := m.taskSnapshots()
 	if len(items) != 1 || items[0].ID != "same" || items[0].Recorded || items[0].Status != task.StatusRunning || items[0].OutputFile != live.info.OutputFile {
 		t.Fatalf("history duplicated a worker, leaked foreign history, or replaced live state: %+v", items)
@@ -73,11 +73,11 @@ func TestTaskHistoryLiveWorkerOverridesRecordedEntry(t *testing.T) {
 
 func TestTaskHistoryRecordedInterruptedWorkerIsNotFailure(t *testing.T) {
 	m := userPromptModel()
-	m.services.Tracker.Create("Interrupted review", "", "", map[string]any{
+	m.features.Tracker.Create("Interrupted review", "", "", map[string]any{
 		"background_task_id": "old-review", "background_status_detail": todo.StatusDetailInterrupted,
 	})
-	item := m.services.Tracker.List()[0]
-	_ = m.services.Tracker.Update(item.ID, todo.WithStatus(todo.StatusCompleted))
+	item := m.features.Tracker.List()[0]
+	_ = m.features.Tracker.Update(item.ID, todo.WithStatus(todo.StatusCompleted))
 	m.openTasks()
 	plain := ansi.Strip(m.userInput.Tasks.Render())
 	if !strings.Contains(plain, "History · 1") || strings.Contains(plain, "failed") || strings.Contains(plain, "Interrupted review") {

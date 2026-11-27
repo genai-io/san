@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// Initialize runs on the bubbletea goroutine — reloadProjectServices reaches
+// Initialize runs on the bubbletea goroutine — reloadProjectFeatures reaches
 // it whenever the agent changes directory, which the agent triggers itself by
 // running `cd` in a Bash call. The agent goroutine keeps running through that:
 // the Skill tool and subagent prompt assembly both call Default() mid-turn.

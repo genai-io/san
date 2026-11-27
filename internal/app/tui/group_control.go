@@ -78,8 +78,8 @@ func (m *model) resolveGroupControl(request string) (string, tea.Cmd) {
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	m.cancelGroupControl()
 	r := &groupControlRequest{ctx: ctx, cancel: cancel, session: m.sessionID(), membership: currentMembership(),
-		owner: m.services.Session, runtime: m.services.Agent,
-		recording: m.services.Session.Completion(session.PurposeGroup)}
+		owner: m.features.Session, runtime: m.features.Agent,
+		recording: m.features.Session.Completion(session.PurposeGroup)}
 	m.grp.control = r
 	return "Interpreting group request… (another /group command cancels it)", func() tea.Msg {
 		defer cancel()
@@ -114,12 +114,12 @@ func (m *model) handleGroupControl(msg groupControlMsg) string {
 	if r != m.grp.control {
 		return ""
 	}
-	if r.owner != m.services.Session || r.runtime != m.services.Agent || r.session != m.sessionID() {
+	if r.owner != m.features.Session || r.runtime != m.features.Agent || r.session != m.sessionID() {
 		return "Group request discarded because the session or membership changed."
 	}
 	m.grp.control = nil
 	r.cancel()
-	status := group.Check()
+	status := group.CheckMembership()
 	if r.session != m.sessionID() || r.membership != currentMembership() || status == group.Removed || status == group.Disbanded {
 		return "Group request discarded because the session or membership changed."
 	}

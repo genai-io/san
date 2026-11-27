@@ -13,7 +13,7 @@ import (
 
 const flowUISource = "---\nname: sample\n---\n\n```mermaid\nflowchart TD\n a --> b\n a --> c\n b --> d\n c --> d\n```\n\n## a\nUse {{input.topic}}\n\n## b\nUse {{a}}\n\n## c\nUse {{a}}\n\n## d\nUse {{b}} and {{c}}\n"
 
-type flowUIService struct {
+type flowWorkspaceStub struct {
 	r                                      flow.RunRecord
 	saves, launches, stops, resumes, polls int
 	err                                    error
@@ -22,37 +22,37 @@ type flowUIService struct {
 	values                                 map[string]string
 }
 
-func (s *flowUIService) Preview(string, int) (string, error) { return "", s.err }
-func (s *flowUIService) Launch(_ string, in map[string]string, _ int) (string, error) {
+func (s *flowWorkspaceStub) Preview(string, int) (string, error) { return "", s.err }
+func (s *flowWorkspaceStub) Launch(_ string, in map[string]string, _ int) (string, error) {
 	s.launches++
 	s.values = in
 	return "task", s.err
 }
-func (s *flowUIService) Runs() ([]flow.RunRecord, error) {
+func (s *flowWorkspaceStub) Runs() ([]flow.RunRecord, error) {
 	return []flow.RunRecord{s.r}, nil
 }
-func (s *flowUIService) GetRun(string) (*flow.RunRecord, error) {
+func (s *flowWorkspaceStub) GetRun(string) (*flow.RunRecord, error) {
 	s.polls++
 	r := s.r
 	return &r, nil
 }
-func (s *flowUIService) ResumeRun(_ string, from string, _ int) (string, error) {
+func (s *flowWorkspaceStub) ResumeRun(_ string, from string, _ int) (string, error) {
 	s.from = from
 	s.resumes++
 	s.r.Status = flow.RunRunning
 	return "task", s.err
 }
-func (s *flowUIService) StopRun(string) error { s.stops++; return s.err }
-func (s *flowUIService) SavedDefinitions() []flow.SavedDefinition {
+func (s *flowWorkspaceStub) StopRun(string) error { s.stops++; return s.err }
+func (s *flowWorkspaceStub) SavedDefinitions() []flow.SavedDefinition {
 	return []flow.SavedDefinition{{Name: "sample", Path: "/global/sample.md"}}
 }
-func (s *flowUIService) Definition(string) (string, error) {
+func (s *flowWorkspaceStub) Definition(string) (string, error) {
 	if s.source != "" {
 		return s.source, nil
 	}
 	return flowUISource, nil
 }
-func (s *flowUIService) SavedInputNames(name string) ([]string, error) {
+func (s *flowWorkspaceStub) SavedInputNames(name string) ([]string, error) {
 	source, _ := s.Definition(name)
 	b, err := flow.Parse(source)
 	if err != nil {
@@ -60,9 +60,9 @@ func (s *flowUIService) SavedInputNames(name string) ([]string, error) {
 	}
 	return b.InputNames(), nil
 }
-func (s *flowUIService) SaveDefinition(string, string, string) error { s.saves++; return s.err }
-func flowUIFixture() *flowUIService {
-	return &flowUIService{r: flow.RunRecord{ID: "run", Name: "sample", TaskID: "task", Definition: flowUISource, Status: flow.RunRunning, StartedAt: time.Now().Add(-time.Minute), Nodes: map[string]flow.Checkpoint{"a": {Outcome: flow.Outcome{Status: flow.StatusSucceeded, Duration: 7 * time.Second}}, "b": {Outcome: flow.Outcome{Status: flow.StatusRunning, StartedAt: time.Now().Add(-time.Second)}}, "c": {Outcome: flow.Outcome{Status: flow.StatusPending}}, "d": {Outcome: flow.Outcome{Status: flow.StatusPending}}}}}
+func (s *flowWorkspaceStub) SaveDefinition(string, string, string) error { s.saves++; return s.err }
+func flowUIFixture() *flowWorkspaceStub {
+	return &flowWorkspaceStub{r: flow.RunRecord{ID: "run", Name: "sample", TaskID: "task", Definition: flowUISource, Status: flow.RunRunning, StartedAt: time.Now().Add(-time.Minute), Nodes: map[string]flow.Checkpoint{"a": {Outcome: flow.Outcome{Status: flow.StatusSucceeded, Duration: 7 * time.Second}}, "b": {Outcome: flow.Outcome{Status: flow.StatusRunning, StartedAt: time.Now().Add(-time.Second)}}, "c": {Outcome: flow.Outcome{Status: flow.StatusPending}}, "d": {Outcome: flow.Outcome{Status: flow.StatusPending}}}}}
 }
 func flowKey(k string) tea.KeyMsg {
 	switch k {
@@ -193,7 +193,7 @@ func TestFlowDraftValidationSaveAndInputs(t *testing.T) {
 	v.HandleKeypress(flowKey("s"))
 	v.HandleKeypress(flowKey("y"))
 	if v.saved || !strings.Contains(v.Render(), "baseline conflict") {
-		t.Fatal("service save conflict hidden")
+		t.Fatal("workspace save conflict hidden")
 	}
 }
 func TestFlowEditorsKeepActionKeysAsText(t *testing.T) {

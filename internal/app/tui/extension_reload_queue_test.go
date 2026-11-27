@@ -15,10 +15,10 @@ func reloadQueueModel(t *testing.T) *model {
 	t.Helper()
 	m, _ := resumedModel(t, nil)
 	e := extensionReloadModel(t, m.env.CWD)
-	m.services.Skill, m.services.Command = e.services.Skill, e.services.Command
-	m.services.Subagent, m.services.MCP = e.services.Subagent, e.services.MCP
-	m.services.Plugin, m.services.Persona = e.services.Plugin, e.services.Persona
-	m.services.Tool = tool.Default()
+	m.features.Skill, m.features.Command = e.features.Skill, e.features.Command
+	m.features.Subagent, m.features.MCP = e.features.Subagent, e.features.MCP
+	m.features.Plugin, m.features.Persona = e.features.Plugin, e.features.Persona
+	m.features.Tool = tool.Default()
 	m.learnedStores, m.userInput = e.learnedStores, e.userInput
 	m.env.LLMProvider = staticTestProvider{aitest.Always(aitest.Says("done")).Client()}
 	if _, err := m.ensureAgentRuntime(); err != nil {
@@ -50,7 +50,7 @@ func TestExtensionReloadQueuedTurnBoundary(t *testing.T) {
 		}
 		t.Run(name, func(t *testing.T) {
 			m := reloadQueueModel(t)
-			owner, tools, outbox := m.services.Session, m.services.Agent.Tools(), m.AgentOutbox()
+			owner, tools, outbox := m.features.Session, m.features.Agent.Tools(), m.AgentOutbox()
 			m.sendToAgent(pendingMessage{Message: core.UserMessage("original", nil), FromUser: true})
 			// Keep the original consumer receipt pending during reload.
 			var end core.TurnEnded
@@ -88,7 +88,7 @@ func TestExtensionReloadQueuedTurnBoundary(t *testing.T) {
 				m.userInput.Queue.Enqueue("queued successor", nil)
 				cmd, _ = chat.Update(m, &m.conv, chat.AgentOutboxMsg{Outbox: outbox, Event: end})
 			}
-			if m.pendingMessages.Len() != 1 || m.services.Agent.Tools() != tools {
+			if m.pendingMessages.Len() != 1 || m.features.Agent.Tools() != tools {
 				t.Fatal("successor admitted before receipt-safe UI handoff")
 			}
 			messages := make(chan tea.Msg, 100)
@@ -110,10 +110,10 @@ func TestExtensionReloadQueuedTurnBoundary(t *testing.T) {
 				t.Fatal("queued content changed")
 			}
 			m.Update(ready)
-			if m.services.Agent.Tools() == tools || m.agentReloadPending || m.pendingMessages.Len() != 0 {
+			if m.features.Agent.Tools() == tools || m.agentReloadPending || m.pendingMessages.Len() != 0 {
 				t.Fatal("automatic successor admission did not rebuild")
 			}
-			if m.services.Session != owner || m.AgentOutbox() == outbox {
+			if m.features.Session != owner || m.AgentOutbox() == outbox {
 				t.Fatal("wrong recording owner or outbox")
 			}
 			// Ignore duplicate handoffs from the old runtime.
@@ -140,12 +140,12 @@ func TestExtensionReloadCurrentTurnInjection(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("original turn did not start")
 	}
-	tools := m.services.Agent.Tools()
+	tools := m.features.Agent.Tools()
 	if err := m.ReloadAfterPluginChange(); err != nil {
 		t.Fatal(err)
 	}
 	cmd := m.sendToAgent(pendingMessage{Message: core.UserMessage("injected into current turn", nil), FromUser: true})
-	if cmd != nil || m.pendingMessages.Len() != 0 || m.services.Agent.Tools() != tools || !m.agentReloadPending {
+	if cmd != nil || m.pendingMessages.Len() != 0 || m.features.Agent.Tools() != tools || !m.agentReloadPending {
 		t.Fatal("current-turn injection rebuilt or deferred delivery")
 	}
 }

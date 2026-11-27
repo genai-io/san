@@ -23,43 +23,43 @@ import (
 )
 
 func (m *model) sessionID() string {
-	if m.services.Session != nil {
-		return m.services.Session.ID()
+	if m.features.Session != nil {
+		return m.features.Session.ID()
 	}
-	return m.services.sessionID
+	return m.features.sessionID
 }
 
 func (m *model) sessionTranscriptPath() string {
-	if m.services.Session != nil {
-		return m.services.Session.Path()
+	if m.features.Session != nil {
+		return m.features.Session.Path()
 	}
-	if m.services.SessionStore == nil || m.sessionID() == "" {
+	if m.features.SessionStore == nil || m.sessionID() == "" {
 		return ""
 	}
-	return filepath.Join(m.services.SessionStore.ProjectDir(), "sessions", m.sessionID(), "events.jsonl")
+	return filepath.Join(m.features.SessionStore.ProjectDir(), "sessions", m.sessionID(), "events.jsonl")
 }
 
 func (m *model) ensureSessionStore() error {
-	if m.services.SessionStore != nil {
+	if m.features.SessionStore != nil {
 		return nil
 	}
 	store, err := session.OpenStore(context.Background(), m.env.CWD)
 	if err != nil {
 		return err
 	}
-	m.services.SessionStore = store
+	m.features.SessionStore = store
 	return nil
 }
 
 func (m *model) openCurrentSession() (*session.Session, error) {
-	if m.services.Session != nil {
-		return m.services.Session, m.services.Session.Err()
+	if m.features.Session != nil {
+		return m.features.Session, m.features.Session.Err()
 	}
 	if err := m.ensureSessionStore(); err != nil {
 		return nil, err
 	}
-	if m.services.sessionID == "" {
-		m.services.sessionID = session.NewSessionID()
+	if m.features.sessionID == "" {
+		m.features.sessionID = session.NewSessionID()
 	}
 	update := m.buildSessionRecord()
 	config := session.EventConfig{}
@@ -71,7 +71,7 @@ func (m *model) openCurrentSession() (*session.Session, error) {
 		config.Mode = patch.Mode.Value
 		config.AutopilotPolicy = patch.AutopilotPolicy.Value
 	}
-	opened, err := m.services.SessionStore.NewDraft(context.Background(), session.CreateOptions{ID: m.services.sessionID, AgentID: "main", InitialCWD: m.env.CWD, Config: &config})
+	opened, err := m.features.SessionStore.NewDraft(context.Background(), session.CreateOptions{ID: m.features.sessionID, AgentID: "main", InitialCWD: m.env.CWD, Config: &config})
 	if err != nil {
 		return nil, err
 	}
@@ -107,7 +107,7 @@ func noticeAnnotation(n core.ChatMessage) session.AnnotationAddPayload {
 }
 
 func (m *model) recordNotice(n core.ChatMessage) {
-	if opened := m.services.Session; opened != nil {
+	if opened := m.features.Session; opened != nil {
 		if err := opened.Append(context.Background(), session.Event{Payload: noticeAnnotation(n)}); err != nil {
 			log.Logger().Warn("session annotation append failed", zap.Error(err))
 		}
@@ -122,7 +122,7 @@ func (m *model) replaceSession(opened *session.Session) error {
 	if opened == nil {
 		return fmt.Errorf("cannot select a nil session")
 	}
-	previous := m.services.Session
+	previous := m.features.Session
 	changed := previous != opened || m.sessionID() != opened.ID()
 	retiring := previous != nil || m.sessionID() != opened.ID()
 	var closeErr error
@@ -135,10 +135,10 @@ func (m *model) replaceSession(opened *session.Session) error {
 		if err := m.cancelManualCompaction(); err != nil {
 			return err
 		}
-		if oldHooks := m.services.Hook; oldHooks != nil {
+		if oldHooks := m.features.Hook; oldHooks != nil {
 			next := oldHooks.ForSession(opened.ID(), m.env.CWD, opened.Path())
 			oldHooks.Shutdown()
-			m.services.Hook = next
+			m.features.Hook = next
 		}
 		if previous != nil {
 			closeErr = previous.Close()
@@ -151,21 +151,21 @@ func (m *model) replaceSession(opened *session.Session) error {
 		m.queueContinuation = nil
 		m.pendingPluginRoot = ""
 		m.resetUserPrompts()
-		if m.services.Reminder != nil {
-			m.services.Reminder.DiscardPendingNotices()
+		if m.features.Reminder != nil {
+			m.features.Reminder.DiscardPendingNotices()
 		}
 		m.conv.SetAgentIdentitySession(opened.ID())
 	}
-	m.services.Session = opened
-	m.services.sessionID = opened.ID()
+	m.features.Session = opened
+	m.features.sessionID = opened.ID()
 	if changed {
 		m.bindMainBroker(opened)
 	}
 	group.BindSession(opened.ID)
-	apphook.Bind(m.services.Hook, m.env.LLMProvider, opened, m.env.GetModelID())
-	if changed && m.services.Hook != nil {
+	apphook.Bind(m.features.Hook, m.env.LLMProvider, opened, m.env.GetModelID())
+	if changed && m.features.Hook != nil {
 		m.configureAsyncHookCallback()
-		m.wireTaskLifecycle(m.services.Hook)
+		m.wireTaskLifecycle(m.features.Hook)
 	}
 	return closeErr
 }
@@ -187,12 +187,12 @@ func (m *model) buildSessionRecord() *session.SessionUpdatePayload {
 		provider = m.env.LLMProvider.Name()
 	}
 	maxTokens := setting.DefaultMaxTokens
-	if m.services.LLM != nil {
-		maxTokens = widgets.GetMaxOutput(m.services.LLM.Store(), m.env.CurrentModel, setting.DefaultMaxTokens)
+	if m.features.LLM != nil {
+		maxTokens = widgets.GetMaxOutput(m.features.LLM.Store(), m.env.CurrentModel, setting.DefaultMaxTokens)
 	}
 	generation := session.GenerationOptions{Version: 1}
-	if m.services.Session != nil {
-		p := m.services.Session.Snapshot()
+	if m.features.Session != nil {
+		p := m.features.Session.Snapshot()
 		if saved := p.Config().GenerationOptions; saved != nil {
 			generation = *saved
 		}
@@ -216,14 +216,14 @@ func (m *model) buildSessionRecord() *session.SessionUpdatePayload {
 			}),
 		},
 	}
-	if m.services.Tracker != nil {
-		update.State.Todos = session.SetField(m.services.Tracker.Export())
+	if m.features.Tracker != nil {
+		update.State.Todos = session.SetField(m.features.Tracker.Export())
 	}
 	if name, self := group.Current(); name != "" {
 		update.State.GroupHint = session.SetField(session.GroupHint{GroupID: name, MemberID: self.Name})
 	}
-	if m.services.Session != nil {
-		p := m.services.Session.Snapshot()
+	if m.features.Session != nil {
+		p := m.features.Session.Snapshot()
 		if p.State().Title == nil {
 			if title := session.GenerateTitle(p.Messages()); title != "" {
 				update.State.Title = session.SetField(title)
@@ -234,8 +234,8 @@ func (m *model) buildSessionRecord() *session.SessionUpdatePayload {
 }
 
 func (m *model) initTaskStorage(sessionID string) {
-	m.services.Task.SetSessionID(sessionID)
-	if m.services.Tracker.StorageDir() != "" {
+	m.features.Task.SetSessionID(sessionID)
+	if m.features.Tracker.StorageDir() != "" {
 		return
 	}
 	homeDir, err := os.UserHomeDir()
@@ -245,7 +245,7 @@ func (m *model) initTaskStorage(sessionID string) {
 	}
 	taskListID := setting.Getenv("TASK_LIST_ID")
 	if taskListID != "" {
-		dir := task.SessionDir(homeDir, taskListID)
+		dir := task.ListDir(homeDir, taskListID)
 		m.setTrackerStorageDir(dir)
 		m.setTaskOutputDir(dir)
 		return
@@ -253,20 +253,20 @@ func (m *model) initTaskStorage(sessionID string) {
 	if sessionID == "" {
 		return
 	}
-	dir := task.SessionDir(homeDir, sessionID)
+	dir := task.ListDir(homeDir, sessionID)
 	m.setTrackerStorageDir(dir)
 	m.setTaskOutputDir(dir)
 }
 
 func (m *model) setTrackerStorageDir(dir string) {
-	if err := m.services.Tracker.SetStorageDir(dir); err != nil {
+	if err := m.features.Tracker.SetStorageDir(dir); err != nil {
 		log.Logger().Warn("task tracker storage unavailable", zap.String("dir", dir), zap.Error(err))
 	}
 }
 
 func (m *model) setTaskOutputDir(dir string) {
 	outputs := filepath.Join(dir, "outputs")
-	if err := m.services.Task.SetOutputDir(outputs); err != nil {
+	if err := m.features.Task.SetOutputDir(outputs); err != nil {
 		log.Logger().Warn("task output directory unavailable", zap.String("dir", outputs), zap.Error(err))
 	}
 }
@@ -286,7 +286,7 @@ func (m *model) forkSession() (string, error) {
 		return "", err
 	}
 	originalID := m.sessionID()
-	opened, err := m.services.Session.Fork(context.Background(), session.ForkOptions{})
+	opened, err := m.features.Session.Fork(context.Background(), session.ForkOptions{})
 	if err != nil {
 		return "", err
 	}
@@ -329,7 +329,7 @@ func (m *model) clearSession() error {
 	if err := m.ensureSessionStore(); err != nil {
 		return err
 	}
-	opened, err := m.services.SessionStore.NewDraft(context.Background(), session.CreateOptions{ID: session.NewSessionID(), AgentID: "main", InitialCWD: m.env.CWD})
+	opened, err := m.features.SessionStore.NewDraft(context.Background(), session.CreateOptions{ID: session.NewSessionID(), AgentID: "main", InitialCWD: m.env.CWD})
 	if err != nil {
 		return err
 	}
@@ -342,11 +342,11 @@ func (m *model) clearSession() error {
 	m.earlyNotices = nil
 	m.beforeGoal = nil
 	m.autopilotContinuations = 0
-	m.env.AutoPilot = autopilotWithoutSessionFields(m.services.Setting.Snapshot().AutoPilot)
+	m.env.AutoPilot = autopilotWithoutSessionFields(m.features.Setting.Snapshot().AutoPilot)
 	m.rebuildAutopilotJudge()
 	m.setTrackerStorageDir("")
 	m.initTaskStorage(m.sessionID())
-	m.services.Tracker.Reset()
+	m.features.Tracker.Reset()
 	fs.ResetFileViews()
 	m.env.FileCache.Clear()
 	m.ReconfigureAgentTool()

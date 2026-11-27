@@ -64,7 +64,7 @@ func TestShellExecutionOptions(t *testing.T) {
 
 func TestAdaptedShellDefaultsToForegroundWithoutTasks(t *testing.T) {
 	task.Initialize(task.Options{})
-	t.Cleanup(task.ResetDefaultTracker)
+	t.Cleanup(task.ResetDefault)
 	worker := bashTool(t)
 	adapted := tool.AdaptTool(worker, worker.Schema(), func() string { return t.TempDir() }, tool.WithSideEffectHandler(func(string, any) {}))
 	for _, input := range []string{
@@ -91,7 +91,7 @@ func TestAdaptedShellDefaultsToForegroundWithoutTasks(t *testing.T) {
 
 func TestShellCanonicalModesMatchApprovalAndRuntime(t *testing.T) {
 	task.Initialize(task.Options{})
-	t.Cleanup(task.ResetDefaultTracker)
+	t.Cleanup(task.ResetDefault)
 	t.Cleanup(func() {
 		for _, worker := range task.Default().ListRunning() {
 			_ = task.Default().Kill(worker.GetID())
@@ -148,7 +148,7 @@ func TestShellCanonicalModesMatchApprovalAndRuntime(t *testing.T) {
 
 func TestShellCanonicalJobCompletion(t *testing.T) {
 	task.Initialize(task.Options{})
-	t.Cleanup(task.ResetDefaultTracker)
+	t.Cleanup(task.ResetDefault)
 	worker := bashTool(t)
 	for _, tc := range []struct {
 		mode   string

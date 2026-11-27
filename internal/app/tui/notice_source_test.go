@@ -20,7 +20,7 @@ func TestBrokerNoticeRetainsOriginalReceivingHandle(t *testing.T) {
 	m, store := resumedModel(t, nil)
 	t.Cleanup(group.Forget)
 	t.Cleanup(func() { mail.Unregister(mail.Main) })
-	original := m.services.Session
+	original := m.features.Session
 	m.mainNotices = make(chan mainNotice, 1)
 	m.bindMainBroker(original)
 	source := session.EventRef{Session: "child", Seq: 7}
@@ -52,7 +52,7 @@ func TestChildNoticeNativeAcceptancePreservesSource(t *testing.T) {
 		t.Run(map[bool]string{false: "accepted", true: "invalid-source"}[invalid], func(t *testing.T) {
 			m, store := resumedModel(t, nil)
 			t.Cleanup(group.Forget)
-			owner := m.services.Session
+			owner := m.features.Session
 			child := mustCreateSession(t, store, session.CreateOptions{ID: "notice-child", Parent: &session.ParentLink{Session: owner.ID()}})
 			finding := ai.Message{ID: "child-finding", Role: ai.RoleAssistant, Content: ai.TextContent("real child finding")}
 			if err := testutil.AppendMessages(child, []ai.Message{finding}); err != nil {
@@ -72,11 +72,11 @@ func TestChildNoticeNativeAcceptancePreservesSource(t *testing.T) {
 				source.Seq += 1000
 			}
 			provider := &restartStubProvider{requests: make(chan []core.Message, 1)}
-			if err := m.services.Agent.Start(runtime.BuildParams{Provider: provider, ModelID: "m", CWD: m.env.CWD, Recording: owner, PermissionRules: (runtime.PermissionPolicy{}).Decide}, nil); err != nil {
+			if err := m.features.Agent.Start(runtime.BuildParams{Provider: provider, ModelID: "m", CWD: m.env.CWD, Recording: owner, PermissionRules: (runtime.PermissionPolicy{}).Decide}, nil); err != nil {
 				t.Fatal(err)
 			}
 			m.conv.Stream.Active = true
-			m.services.Reminder.Enqueue("prepared receiver reminder")
+			m.features.Reminder.Enqueue("prepared receiver reminder")
 			notice := fromBrokerMessage(mail.Message{SourceSession: source.Session, SourceSeq: source.Seq, Content: "<agent-message>real child finding</agent-message>"})
 			notice.Destination = owner
 			m.deliverNotice(notice)
@@ -84,7 +84,7 @@ func TestChildNoticeNativeAcceptancePreservesSource(t *testing.T) {
 				t.Fatal("accepted or rejected foreign mail remained eligible for retry")
 			}
 			if invalid {
-				stopRuntime(t, m.services.Agent)
+				stopRuntime(t, m.features.Agent)
 				projection := owner.Snapshot()
 				if len(provider.requests) != 0 || len(projection.Messages()) != 0 {
 					t.Fatal("invalid child evidence reached native inference or history")
@@ -99,7 +99,7 @@ func TestChildNoticeNativeAcceptancePreservesSource(t *testing.T) {
 			case <-time.After(2 * time.Second):
 				t.Fatal("child notice never reached native inference")
 			}
-			stopRuntime(t, m.services.Agent)
+			stopRuntime(t, m.features.Agent)
 			found := false
 			projection := owner.Snapshot()
 			for _, event := range projection.Events() {

@@ -23,7 +23,7 @@ import (
 func TestGroupBatchSummarySurvivesPersistence(t *testing.T) {
 	store := testutil.OpenSessionStore(t, t.TempDir())
 	m := commitTestModel()
-	m.services.Agent = &runtime.Runtime{}
+	m.features.Agent = &runtime.Runtime{}
 	m.conv.Stream.Active = true
 	m.grp.unattended = 2
 	m.deliverMemberMessages("test", group.Member{}, []group.Message{
@@ -167,7 +167,7 @@ func TestAnUnsavedSessionLeavesItsGroupAtExit(t *testing.T) {
 	if _, err := group.Join("shop", group.Member{Name: "api"}); err != nil {
 		t.Fatal(err)
 	}
-	m := model{services: services{Session: nil}}
+	m := model{features: appFeatures{Session: nil}}
 	m.exitGroup()
 	if members := group.Members("shop"); len(members) != 0 {
 		t.Errorf("members after exit = %+v, want none", members)
@@ -192,7 +192,7 @@ func TestMemberColorsGoInOrderOfArrivalAndStay(t *testing.T) {
 // ends with the tick that finds the session gone from its group.
 func TestTheGroupLoopRunsOnlyWhileInAGroup(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
-	m := &model{services: services{Session: nil}}
+	m := &model{features: appFeatures{Session: nil}}
 	if m.startGroupPolling() != nil {
 		t.Fatal("a loop started outside any group")
 	}
@@ -226,7 +226,7 @@ func TestMemberStateFollowsTheSession(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = group.Leave() })
-	m := &model{services: services{Agent: &runtime.Runtime{}}, conv: chat.NewModel(80)}
+	m := &model{features: appFeatures{Agent: &runtime.Runtime{}}, conv: chat.NewModel(80)}
 	state := func() group.State { return group.Members("shop")[0].State }
 
 	m.syncGroupState()
@@ -313,7 +313,7 @@ func TestASessionSwitchSaysItLeftTheGroup(t *testing.T) {
 	if _, err := group.Join("shop", group.Member{Name: "api"}); err != nil {
 		t.Fatal(err)
 	}
-	m := &model{conv: chat.NewModel(80), services: services{sessionID: "s-new", Reminder: reminder.NewQueue()}}
+	m := &model{conv: chat.NewModel(80), features: appFeatures{sessionID: "s-new", Reminder: reminder.NewQueue()}}
 	m.releaseGroupOnSwitch()
 	if g, _ := group.Current(); g != "" {
 		t.Fatalf("still in %s after the switch", g)

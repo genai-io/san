@@ -16,7 +16,7 @@ import (
 )
 
 func (m *model) cycleOperationMode() tea.Cmd {
-	allowBypass := m.services.Setting.AllowBypass()
+	allowBypass := m.features.Setting.AllowBypass()
 	m.env.OperationMode = m.env.OperationMode.NextWithBypass(allowBypass)
 	m.modeHintUntil = time.Now().Add(modeHintFor)
 	m.applyOperationMode()
@@ -35,7 +35,7 @@ func (m *model) cycleOperationMode() tea.Cmd {
 // mode — the shared tail of any mode change.
 func (m *model) applyOperationMode() {
 	m.env.ApplyModePermissions(m.env.CWD)
-	m.services.Hook.SetPermissionMode(m.env.OperationModeName())
+	m.features.Hook.SetPermissionMode(m.env.OperationModeName())
 }
 
 func (m *model) persistOperationMode() {

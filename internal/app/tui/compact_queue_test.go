@@ -54,10 +54,10 @@ func TestSubmitDuringCompactionQueuesInput(t *testing.T) {
 func compactQueueModel(t *testing.T) (*model, *textOnlyStubProvider) {
 	t.Helper()
 	m, _ := resumedModel(t, parallelResultChain())
-	m.userInput = input.New(m.env.CWD, 80, nil, input.SelectorDeps{Setting: m.services.Setting})
+	m.userInput = input.New(m.env.CWD, 80, nil, input.SelectorBindings{Setting: m.features.Setting})
 	provider := &textOnlyStubProvider{restartStubProvider{requests: make(chan []core.Message, 2)}}
 	m.env.LLMProvider = provider
-	if err := m.services.Agent.Start(runtime.BuildParams{Provider: provider, ModelID: "m", Recording: m.services.Session, PermissionRules: (runtime.PermissionPolicy{}).Decide}, m.services.Agent.Messages()); err != nil {
+	if err := m.features.Agent.Start(runtime.BuildParams{Provider: provider, ModelID: "m", Recording: m.features.Session, PermissionRules: (runtime.PermissionPolicy{}).Decide}, m.features.Agent.Messages()); err != nil {
 		t.Fatal(err)
 	}
 	m.agentReviewCaps = m.autoSkillCapabilities()
@@ -74,7 +74,7 @@ func TestCompactionReleasesOneQueuedInput(t *testing.T) {
 			m.env.LLMProvider = &compactHTTPProvider{client: aitest.New(aitest.Says(summary)).Client()}
 			var request runtime.CompactRequest
 			if trigger == "auto" {
-				request = runtime.CompactRequest{Ctx: t.Context(), Client: m.buildLLMClient(), Messages: m.services.Agent.Messages(), Completion: m.services.Session.Completion(session.PurposeCompaction), Trigger: "auto"}
+				request = runtime.CompactRequest{Ctx: t.Context(), Client: m.buildLLMClient(), Messages: m.features.Agent.Messages(), Completion: m.features.Session.Completion(session.PurposeCompaction), Trigger: "auto"}
 			} else {
 				request = m.BuildCompactRequest("", "manual")
 			}
@@ -103,7 +103,7 @@ func TestCompactionReleasesOneQueuedInput(t *testing.T) {
 				if trigger == "manual" {
 					m.HandleCompactResult(msg)
 				} else {
-					accepted, err := m.services.Agent.Compact(msg.Completion.Compaction(msg.Summary))
+					accepted, err := m.features.Agent.Compact(msg.Completion.Compaction(msg.Summary))
 					if err != nil || !accepted {
 						t.Fatalf("automatic compaction admission: accepted=%v err=%v", accepted, err)
 					}
@@ -115,7 +115,7 @@ func TestCompactionReleasesOneQueuedInput(t *testing.T) {
 			waitBoundary:
 				for {
 					select {
-					case event := <-m.services.Agent.Outbox():
+					case event := <-m.features.Agent.Outbox():
 						if info, ok := event.(core.Compacted); ok {
 							m.OnCompacted(info)
 							break waitBoundary
@@ -149,7 +149,7 @@ func TestCompactionReleasesOneQueuedInput(t *testing.T) {
 				t.Fatal("queued input never resumed after compaction")
 			}
 			var queuedImages int
-			for _, message := range m.services.Agent.Messages() {
+			for _, message := range m.features.Agent.Messages() {
 				if strings.Contains(message.Text(), "look at") {
 					queuedImages += imgCount(message)
 				}
@@ -172,7 +172,7 @@ func TestCompactionQueueEditWaitsForBothCompletionAndEditExit(t *testing.T) {
 		t.Run(order, func(t *testing.T) {
 			m, provider := compactQueueModel(t)
 			m.env.LLMProvider = &compactHTTPProvider{client: aitest.New(aitest.Says("summary")).Client()}
-			request := runtime.CompactRequest{Ctx: t.Context(), Client: m.buildLLMClient(), Messages: m.services.Agent.Messages(), Completion: m.services.Session.Completion(session.PurposeCompaction), Trigger: "auto"}
+			request := runtime.CompactRequest{Ctx: t.Context(), Client: m.buildLLMClient(), Messages: m.features.Agent.Messages(), Completion: m.features.Session.Completion(session.PurposeCompaction), Trigger: "auto"}
 			m.env.LLMProvider = provider
 			m.OnCompactStart(3)
 			m.userInput.Textarea.SetValue("queued input")
@@ -185,7 +185,7 @@ func TestCompactionQueueEditWaitsForBothCompletionAndEditExit(t *testing.T) {
 				if result.Err != nil {
 					t.Fatal(result.Err)
 				}
-				accepted, err := m.services.Agent.Compact(result.Completion.Compaction(result.Summary))
+				accepted, err := m.features.Agent.Compact(result.Completion.Compaction(result.Summary))
 				if err != nil || !accepted {
 					t.Fatalf("automatic compaction: %v %v", accepted, err)
 				}

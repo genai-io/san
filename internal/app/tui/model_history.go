@@ -28,11 +28,11 @@ func (m *model) openHistory() tea.Cmd { return m.openHistoryAt("") }
 
 func (m *model) openHistoryAt(messageID string) tea.Cmd {
 	m.userInput.Transcript.Enter("History · Loading…", nil, m.env.Width, m.env.Height)
-	msg := historyLoadedMsg{owner: m.services.Session, generation: m.userInput.Transcript.Generation(), focusID: messageID, messages: slices.Clone(m.conv.Messages)}
+	msg := historyLoadedMsg{owner: m.features.Session, generation: m.userInput.Transcript.Generation(), focusID: messageID, messages: slices.Clone(m.conv.Messages)}
 	var load func(string) ([]core.ChatMessage, error)
 	if m.sessionID() != "" {
 		msg.sessionID = m.sessionID()
-		if store := m.services.SessionStore; store != nil && msg.sessionID != "" {
+		if store := m.features.SessionStore; store != nil && msg.sessionID != "" {
 			load = func(id string) ([]core.ChatMessage, error) {
 				history, err := store.Read(context.Background(), id)
 				if err != nil {
@@ -60,7 +60,7 @@ func (m *model) historyLoaded(msg historyLoadedMsg) {
 	if !viewer.IsActive() || viewer.Generation() != msg.generation {
 		return
 	}
-	if m.sessionID() != msg.sessionID || m.services.Session != msg.owner {
+	if m.sessionID() != msg.sessionID || m.features.Session != msg.owner {
 		return
 	}
 	if msg.err != nil {
@@ -88,7 +88,7 @@ func (m *model) historyEntries(messages []core.ChatMessage) []input.TranscriptEn
 		AgentPreviewLines: m.env.AgentPreviewLines,
 		AgentIdentities:   m.conv.AgentDisplayHistorySnapshot(messages),
 		AgentColors:       m.agentColors(), MemberColors: m.grp.colors,
-		TaskOwnerMap: buildTaskOwnerMap(m.services.Tracker.List()),
+		TaskOwnerMap: buildTaskOwnerMap(m.features.Tracker.List()),
 	}
 	renderer := func(width int) *chat.MDRenderer {
 		if params.Width != width {

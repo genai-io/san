@@ -23,10 +23,9 @@ import (
 	"github.com/genai-io/san/internal/tool"
 )
 
-// services holds references to domain service singletons, injected into
-// model at construction time. Model methods access services through this
-// struct instead of calling Default() package-level accessors directly.
-type services struct {
+// appFeatures holds the feature handles used by the root model. Project reload
+// and session changes replace the affected handles in place.
+type appFeatures struct {
 	Setting      *setting.Settings
 	LLM          *llm.Conn
 	Tool         *tool.Registry
@@ -37,21 +36,21 @@ type services struct {
 	Skill        *skill.Registry
 	Subagent     *subagent.Registry
 	Command      *command.Registry
-	Task         *task.Manager
-	Flow         *flow.Service
+	Task         *task.RunSet
+	Flow         *flow.Scheduler
 	Tracker      *todo.Store
 	Cron         *cron.Scheduler
-	MCP          *mcp.Manager
+	MCP          *mcp.ServerSet
 	Plugin       *plugin.Registry
 	Agent        *runtime.Runtime
 	Persona      *persona.Registry
 	Reminder     *reminder.Queue
 
 	// AutoSkill owns the reviewer for the current conversation session.
-	AutoSkill AutoSkillServices
+	AutoSkill autoSkillReviewState
 }
 
-type AutoSkillServices struct {
+type autoSkillReviewState struct {
 	session *autoSkillSession
 }
 
@@ -60,9 +59,9 @@ type autoSkillSession struct {
 	cancel   context.CancelFunc
 }
 
-func newServices() services {
+func newAppFeatures() appFeatures {
 	tasks := task.Default()
-	return services{
+	return appFeatures{
 		Setting:      setting.Default(),
 		LLM:          llm.Default(),
 		Tool:         tool.Default(),
@@ -73,10 +72,10 @@ func newServices() services {
 		Subagent:     subagent.Default(),
 		Command:      command.Default(),
 		Task:         tasks,
-		Flow:         flow.NewService(tasks),
+		Flow:         flow.NewScheduler(tasks),
 		Tracker:      todo.NewStoreWithTasks(tasks),
 		Cron:         cron.Default(),
-		MCP:          mcp.DefaultManager(),
+		MCP:          mcp.Default(),
 		Plugin:       plugin.Default(),
 		Agent:        runtime.Default(),
 		Persona:      persona.Default(),

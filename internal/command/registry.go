@@ -159,7 +159,7 @@ func (s *Registry) Get(name string) (Info, bool) {
 		}
 	}
 	// Check custom commands.
-	if cmd, ok := s.IsCustomCommand(name); ok {
+	if cmd, ok := s.LookupPromptCommand(name); ok {
 		return Info{Name: cmd.FullName(), Description: cmd.Description}, true
 	}
 	return Info{}, false
@@ -239,7 +239,7 @@ func (s *Registry) Matching(prefix string) []Info {
 	return matches
 }
 
-func (s *Registry) IsCustomCommand(cmd string) (*CustomCommand, bool) {
+func (s *Registry) LookupPromptCommand(cmd string) (*CustomCommand, bool) {
 	commands := s.loadAllCustomCommands()
 	for _, c := range commands {
 		if c.FullName() == cmd {

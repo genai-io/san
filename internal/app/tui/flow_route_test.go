@@ -34,8 +34,8 @@ func (m *flowRouteModel) Init() tea.Cmd  { return nil }
 func (m *flowRouteModel) View() tea.View { return tea.NewView("") }
 func (m *flowRouteModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if change, ok := msg.(flowRouteSessionMsg); ok {
-		m.root.services.Session = change.owner
-		m.root.services.sessionID = change.owner.ID()
+		m.root.features.Session = change.owner
+		m.root.features.sessionID = change.owner.ID()
 	}
 	_, cmd := m.root.Update(msg)
 	switch msg.(type) {
@@ -51,8 +51,8 @@ func TestFlowDraftSlashUpdateRoute(t *testing.T) {
 	for _, scenario := range []string{"success", "hub", "blocked-release", "blocked-escape", "blocked-session-switch"} {
 		t.Run(scenario, func(t *testing.T) {
 			m := draftTestModel(t)
-			originalOwner := m.services.Session
-			m.services.Flow = flow.NewService(m.services.Task)
+			originalOwner := m.features.Session
+			m.features.Flow = flow.NewScheduler(m.features.Task)
 			m.env.CWD = t.TempDir()
 			m.conv.Messages = nil
 			var calls atomic.Int32
@@ -191,10 +191,10 @@ func TestFlowDraftSlashUpdateRoute(t *testing.T) {
 			case <-time.After(5 * time.Second):
 				t.Fatal("program did not quit")
 			}
-			if len(m.services.Flow.SavedDefinitions()) != 0 || len(m.services.Agent.Messages()) != 0 || m.conv.Stream.Active {
+			if len(m.features.Flow.SavedDefinitions()) != 0 || len(m.features.Agent.Messages()) != 0 || m.conv.Stream.Active {
 				t.Fatal("draft was saved, run, or added to the main conversation")
 			}
-			for _, owner := range []*session.Session{originalOwner, m.services.Session} {
+			for _, owner := range []*session.Session{originalOwner, m.features.Session} {
 				projection := owner.Snapshot()
 				if len(projection.Unfinished().Inferences) != 0 {
 					t.Fatal("draft recording left unfinished")

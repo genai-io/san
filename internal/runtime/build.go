@@ -52,7 +52,7 @@ type BuildParams struct {
 	DisabledTools map[string]bool
 	MCPTools      []core.Tool
 	NativeTools   []core.Tool     // host-owned tools, subject to the same permission gate
-	Tasks         *task.Manager   // nil retains the native default
+	Tasks         *task.RunSet    // nil retains the native default
 	Tracker       *todo.Store     // nil leaves the task-tracker tools unavailable
 	Skills        *skill.Registry // nil retains the native default
 	Plugins       *plugin.Registry
@@ -205,7 +205,7 @@ func buildAgent(p BuildParams, opts ...buildOption) (core.Agent, *PermissionGate
 			}
 		}
 		if p.Tasks != nil {
-			ctx = task.WithManager(task.WithSessionID(ctx, p.SessionID), p.Tasks)
+			ctx = task.WithRunSet(task.WithSessionID(ctx, p.SessionID), p.Tasks)
 		}
 		if p.Plugins != nil {
 			ctx = plugin.WithRegistry(ctx, p.Plugins)

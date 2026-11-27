@@ -23,7 +23,7 @@ import (
 func flowMainTestSession(t *testing.T) *session.Session {
 	t.Helper()
 	m, _ := resumedModel(t, nil)
-	return m.services.Session
+	return m.features.Session
 }
 
 func TestFlowMainLeaseExclusiveAndGenerationFenced(t *testing.T) {
@@ -38,7 +38,7 @@ func TestFlowMainLeaseExclusiveAndGenerationFenced(t *testing.T) {
 		t.Fatal("parallel main lease admitted")
 	}
 	first.Close(nil)
-	(&model{flowMain: b, services: services{Session: owner}}).onFlowMain(<-b.events)
+	(&model{flowMain: b, features: appFeatures{Session: owner}}).onFlowMain(<-b.events)
 	second, err := e.Open(context.Background(), flow.MainRunInfo{SessionID: e.owner.ID()})
 	if err != nil {
 		t.Fatal(err)
@@ -87,7 +87,7 @@ func TestFlowMainOpenNonblockingConcurrent(t *testing.T) {
 func TestFlowMainReviewQueuedRequirementsOverrideAcceptance(t *testing.T) {
 	m, _ := compactQueueModel(t)
 	m.flowMain = newFlowMainBridge()
-	e := m.flowMain.bind(m.services.Session)
+	e := m.flowMain.bind(m.features.Session)
 	l, err := e.Open(context.Background(), flow.MainRunInfo{SessionID: e.owner.ID()})
 	if err != nil {
 		t.Fatal(err)
@@ -132,24 +132,24 @@ func TestFlowMainNativeRuntimeResultAndIdentity(t *testing.T) { testFlowMainNati
 func TestFlowMainFreshRuntimeResultAndIdentity(t *testing.T)  { testFlowMainNativeRuntime(t, false) }
 func testFlowMainNativeRuntime(t *testing.T, warm bool) {
 	m, _ := resumedModel(t, []core.Message{core.UserMessage("existing main history", nil)})
-	m.userInput = input.New(m.env.CWD, 80, nil, input.SelectorDeps{Setting: m.services.Setting})
+	m.userInput = input.New(m.env.CWD, 80, nil, input.SelectorBindings{Setting: m.features.Setting})
 	m.flowMain = newFlowMainBridge()
-	opened := m.services.Session
+	opened := m.features.Session
 	m.agentSession = opened
 	scripted := aitest.Always(aitest.Says("native writer result"))
 	p := &finalizationProvider{client: scripted.Client()}
 	m.env.LLMProvider = p
-	m.services.Skill = skill.NewRegistry()
-	m.services.Tool = tool.NewRegistry()
-	m.services.MCP = mcp.NewManagerForTest(nil)
+	m.features.Skill = skill.NewRegistry()
+	m.features.Tool = tool.NewRegistry()
+	m.features.MCP = mcp.NewServerSetForTest(nil)
 	if warm {
-		if err := m.services.Agent.Start(agentruntime.BuildParams{Provider: p, ModelID: "m", Recording: opened, PermissionRules: (agentruntime.PermissionPolicy{}).Decide}, m.services.Agent.Messages()); err != nil {
+		if err := m.features.Agent.Start(agentruntime.BuildParams{Provider: p, ModelID: "m", Recording: opened, PermissionRules: (agentruntime.PermissionPolicy{}).Decide}, m.features.Agent.Messages()); err != nil {
 			t.Fatal(err)
 		}
 		m.agentReviewCaps = m.autoSkillCapabilities()
 		m.agentDisabledToolsSignature = m.disabledToolsSignature()
 		m.autoMemory = m.currentAutoMemory()
-	} else if m.services.Agent.Active() {
+	} else if m.features.Agent.Active() {
 		t.Fatal("fresh fixture already has active runtime")
 	}
 	e := m.flowMain.bind(opened)
@@ -195,11 +195,11 @@ func testFlowMainNativeRuntime(t *testing.T, warm bool) {
 			if r.err != nil || r.output != "native writer result" {
 				t.Fatalf("result = %+v", r)
 			}
-			if m.services.Session != opened {
+			if m.features.Session != opened {
 				t.Fatal("writer changed session")
 			}
 			foundHistory, foundAmendment := false, false
-			for _, msg := range m.services.Agent.Messages() {
+			for _, msg := range m.features.Agent.Messages() {
 				foundHistory = foundHistory || strings.Contains(msg.Text(), "existing main history")
 				foundAmendment = foundAmendment || strings.Contains(msg.Text(), "review amendment must reach writer")
 			}
@@ -219,7 +219,7 @@ func testFlowMainNativeRuntime(t *testing.T, warm bool) {
 				t.Fatalf("amendment recorded more than once: %q", l.Instructions())
 			}
 			count := 0
-			for _, msg := range m.services.Agent.Messages() {
+			for _, msg := range m.features.Agent.Messages() {
 				if msg.ID == execution.MessageID {
 					count++
 				}
@@ -263,13 +263,13 @@ func testFlowMainNativeRuntime(t *testing.T, warm bool) {
 func TestFlowMainBoundCloseHoldsRequirements(t *testing.T) {
 	m, _ := compactQueueModel(t)
 	m.flowMain = newFlowMainBridge()
-	e := m.flowMain.bind(m.services.Session)
+	e := m.flowMain.bind(m.features.Session)
 	l, err := e.Open(t.Context(), flow.MainRunInfo{SessionID: e.owner.ID()})
 	if err != nil {
 		t.Fatal(err)
 	}
 	m.userInput.Queue.Enqueue("unresolved requirement at budget limit", nil)
-	m.deliverNotice(mainNotice{SessionID: m.services.Session.ID(), Destination: m.services.Session, Display: "held background notice", Content: "held ordinary machine input"})
+	m.deliverNotice(mainNotice{SessionID: m.features.Session.ID(), Destination: m.features.Session, Display: "held background notice", Content: "held ordinary machine input"})
 	if m.pendingMessages.Len() != 0 || len(l.(*flowMainLease).deferred) != 1 {
 		t.Fatal("review notice was not deferred")
 	}
@@ -289,7 +289,7 @@ func TestFlowMainBoundCloseHoldsRequirements(t *testing.T) {
 func TestFlowMainEditingWaitsAndForeignInfoRejected(t *testing.T) {
 	m, _ := compactQueueModel(t)
 	m.flowMain = newFlowMainBridge()
-	e := m.flowMain.bind(m.services.Session)
+	e := m.flowMain.bind(m.features.Session)
 	if _, err := e.Open(t.Context(), flow.MainRunInfo{SessionID: "foreign"}); err == nil {
 		t.Fatal("foreign session info accepted")
 	}
@@ -321,7 +321,7 @@ func TestFlowMainEditingWaitsAndForeignInfoRejected(t *testing.T) {
 func TestFlowMainBusyWaitsWithoutReleasingWriterDirections(t *testing.T) {
 	m, _ := compactQueueModel(t)
 	m.flowMain = newFlowMainBridge()
-	e := m.flowMain.bind(m.services.Session)
+	e := m.flowMain.bind(m.features.Session)
 	l, err := e.Open(t.Context(), flow.MainRunInfo{SessionID: e.owner.ID()})
 	if err != nil {
 		t.Fatal(err)
@@ -355,7 +355,7 @@ func TestFlowMainBusyWaitsWithoutReleasingWriterDirections(t *testing.T) {
 func TestFlowMainBusyStartsAtNativeTurnBoundary(t *testing.T) {
 	m, _ := compactQueueModel(t)
 	m.flowMain = newFlowMainBridge()
-	lease, err := m.flowMain.bind(m.services.Session).Open(t.Context(), flow.MainRunInfo{SessionID: m.sessionID()})
+	lease, err := m.flowMain.bind(m.features.Session).Open(t.Context(), flow.MainRunInfo{SessionID: m.sessionID()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -377,7 +377,7 @@ func TestFlowMainBusyStartsAtNativeTurnBoundary(t *testing.T) {
 func TestFlowMainStaleCancelDoesNotReplyTwice(t *testing.T) {
 	m, _ := compactQueueModel(t)
 	m.flowMain = newFlowMainBridge()
-	lease, err := m.flowMain.bind(m.services.Session).Open(t.Context(), flow.MainRunInfo{SessionID: m.sessionID()})
+	lease, err := m.flowMain.bind(m.features.Session).Open(t.Context(), flow.MainRunInfo{SessionID: m.sessionID()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -393,7 +393,7 @@ func TestFlowMainStaleCancelDoesNotReplyTwice(t *testing.T) {
 func TestFlowMainCheckpointCancellationRetainsQueue(t *testing.T) {
 	m, provider := compactQueueModel(t)
 	m.flowMain = newFlowMainBridge()
-	e := m.flowMain.bind(m.services.Session)
+	e := m.flowMain.bind(m.features.Session)
 	lease, err := e.Open(t.Context(), flow.MainRunInfo{SessionID: e.owner.ID()})
 	if err != nil {
 		t.Fatal(err)
@@ -438,7 +438,7 @@ func TestFlowMainCancelledRequestNeverReachesUI(t *testing.T) {
 func TestFlowMainReviewIgnoresQueuedCommands(t *testing.T) {
 	m, _ := compactQueueModel(t)
 	m.flowMain = newFlowMainBridge()
-	e := m.flowMain.bind(m.services.Session)
+	e := m.flowMain.bind(m.features.Session)
 	l, err := e.Open(context.Background(), flow.MainRunInfo{SessionID: e.owner.ID()})
 	if err != nil {
 		t.Fatal(err)

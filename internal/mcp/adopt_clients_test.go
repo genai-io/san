@@ -31,7 +31,7 @@ func TestAdoptLiveClientsRebindsNotifications(t *testing.T) {
 		t.Fatal("repeated adoption changed ownership")
 	}
 	if err := old.Connect(context.Background(), "docs"); err == nil || !strings.Contains(err.Error(), "retired") {
-		t.Fatalf("Connect on retired manager: %v", err)
+		t.Fatalf("Connect on retired server set: %v", err)
 	}
 }
 
@@ -60,7 +60,7 @@ func TestAdoptLiveClientsRejectsLateDial(t *testing.T) {
 		t.Errorf("late Connect: %v; want retirement error", err)
 	}
 	if len(old.clients) != 0 || len(fresh.clients) != 0 {
-		t.Fatal("late dial retained by a manager")
+		t.Fatal("late dial retained by a server set")
 	}
 	select {
 	case <-tr.done():
@@ -69,8 +69,8 @@ func TestAdoptLiveClientsRejectsLateDial(t *testing.T) {
 	}
 }
 
-func registryWith(configs map[string]ServerConfig, clients map[string]*Client) *Manager {
-	r := newEmptyManager()
+func registryWith(configs map[string]ServerConfig, clients map[string]*Client) *ServerSet {
+	r := newEmptyServerSet()
 	maps.Copy(r.configs, configs)
 	for name, c := range clients {
 		r.clients[name] = c

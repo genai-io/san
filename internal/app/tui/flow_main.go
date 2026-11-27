@@ -178,7 +178,7 @@ func (m *model) flowMainLease() *flowMainLease {
 	b := m.flowMain
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	if b.owner != m.services.Session {
+	if b.owner != m.features.Session {
 		return nil
 	}
 	return b.lease
@@ -239,7 +239,7 @@ func (m *model) onFlowMain(msg flowMainMsg) tea.Cmd {
 				failure = errors.New("Flow closed before main node finalized")
 			}
 			m.failFlowMain(failure)
-			if r.messageID != "" && r.outbox == m.AgentOutbox() && l.owner == m.services.Session {
+			if r.messageID != "" && r.outbox == m.AgentOutbox() && l.owner == m.features.Session {
 				cancel = m.handleStreamCancel()
 			}
 		}
@@ -258,7 +258,7 @@ func (m *model) onFlowMain(msg flowMainMsg) tea.Cmd {
 			return cancel
 		}
 		var cmds []tea.Cmd
-		if drain != nil && drain == m.AgentOutbox() && l.owner == m.services.Session {
+		if drain != nil && drain == m.AgentOutbox() && l.owner == m.features.Session {
 			cmds = append(cmds, m.sendNextQueuedInputIfIdle())
 		}
 		for _, p := range deferred {
@@ -269,7 +269,7 @@ func (m *model) onFlowMain(msg flowMainMsg) tea.Cmd {
 		if r := m.flowMainRequest; r != nil && r.msg.lease == msg.lease && r.msg.reply == msg.reply {
 			m.pendingMessages.Hold(nil)
 			m.failFlowMain(context.Canceled)
-			if r.messageID != "" && r.outbox == m.AgentOutbox() && r.msg.lease.owner == m.services.Session {
+			if r.messageID != "" && r.outbox == m.AgentOutbox() && r.msg.lease.owner == m.features.Session {
 				return m.handleStreamCancel()
 			}
 		}
@@ -358,7 +358,7 @@ func (m *model) retireFlowMain() {
 
 func (m *model) finishFlowMain(result core.Result, err error) bool {
 	r := m.flowMainRequest
-	if r == nil || r.messageID == "" || r.outbox != m.AgentOutbox() || r.msg.lease.owner != m.services.Session {
+	if r == nil || r.messageID == "" || r.outbox != m.AgentOutbox() || r.msg.lease.owner != m.features.Session {
 		return false
 	}
 	m.flowMainRequest = nil

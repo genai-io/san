@@ -113,7 +113,7 @@ func TestRenderAuthMethodKeepsInfoColumnSeparateFromLongName(t *testing.T) {
 
 func TestUpdateProviderReloadsSharedModelStoreAfterCatalogRefresh(t *testing.T) {
 	reloads := 0
-	deps := OverlayDeps{ReloadModelStore: func() { reloads++ }}
+	deps := PanelContext{ReloadModelStore: func() { reloads++ }}
 	state := &ProviderState{}
 
 	if _, handled := UpdateProvider(deps, state, providerModelsLoadedMsg{}); !handled {
@@ -424,14 +424,14 @@ func TestProviderStatusExpiryIgnoresStaleTimer(t *testing.T) {
 	first := state.SetStatusMessage("thinking: think")
 	second := state.SetStatusMessage("compacted")
 
-	if cmd, handled := UpdateProvider(OverlayDeps{}, state, widgets.StatusExpiredMsg{Token: first}); !handled || cmd != nil {
+	if cmd, handled := UpdateProvider(PanelContext{}, state, widgets.StatusExpiredMsg{Token: first}); !handled || cmd != nil {
 		t.Fatalf("UpdateProvider() handled=%v cmd=%v, want handled=true cmd=nil", handled, cmd)
 	}
 	if state.StatusMessage != "compacted" {
 		t.Fatalf("StatusMessage = %q, want newer status to survive stale timer", state.StatusMessage)
 	}
 
-	UpdateProvider(OverlayDeps{}, state, widgets.StatusExpiredMsg{Token: second})
+	UpdateProvider(PanelContext{}, state, widgets.StatusExpiredMsg{Token: second})
 	if state.StatusMessage != "" {
 		t.Fatalf("StatusMessage = %q, want empty after current timer expires", state.StatusMessage)
 	}

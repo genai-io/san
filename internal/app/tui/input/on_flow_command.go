@@ -71,7 +71,7 @@ func (c *SlashCommandController) handleFlowCommand(_ context.Context, args strin
 	}
 	svc := c.env.Flow
 	if svc == nil {
-		return "", nil, errors.New("flow service is unavailable in this build")
+		return "", nil, errors.New("flow workspace is unavailable in this build")
 	}
 	if len(fields) == 0 && c.env.Input != nil {
 		return "", c.env.Input.Flow.Open(svc, c.env.Width, c.env.Height), nil
@@ -156,7 +156,7 @@ func (c *SlashCommandController) savedFlow(name string) bool {
 	return false
 }
 
-func (c *SlashCommandController) openFlow(svc FlowService, fields []string) (string, tea.Cmd, error) {
+func (c *SlashCommandController) openFlow(svc FlowWorkspace, fields []string) (string, tea.Cmd, error) {
 	view := &c.env.Input.Flow
 	w, h := c.env.Width, c.env.Height
 	switch fields[0] {

@@ -23,7 +23,7 @@ type MainRunExecutor interface {
 	Close(error)
 }
 
-func (s *Service) SetMainExecutor(executor MainExecutor) {
+func (s *Scheduler) SetMainExecutor(executor MainExecutor) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.mainExecutor = executor

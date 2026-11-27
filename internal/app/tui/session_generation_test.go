@@ -16,7 +16,7 @@ import (
 func TestSavedSessionMaxOutputDrivesActualRequest(t *testing.T) {
 	m, _ := resumedModel(t, nil)
 	cap := 321
-	if err := m.services.Session.Append(t.Context(), session.Event{Payload: session.SessionUpdatePayload{Config: &session.ConfigPatch{GenerationOptions: session.SetField(session.GenerationOptions{Version: 1, MaxTokens: &cap})}}}); err != nil {
+	if err := m.features.Session.Append(t.Context(), session.Event{Payload: session.SessionUpdatePayload{Config: &session.ConfigPatch{GenerationOptions: session.SetField(session.GenerationOptions{Version: 1, MaxTokens: &cap})}}}); err != nil {
 		t.Fatal(err)
 	}
 	driver := aitest.New(aitest.Says("ok"))
@@ -39,16 +39,16 @@ func TestExplicitSessionMaxOutputPatchPreservesGeneration(t *testing.T) {
 			m, store := resumedModel(t, nil)
 			cap, temp := 321, 0.4
 			original := session.GenerationOptions{Version: 1, MaxTokens: &cap, Temperature: &temp, Effort: ai.EffortHigh, StopSequences: []string{"stop"}, ToolChoice: ai.ToolChoiceNone}
-			if err := m.services.Session.Append(t.Context(), session.Event{Payload: session.SessionUpdatePayload{Config: &session.ConfigPatch{GenerationOptions: session.SetField(original)}}}); err != nil {
+			if err := m.features.Session.Append(t.Context(), session.Event{Payload: session.SessionUpdatePayload{Config: &session.ConfigPatch{GenerationOptions: session.SetField(original)}}}); err != nil {
 				t.Fatal(err)
 			}
 			m.env.CurrentModel = &llm.CurrentModelInfo{Provider: llm.OpenAI, ModelID: "m"}
-			msg := input.ContextLimitUpdatedMsg{Session: m.services.Session, ModelID: "m", Provider: string(llm.OpenAI), MaxTokens: 654}
+			msg := input.ContextLimitUpdatedMsg{Session: m.features.Session, ModelID: "m", Provider: string(llm.OpenAI), MaxTokens: 654}
 			switch kind {
 			case "stale-session":
 				msg.Session = nil
 			case "same-id-reopen":
-				originalOwner := m.services.Session
+				originalOwner := m.features.Session
 				if err := originalOwner.Close(); err != nil {
 					t.Fatal(err)
 				}
@@ -56,7 +56,7 @@ func TestExplicitSessionMaxOutputPatchPreservesGeneration(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				m.services.Session = reopened
+				m.features.Session = reopened
 				if reopened == msg.Session || reopened.ID() != msg.Session.ID() {
 					t.Fatal("fixture did not replace the owner of the same session ID")
 				}
@@ -65,7 +65,7 @@ func TestExplicitSessionMaxOutputPatchPreservesGeneration(t *testing.T) {
 			case "stale-provider":
 				msg.Provider = "other"
 			case "closed":
-				if err := m.services.Session.Close(); err != nil {
+				if err := m.features.Session.Close(); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -77,7 +77,7 @@ func TestExplicitSessionMaxOutputPatchPreservesGeneration(t *testing.T) {
 			} else if err != nil {
 				t.Fatal(err)
 			}
-			snapshot := m.services.Session.Snapshot()
+			snapshot := m.features.Session.Snapshot()
 			got := snapshot.Config().GenerationOptions
 			want := original
 			if kind == "apply" {

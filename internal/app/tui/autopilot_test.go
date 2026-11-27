@@ -178,7 +178,7 @@ func TestAutopilotDecideContinueCarriesTheSituation(t *testing.T) {
 // A finished goal rewinds to the configuration /goal found — otherwise the
 // driving set stays on behind the user — and stays on record as done.
 func TestGoalFinishRestoresTheConfigItFound(t *testing.T) {
-	m := &model{autopilot: &atomic.Pointer[autopilotRuntime]{}}
+	m := &model{autopilot: &atomic.Pointer[autopilotSnapshot]{}}
 	suggestOn := true
 	configured := setting.AutoPilotSettings{
 		Steers:           setting.SteerSettings{Suggest: &suggestOn},
@@ -209,7 +209,7 @@ func TestGoalFinishRestoresTheConfigItFound(t *testing.T) {
 // Without a goal, finishing changes only the state: the switches keep the
 // user's settings, and the done mission stops steering decisions.
 func TestFinishMissionKeepsSwitches(t *testing.T) {
-	m := &model{autopilot: &atomic.Pointer[autopilotRuntime]{}}
+	m := &model{autopilot: &atomic.Pointer[autopilotSnapshot]{}}
 	m.userInput.PromptSuggestion.Text = "stale mission hint"
 	suggestOn := true
 	m.env.AutoPilot = setting.AutoPilotSettings{
@@ -288,7 +288,7 @@ func TestTurnEndHandbackNotice(t *testing.T) {
 // Saving the panel owns the settings, not where the run stands: a changed
 // mission starts over as ready, an unchanged one keeps its live state.
 func TestApplyAutopilotConfigMissionState(t *testing.T) {
-	m := &model{autopilot: &atomic.Pointer[autopilotRuntime]{}}
+	m := &model{autopilot: &atomic.Pointer[autopilotSnapshot]{}}
 	m.env.AutoPilot = setting.AutoPilotSettings{Mission: "ship it", MissionState: setting.MissionPaused}
 
 	m.applyAutopilotConfig(setting.AutoPilotSettings{Mission: "ship it"})
@@ -313,11 +313,11 @@ func TestApplyAutopilotConfigMissionState(t *testing.T) {
 // the way the app enters it (the steer gates read the permission posture, not
 // the raw field).
 func newSuggestionModel(t *testing.T, suggest bool, mode setting.OperationMode) *model {
-	m := &model{autopilot: &atomic.Pointer[autopilotRuntime]{}}
-	m.services.LLM = &llm.Conn{}
-	m.services.Agent = &runtime.Runtime{}
-	m.services.Setting = setting.New(setting.NewData())
-	m.services.MCP = mcp.NewManagerForTest(nil)
+	m := &model{autopilot: &atomic.Pointer[autopilotSnapshot]{}}
+	m.features.LLM = &llm.Conn{}
+	m.features.Agent = &runtime.Runtime{}
+	m.features.Setting = setting.New(setting.NewData())
+	m.features.MCP = mcp.NewServerSetForTest(nil)
 	m.env.LLMProvider = &autopilotStubProvider{}
 	m.env.SessionPermissions = setting.NewSessionPermissions()
 	m.env.OperationMode = mode
@@ -399,7 +399,7 @@ func TestAutopilotModeSettledSkipsSuggestionMidTurn(t *testing.T) {
 // proposal; typing steps it aside and esc dismisses it.
 func TestMissionOfferInComposer(t *testing.T) {
 	m := newSuggestionModel(t, true, setting.ModeAutoPilot)
-	m.userInput = input.New("", 80, nil, input.SelectorDeps{})
+	m.userInput = input.New("", 80, nil, input.SelectorBindings{})
 	m.env.AutoPilot.Mission = "ship the release"
 	m.env.AutoPilot.MissionState = "" // not started
 
@@ -429,7 +429,7 @@ func TestMissionOfferInComposer(t *testing.T) {
 
 func TestAutopilotSaveWithSuggestOffClearsPromptSuggestion(t *testing.T) {
 	off := false
-	m := &model{autopilot: &atomic.Pointer[autopilotRuntime]{}}
+	m := &model{autopilot: &atomic.Pointer[autopilotSnapshot]{}}
 	m.env.SessionPermissions = setting.NewSessionPermissions()
 	m.userInput.PromptSuggestion.Text = "stale hint"
 

@@ -301,10 +301,10 @@ Test instructions.
 		t.Errorf("GetActive returned %d skills, want 1", len(activeSkills))
 	}
 
-	// Test GetSkillsSection
-	prompt := registry.SkillsSection()
+	// Test PromptSection
+	prompt := registry.PromptSection()
 	if prompt == "" {
-		t.Error("GetSkillsSection returned empty string for active skill")
+		t.Error("PromptSection returned empty string for active skill")
 	}
 	if !contains(prompt, "registry-test") {
 		t.Error("Prompt should contain skill name")
