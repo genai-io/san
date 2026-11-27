@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/genai-io/san/internal/agent/reminder"
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/infra/filecache"
 	"github.com/genai-io/san/internal/llm"
@@ -85,9 +87,17 @@ func CompactConversation(ctx context.Context, c *llm.Client, msgs []core.Message
 	if count < core.MinMessagesToCompact {
 		return "", count, ErrNothingToCompact
 	}
-	summary, err = c.CompactSummary(ctx, msgs, focus, admission)
+	conversationText := core.BuildCompactionText(msgs)
+	if focus != "" {
+		conversationText += fmt.Sprintf("\n\n**Important**: Focus the summary on: %s", focus)
+	}
+	response, err := c.Complete(ctx, system.CompactPrompt(), []core.Message{core.UserMessage(conversationText, nil)}, nil, core.CompactMaxTokens, admission)
 	if err != nil {
-		return "", count, err
+		return "", count, fmt.Errorf("failed to generate summary: %w", err)
+	}
+	summary = strings.TrimSpace(response.Content.Text())
+	if summary == "" {
+		return "", count, fmt.Errorf("compaction produced empty summary")
 	}
 	return core.WithRecentRequests(summary, msgs, c.ContextBudget()), count, nil
 }

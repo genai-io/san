@@ -153,12 +153,9 @@ type InferenceConfig struct {
 	Options func() []ai.Option
 }
 
-// CompactionConfig configures automatic compaction for one agent.
-// A nil Summarize disables both preflight and context-limit recovery.
+// CompactionConfig controls when and how the conversation is shortened.
 type CompactionConfig struct {
-	Budget func() int // read before each step; nil or nonpositive disables preflight only
-	// Summarize prepares a candidate; the engine settles its Finish/Close callbacks,
-	// including when generation returns a candidate alongside an error.
+	Budget    func() int // prompt token limit; nil or zero disables preflight compaction
 	Summarize func(context.Context, []Message) (Compaction, error)
 }
 
@@ -257,7 +254,7 @@ func NewAgent(cfg Config) Agent {
 		system:       cfg.System,
 		tools:        cfg.Tools,
 		inference:    cfg.Inference,
-		compaction:   compactor{config: cfg.Compaction},
+		compaction:   cfg.Compaction,
 		gate:         cfg.Gate,
 		resultFilter: cfg.ResultFilter,
 		inbox:        make(chan Inbound, cfg.InboxBuf),

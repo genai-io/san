@@ -30,7 +30,7 @@ type agent struct {
 	system       System
 	tools        *Tools
 	inference    InferenceConfig
-	compaction   compactor
+	compaction   CompactionConfig
 	gate         Gate
 	resultFilter ResultFilter
 	inbox        chan Inbound
@@ -43,6 +43,7 @@ type agent struct {
 	// Request-context display is staged by preInfer and delivered at most once
 	// after the provider responds, before showing the first response fragment.
 	contextNotice func() Event
+	measured      promptMeasure
 
 	// wake tells an idle Run that Append queued something. Messages
 	// themselves wait in inner's queue, which lands them at the next step
@@ -89,7 +90,7 @@ func (a *agent) Inbox() chan<- Inbound { return a.inbox }
 func (a *agent) Outbox() <-chan Event  { return a.outbox }
 func (a *agent) Messages() []Message   { return a.inner.Messages() }
 func (a *agent) SetMessages(msgs []Message) {
-	a.compaction.measured.reset()
+	a.measured.reset()
 	a.inner.SetMessages(msgs)
 }
 
@@ -480,13 +481,13 @@ func (a *agent) preInfer(_ context.Context, inf *sdkagent.Inference) error {
 	if inference.Options != nil {
 		inf.Options = append(inf.Options, inference.Options()...)
 	}
-	a.compaction.measured.sending(len(inf.Messages))
+	a.measured.sending(len(inf.Messages))
 	return nil
 }
 
 // postInfer records what the provider counted for the call just made.
 func (a *agent) postInfer(_ context.Context, resp *ai.Response) error {
-	a.compaction.measured.answered(resp.Usage)
+	a.measured.answered(resp.Usage)
 	return nil
 }
 

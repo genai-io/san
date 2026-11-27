@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/genai-io/san/internal/agent/reminder"
@@ -258,13 +259,19 @@ func buildAgent(p BuildParams, opts ...buildOption) (core.Agent, *PermissionGate
 	tools := tool.AdaptToolRegistry(schemas, cwdFunc, adaptOpts...)
 	p.addTools(tools)
 
+	compactClient := client
 	cache := p.FileCache
 	compactFunc := func(ctx context.Context, msgs []core.Message) (core.Compaction, error) {
 		scope := p.Recording.Completion(session.PurposeCompaction)
 		result := scope.Compaction("")
-		summary, err := client.CompactSummary(ctx, msgs, "", scope.Admission())
+		text := core.BuildCompactionText(msgs)
+		resp, err := compactClient.Complete(ctx, system.CompactPrompt(), []core.Message{core.UserMessage(text, nil)}, nil, core.CompactMaxTokens, scope.Admission())
 		if err != nil {
 			return result, err
+		}
+		summary := strings.TrimSpace(resp.Content.Text())
+		if summary == "" {
+			return result, fmt.Errorf("compaction produced empty summary")
 		}
 		budget := client.ContextBudget()
 		result.Summary = core.WithRecentRequests(summary, msgs, budget)

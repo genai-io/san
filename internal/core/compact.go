@@ -49,34 +49,18 @@ func (e *compactionError) Unwrap() error { return e.err }
 // prompt no shorter.
 const MinMessagesToCompact = 3
 
-type compactor struct {
-	config   CompactionConfig
-	measured promptMeasure
-}
-
-func (p *compactor) enabled(msgs []Message) bool {
-	return p.config.Summarize != nil && len(msgs) >= MinMessagesToCompact
-}
-
-func (p *compactor) beforeStep(c sdkagent.PreStepContext) bool {
-	if !p.enabled(c.Messages) || p.config.Budget == nil {
-		return false
-	}
-	budget := p.config.Budget()
-	return budget > 0 && NeedsCompaction(p.measured.prompt(c.Messages, c.Tokens), budget)
-}
-
-func (p *compactor) retry(c sdkagent.InferErrorContext) bool {
-	return p.enabled(c.Messages) && c.Attempt <= 2 && ai.IsContextExceeded(c.Err)
-}
-
-func (p *compactor) generate(ctx context.Context, msgs []Message) (Compaction, error) {
-	p.measured.reset()
-	return p.config.Summarize(ctx, msgs)
-}
-
+// TODO(sdk-go): compaction is generic; move it to sdk-go as a package over PreStep/OnInferError, keeping only the prompt and reminders here.
+// preStep shortens the conversation once the next prompt would leave the reply
+// no room in the window.
 func (a *agent) preStep(ctx context.Context, c sdkagent.PreStepContext) ([]Message, error) {
-	if !a.compaction.beforeStep(c) {
+	if a.compaction.Summarize == nil || len(c.Messages) < MinMessagesToCompact {
+		return nil, nil
+	}
+	if a.compaction.Budget == nil {
+		return nil, nil
+	}
+	budget := a.compaction.Budget()
+	if budget <= 0 || !NeedsCompaction(a.measured.prompt(c.Messages, c.Tokens), budget) {
 		return nil, nil
 	}
 	return a.shorten(ctx, c.Messages, "auto")
@@ -87,7 +71,10 @@ func (a *agent) preStep(ctx context.Context, c sdkagent.PreStepContext) ([]Messa
 // conversation is shortened and the step taken again. Two goes — a summary
 // that is still too long is a summarizer problem.
 func (a *agent) onInferError(ctx context.Context, c sdkagent.InferErrorContext) (*sdkagent.Recovery, error) {
-	if !a.compaction.retry(c) {
+	if a.compaction.Summarize == nil || !ai.IsContextExceeded(c.Err) || c.Attempt > 2 {
+		return nil, nil
+	}
+	if len(c.Messages) < MinMessagesToCompact {
 		return nil, nil
 	}
 	shorter, err := a.shorten(ctx, c.Messages, "auto")
@@ -109,7 +96,9 @@ func (a *agent) shorten(ctx context.Context, msgs []Message, trigger string) ([]
 	// Shortening is a model call of its own and takes as long as one. The hook
 	// says so, because only the code deciding to shorten knows it is about to.
 	sdkagent.Compacting(ctx)
-	c, err := a.compaction.generate(ctx, msgs)
+	a.measured.reset()
+
+	c, err := a.compaction.Summarize(ctx, msgs)
 	if err != nil {
 		closeErr := c.close()
 		var admission *ai.AdmissionError

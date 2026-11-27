@@ -775,9 +775,14 @@ func subagentCompactFunc(client *llm.Client, task string, owner *session.Session
 	return func(ctx context.Context, msgs []core.Message) (core.Compaction, error) {
 		scope := owner.Completion(session.PurposeCompaction)
 		result := scope.Compaction("")
-		summary, err := client.CompactSummary(ctx, msgs, "", scope.Admission())
+		text := core.BuildCompactionText(msgs)
+		resp, err := client.Complete(ctx, system.CompactPrompt(), []core.Message{core.UserMessage(text, nil)}, nil, core.CompactMaxTokens, scope.Admission())
 		if err != nil {
 			return result, err
+		}
+		summary := strings.TrimSpace(resp.Content.Text())
+		if summary == "" {
+			return result, fmt.Errorf("compaction produced empty summary")
 		}
 		result.Summary = withOriginalTask(summary, task)
 		result.Reminders = reminders

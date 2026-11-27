@@ -11,25 +11,6 @@ import (
 	"github.com/genai-io/sdk-go/pkg/ai/aitest"
 )
 
-func TestCompactorRecoveryWithoutPreflightBudget(t *testing.T) {
-	p := compactor{config: CompactionConfig{Summarize: func(context.Context, []Message) (Compaction, error) {
-		t.Fatal("trigger decisions must not generate summaries")
-		return Compaction{}, nil
-	}}}
-	msgs := make([]Message, MinMessagesToCompact)
-	if p.beforeStep(sdkagent.PreStepContext{Messages: msgs, Tokens: 100}) {
-		t.Fatal("preflight enabled without a budget")
-	}
-	failure := sdkagent.InferErrorContext{Messages: msgs, Err: &ai.Error{Kind: ai.KindContextExceeded}, Attempt: 2}
-	if !p.retry(failure) {
-		t.Fatal("second recovery must not require a budget")
-	}
-	failure.Attempt++
-	if p.retry(failure) {
-		t.Fatal("third recovery must be declined")
-	}
-}
-
 func compactionTestAgent(t *testing.T, cfg Config) *agent {
 	t.Helper()
 	cfg.System = NewSystem()
