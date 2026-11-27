@@ -135,10 +135,9 @@ need no changes.
 
 ## Internals
 
-There are no business-logic internals to document — implementations live
-in `internal/agent` (for `core.Agent`), `internal/core/system/` (for
-`System`), `internal/tool/` (for `Tool`/`Tools`), and
-`internal/llm` (for `LLM`).
+`core.Agent` is implemented in `core` and is used by both main sessions and
+subagents. The main-session runtime in `internal/agent` assembles and owns an
+executor; it is not the implementation of `core.Agent`.
 
 Three implementation files back `NewAgent`, kept inside `core` because the
 loop is inseparable from the contract:
