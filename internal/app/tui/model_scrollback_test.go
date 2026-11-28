@@ -649,10 +649,10 @@ func TestToolResultsCommitAsTheyFinish(t *testing.T) {
 	printed := ansi.Strip(renderScrollbackLines(m.flush.visible))
 	last := -1
 	for _, text := range []string{
-		"● Read(third.go)\n  └ 3 lines",
+		"● Read third.go · 3 lines",
 		"Background task finished",
-		"● Read(first.go)\n  └ 1 line",
-		"● Read(second.go)\n  └ 2 lines",
+		"● Read first.go · 1 line",
+		"● Read second.go · 2 lines",
 	} {
 		at := strings.Index(printed, text)
 		if at <= last || strings.Count(printed, text) != 1 {

@@ -31,24 +31,26 @@ func TestAgentElapsedTitleWidth(t *testing.T) {
 	}
 }
 
-func TestAgentCompletedElapsedTitle(t *testing.T) {
+func TestAgentSettledHeadingOmitsElapsed(t *testing.T) {
 	call := core.ToolCall{ID: "worker", Name: "Agent", Input: `{"name":"reviewer","description":"Review execution and approval consistency"}`}
 	for _, width := range []int{32, 40, 80} {
 		for _, state := range []struct {
-			name    string
 			details any
-			timed   bool
+			suffix  string
 		}{
-			{"completed", toolresult.AgentDetails{Duration: 12 * time.Second}, true},
-			{"stopped", toolresult.AgentDetails{Duration: 12 * time.Second, Stopped: true}, true},
-			{"background", toolresult.AgentDetails{Duration: 12 * time.Second, TaskID: "task"}, false},
-			{"unknown duration", toolresult.AgentDetails{}, false},
-			{"legacy", nil, false},
+			{toolresult.AgentDetails{Duration: 12 * time.Second}, " · Finished"},
+			{toolresult.AgentDetails{Duration: 12 * time.Second, Stopped: true, Error: "context canceled"}, " · Stopped"},
+			{toolresult.AgentDetails{Duration: 12 * time.Second, TaskID: "task"}, ""},
+			{toolresult.AgentDetails{}, " · Finished"},
+			{nil, ""},
 		} {
 			got := ansi.Strip(RenderToolCalls(ToolCallsParams{ToolCalls: []core.ToolCall{call}, Width: width, ResultMap: map[string]ToolResultData{call.ID: {ToolName: "Agent", Content: "Finding", Details: state.details}}}))
 			title, _, _ := strings.Cut(got, "\n")
-			if strings.HasSuffix(title, " · 12s") != state.timed || ansi.StringWidth(title) > width {
-				t.Fatalf("%s width %d: %q", state.name, width, got)
+			if !strings.HasSuffix(title, state.suffix) || strings.Contains(title, "12s") || ansi.StringWidth(title) > width {
+				t.Fatalf("expected suffix %q at width %d: %q", state.suffix, width, got)
+			}
+			if state.suffix == " · Stopped" && got != title+"\n" {
+				t.Fatalf("routine stop should have no receipt row: %q", got)
 			}
 		}
 	}

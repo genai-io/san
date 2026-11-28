@@ -771,6 +771,8 @@ type ToolResultData struct {
 	// Decision is the judge decision for this call (nil if it was not
 	// judged), drawn as a colored line between the call and its result.
 	Decision *core.JudgeDecision
+	// statusInHeading suppresses an already-rendered status, not result content.
+	statusInHeading bool
 }
 
 // RenderToolCalls renders the tool calls section of an assistant core.
@@ -797,7 +799,20 @@ func RenderToolCalls(params ToolCallsParams) string {
 				continue
 			}
 		}
-		if tool.IsAgentToolName(tc.Name) {
+		resultData, hasResult := params.ResultMap[tc.ID]
+		resultNote := ""
+		if hasResult && !params.ToolCallsExpanded && !tool.IsAgentToolName(tc.Name) {
+			if row, ok := settledToolHeading(tc, resultData, params.Width); ok {
+				sb.WriteString(row)
+				if tc.Name != tool.ToolEdit && tc.Name != tool.ToolWrite {
+					continue
+				}
+				resultData.statusInHeading = true
+			}
+		}
+		if resultData.statusInHeading {
+			// The file-change heading is already written; keep its diff below.
+		} else if tool.IsAgentToolName(tc.Name) {
 			if sb.Len() > 0 && tc.Name != tool.ToolSendMessage {
 				sb.WriteString("\n")
 			}
@@ -816,22 +831,22 @@ func RenderToolCalls(params ToolCallsParams) string {
 				color = agentIdentityColor(identity, params.AgentColors)
 			}
 			label := formatAgentLabel(heading)
-			_, hasResult := params.ResultMap[tc.ID]
 			rowWidth := params.Width
 			detail := ""
 			if tc.Name != tool.ToolSendMessage {
-				if result, ok := params.ResultMap[tc.ID].Details.(toolresult.AgentDetails); hasResult && ok && result.TaskID == "" && result.Duration > 0 {
-					detail = agentElapsed(result.Duration)
+				if details, ok := resultData.Details.(toolresult.AgentDetails); hasResult && ok && details.TaskID == "" &&
+					!params.ToolCallsExpanded && !resultData.Expanded && resultData.Decision == nil {
+					name, _, _ := strings.Cut(label, ": ")
+					status, reason, style := compactAgentStatus(resultData, details)
+					detail, resultNote = toolStatusDetail(name, status, compactFailureReason(reason, rowWidth), style, rowWidth)
+					resultData.statusInHeading = detail != ""
 				} else if !hasResult && params.agentExecuting(tc) && !params.parkedOnUser(tc.ID) {
 					detail = runningRowDetail(tc, params)
-				}
-				if rowWidth > 0 {
-					// Keep the Agent identity visible before reserving its timer.
-					if lipgloss.Width(detail) > max(0, rowWidth-lipgloss.Width("● Agent")) {
+					if rowWidth > 0 && lipgloss.Width(detail) > max(0, rowWidth-lipgloss.Width("● Agent")) {
 						detail = ""
 					}
-					rowWidth = max(1, rowWidth-lipgloss.Width(detail))
 				}
+				rowWidth = toolHeadingWidth(rowWidth, detail)
 			}
 			if (params.CompactAgentLabel || hasResult && !params.ToolCallsExpanded) && rowWidth > 0 {
 				label = widgets.TruncateText(label, max(1, rowWidth-widgets.ToolIconWidth))
@@ -926,7 +941,7 @@ func RenderToolCalls(params ToolCallsParams) string {
 			}
 		}
 
-		if resultData, ok := params.ResultMap[tc.ID]; ok {
+		if hasResult {
 			resultData.ToolInput = tc.Input
 			resultData.Interactive = params.expandHints()
 			resultData.Width = params.Width
@@ -936,6 +951,7 @@ func RenderToolCalls(params ToolCallsParams) string {
 			// Decision sits between the call and its result, mirroring the
 			// order things happened: judged → ran → produced this output.
 			sb.WriteString(renderDecision(resultData.Decision))
+			sb.WriteString(renderAgentLocalBody(resultNote, params.Width))
 			sb.WriteString(RenderToolResultInline(resultData, params.MDRenderer))
 		} else if tool.IsAgentToolName(tc.Name) && tc.Name != tool.ToolSendMessage { // a message runs no agent
 			if params.awaitsApproval(tc.ID) {

@@ -32,7 +32,10 @@ func TestBashResultGuidesShareCommandColumnAndStayQuiet(t *testing.T) {
 			details := toolresult.BashDetails{LineCount: 30, Tail: "one\ntwo\n"}
 			raw := renderBashToolResultInline(ToolResultData{ToolName: "Bash", Content: "one\ntwo\n", Details: details, BashPreviewLines: 2, Width: width})
 			rows := strings.Split(strings.TrimSuffix(ansi.Strip(raw), "\n"), "\n")
-			omission := "… (28)"
+			omission := "… 28 earlier lines"
+			if width == 12 {
+				omission = "… (28)"
+			}
 			if width == 10 {
 				omission = "│ …"
 			}
@@ -64,7 +67,7 @@ func TestBashByteCappedLiveTailKeepsExactOmission(t *testing.T) {
 		ToolCalls: []core.ToolCall{call}, Width: 40, BashPreviewLines: 2,
 		ToolProgress: map[string]ToolProgress{call.ID: {Counter: "100 lines", Tail: tail, LineCount: 100, TailTruncated: true}},
 	}))
-	if !strings.Contains(view, "  │ … (98)\n") || strings.Contains(view, "└") {
+	if !strings.Contains(view, "  │ … 98 earlier lines\n") || strings.Contains(view, "└") {
 		t.Fatalf("live byte-capped output lost exact omission or closed early:\n%s", view)
 	}
 	partial := renderOutputPreview(strings.Repeat("x", 4096), 2, 40, toolresult.BashDetails{LineCount: 1, TailTruncated: true}, false)

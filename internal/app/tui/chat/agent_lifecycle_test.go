@@ -191,7 +191,7 @@ func TestAgentLifecycleIdentityAndStateTransitions(t *testing.T) {
 				t.Fatalf("width %d: completed identity missing or overflowing: %q", width, completedHeader)
 			}
 			header = completedHeader + "\n"
-			check("No vulnerabilities found", "Thinking...", "12s", "Finished", "Completed")
+			check("No vulnerabilities found", "Thinking...", "12s", "Completed")
 		}
 	}
 }

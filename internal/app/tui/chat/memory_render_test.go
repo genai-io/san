@@ -153,7 +153,7 @@ func TestMemoryStepHidesCalls(t *testing.T) {
 	if got := RenderMessageAt(p, 1, true); got != "" {
 		t.Errorf("committed memory step without thinking = %q, want nothing", got)
 	}
-	if got := render(quiet, true); !strings.Contains(got, "Read(") {
+	if got := render(quiet, true); !strings.Contains(got, "● Read ") || !strings.Contains(got, "Failed") {
 		t.Errorf("a failed memory step should show, got %q", got)
 	}
 	answer := quiet

@@ -169,14 +169,18 @@ func renderNestedFailure(data ToolResultData) string {
 }
 
 func compactFailureReason(content string, width int) string {
+	if width <= 0 {
+		width = 80
+	}
+	return widgets.TruncateText(firstFailureLine(content), max(1, width-8))
+}
+
+func firstFailureLine(content string) string {
 	if _, reason, ok := splitBashFailureContent(content); ok {
 		content = reason
 	}
 	line, _, _ := strings.Cut(strings.TrimSpace(content), "\n")
-	if width <= 0 {
-		width = 80
-	}
-	return widgets.TruncateText(visibleLine(line), max(1, width-8))
+	return visibleLine(line)
 }
 
 func renderNestedGenericToolResultInline(data ToolResultData) string {
@@ -265,7 +269,9 @@ func renderNestedFileChangeResultInline(data ToolResultData) string {
 				sb.WriteString(truncatedStyle.Render(fmt.Sprintf("  … diff truncated (%d more lines)", details.TruncatedDiffLines)) + "\n")
 			}
 		}
-		sb.WriteString(renderNestedToolTrailer(fileChangeSummary(details), toolResultStyle))
+		if !data.statusInHeading {
+			sb.WriteString(renderNestedToolTrailer(fileChangeSummary(details), toolResultStyle))
+		}
 		return sb.String()
 	}
 
@@ -680,19 +686,18 @@ func renderAgentResultDetails(data ToolResultData, details toolresult.AgentDetai
 		return renderAgentBackgroundStart(details.TaskID, data.Width)
 	}
 	if !data.Expanded {
+		status, reason, style := compactAgentStatus(data, details)
 		if details.Stopped || data.IsError {
-			status, style := "Failed", errorStyle
-			if details.Stopped {
-				status, style = "Stopped", toolResultStyle
+			if data.statusInHeading {
+				return ""
 			}
-			reason := details.Error
-			if reason == "" {
-				reason = data.Content
-			}
-			if reason != "" && !(details.Stopped && widgets.IsRoutineStopReason(reason)) {
+			if reason != "" {
 				status += " · " + reason
 			}
 			return style.Render("  "+compactFailureReason(status, data.Width)) + "\n"
+		}
+		if data.statusInHeading && data.AgentPreviewLines <= 0 {
+			return ""
 		}
 		if details.Response != nil {
 			return renderAgentResponsePreview(*details.Response, data.Width, mdRenderer, data.AgentPreviewLines)

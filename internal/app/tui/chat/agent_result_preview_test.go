@@ -166,7 +166,7 @@ func TestAgentResultPreviewIdentityExpansion(t *testing.T) {
 		if !strings.HasPrefix(header, "● reviewer: Review") || ansi.StringWidth(header) > width || strings.TrimSpace(body) != "Useful result" {
 			t.Fatalf("completed identity should occupy one bounded row: %q", got)
 		}
-		if width < 100 && !strings.HasSuffix(header, "…") {
+		if width < 100 && !strings.HasSuffix(header, "… · Finished") {
 			t.Fatalf("long identity missing inline truncation: %q", header)
 		}
 		params.ToolCallsExpanded = true

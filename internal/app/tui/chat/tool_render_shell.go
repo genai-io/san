@@ -241,7 +241,13 @@ func renderBashOmission(output, preview string, width int, details toolresult.Ba
 	}
 	label := "…"
 	if omitted := details.LineCount - shown; omitted > 0 {
-		counted := fmt.Sprintf("… (%d)", omitted)
+		counted := fmt.Sprintf("… %d earlier lines", omitted)
+		if omitted == 1 {
+			counted = "… 1 earlier line"
+		}
+		if lipgloss.Width(counted) > bashOutputRoom(width) {
+			counted = fmt.Sprintf("… (%d)", omitted)
+		}
 		if lipgloss.Width(counted) <= bashOutputRoom(width) {
 			label = counted
 		}

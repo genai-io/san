@@ -43,18 +43,30 @@ func renderAgentView(v AgentView, p RenderContext) string {
 	}
 	label := formatAgentLabel(agentInput{Name: name, Description: description, Valid: true})
 	running := v.Status == "running"
-	detail := ""
+	detail, note := "", ""
 	if running && v.AwaitingApproval {
 		detail = toolResultStyle.Render(" · awaiting approval")
 	} else if running && !p.DockedModalActive && !v.StartedAt.IsZero() {
 		detail = agentElapsed(time.Since(v.StartedAt))
-	} else if !running && v.Duration > 0 {
-		detail = agentElapsed(v.Duration)
+	} else if !running {
+		status := backgroundStatusLabel(v.Status)
+		if v.Status == "completed" {
+			status = "Finished"
+		}
+		reason := v.Error
+		if v.Status != "failed" && widgets.IsRoutineStopReason(reason) {
+			reason = ""
+		}
+		style := backgroundStatusStyle(v.Status)
+		if v.Status == "completed" {
+			style = toolResultStyle
+		}
+		detail, note = toolStatusDetail(name, status, compactFailureReason(reason, p.Width), style, p.Width)
 	}
-	if lipgloss.Width(detail) > max(0, p.Width-lipgloss.Width("● Agent")) {
+	if running && lipgloss.Width(detail) > max(0, p.Width-lipgloss.Width("● Agent")) {
 		detail = ""
 	}
-	width := max(1, p.Width-lipgloss.Width(detail))
+	width := toolHeadingWidth(p.Width, detail)
 	label = widgets.TruncateText(label, max(1, width-widgets.ToolIconWidth))
 	icon := "●"
 	if running && !v.AwaitingApproval && !p.DockedModalActive {
@@ -67,8 +79,8 @@ func renderAgentView(v AgentView, p RenderContext) string {
 		}
 		return heading + renderAgentActivityPreview(v.Activity, p.Width, p.AgentPreviewLines)
 	}
-	body := ""
-	if v.Status != "completed" {
+	body := renderAgentLocalBody(note, p.Width)
+	if detail == "" && v.Status != "completed" {
 		status := backgroundStatusLabel(v.Status)
 		if v.Error != "" && (v.Status == "failed" || !widgets.IsRoutineStopReason(v.Error)) {
 			status += " · " + v.Error

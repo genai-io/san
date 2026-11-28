@@ -41,6 +41,17 @@ on `*model`, never reaching down into root from a sub-model. Source 2
 (agent → main) is not an app sub-package: it is the process-wide
 [`mail`](mail.md), which the root opens as `mail.Main`.
 
+### Tool transcript
+
+Compact tool rows put short results next to the call: read counts, file-change
+summaries, and routine failure statuses. A short diagnostic can appear inline
+only if it fits without displacing the target. Otherwise, the conversation
+shows up to three diagnostic rows and marks any omission; expand the tool in
+History to see the full result. Edit and Write still show inline, numbered
+diffs in the conversation. Running Agent rows show
+elapsed time and recent activity; settled rows show status and findings rather
+than stale progress. Expanded and judged calls keep their separate evidence.
+
 ### Extension reload
 
 See the [reload contract](../concepts/extension-model.md#reload-contract) for
