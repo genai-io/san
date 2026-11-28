@@ -47,7 +47,7 @@ func TestMemoryReadNoticeStaysWithItsToolStep(t *testing.T) {
 	}
 	out := stripANSI(RenderToolCalls(params))
 	last := -1
-	for _, text := range []string{"Bash(before)", "⟡ Memory · read: Sign off PR commits", "Bash(after)"} {
+	for _, text := range []string{"Bash(before)", "✢ Memory · read: Sign off PR commits", "Bash(after)"} {
 		i := strings.Index(out, text)
 		if i <= last || strings.Count(out, text) != 1 {
 			t.Fatalf("memory read must stay in its original tool slot (%q): %q", text, out)
@@ -84,7 +84,7 @@ func TestMemoryReadOnlyStepAppearsBeforeTheAnswer(t *testing.T) {
 	}
 	p := RenderContext{AutoMemoryStore: system.MemoryStore(filepath.Dir(path)), Width: 80, Messages: msgs, InlinedResults: PrecomputeInlinedResults(msgs, 0)}
 	out := stripANSI(RenderMessageRange(p, 0, len(msgs), false))
-	thinking, notice, answer := strings.Index(out, "Checking the commit convention"), strings.Index(out, "⟡ Memory · read: Sign off PR commits"), strings.Index(out, "The PR is ready.")
+	thinking, notice, answer := strings.Index(out, "Checking the commit convention"), strings.Index(out, "✢ Memory · read: Sign off PR commits"), strings.Index(out, "The PR is ready.")
 	if thinking < 0 || notice <= thinking || answer <= notice || strings.Count(out, "Sign off PR commits") != 1 {
 		t.Fatalf("memory-only steps must keep their notice before the answer: %q", out)
 	}
@@ -98,7 +98,7 @@ func TestMemoryReadMarkerBreathesOnlyWhileReading(t *testing.T) {
 		return RenderToolCalls(p)
 	}
 	faint, peak := render(0), render(3)
-	if faint == peak || stripANSI(faint) != stripANSI(peak) || !strings.Contains(stripANSI(faint), "⟡ Memory · reading: Sign off PR commits") {
+	if faint == peak || stripANSI(faint) != stripANSI(peak) || !strings.Contains(stripANSI(faint), "✢ Memory · reading: Sign off PR commits") {
 		t.Fatalf("the memory marker should breathe without flashing its text: %q / %q", faint, peak)
 	}
 	p.ResultMap = map[string]ToolResultData{read.ID: {ToolName: "Read", Content: "Private memory body"}}
@@ -132,7 +132,7 @@ func TestRecalledMemoryAppearsBesideTheReceivingToolResult(t *testing.T) {
 		m.Append(core.ChatMessage{Role: core.ChatAssistant, Content: "Answer after recall"})
 		p := RenderContext{AutoMemoryStore: m.AutoMemoryStore, Width: 80, Messages: m.Messages, InlinedResults: PrecomputeInlinedResults(m.Messages, 0)}
 		out := stripANSI(RenderMessageRange(p, 0, len(m.Messages), false))
-		notice := strings.Index(out, "⟡ Memory · recalled: Sign off PR commits")
+		notice := strings.Index(out, "✢ Memory · recalled: Sign off PR commits")
 		if notice < 0 || notice >= strings.Index(out, "Answer after recall") || strings.Count(out, "Sign off PR commits") != 1 {
 			t.Fatalf("%s: recall notice must belong to its receiving result: %q", call.ID, out)
 		}
@@ -150,8 +150,8 @@ func TestFastRecallNoticeFitsOnOneMutedLine(t *testing.T) {
 	}
 	data := m.Messages[0].AutoMemoryRecallNotice
 	for width, want := range map[int]string{
-		28: "⟡ Memory · recalled 2 notes\n",
-		80: "⟡ Memory · recalled 2 notes — sign-off, freeze\n",
+		28: "✢ Memory · recalled 2 notes\n",
+		80: "✢ Memory · recalled 2 notes — sign-off, freeze\n",
 	} {
 		if got := stripANSI(renderMemoryRecallNotice(data, width)); got != want || lipgloss.Width(got) > width {
 			t.Fatalf("width %d: rendered %q, want %q", width, got, want)
@@ -166,7 +166,7 @@ func TestMemoryUpdateNoticesUseMemoryMark(t *testing.T) {
 		"Memory · forgot example-environment.md from project",
 	} {
 		p := RenderContext{Width: 80, Messages: []core.ChatMessage{{Role: core.ChatNotice, Content: text}}}
-		if got := stripANSI(RenderMessageRange(p, 0, 1, false)); !strings.Contains(got, "⟡ "+text) || strings.Contains(got, "✦") {
+		if got := stripANSI(RenderMessageRange(p, 0, 1, false)); !strings.Contains(got, "✢ "+text) || strings.Contains(got, "✦") {
 			t.Fatalf("expected a memory-styled result for %q, got %q", text, got)
 		}
 	}
@@ -175,7 +175,7 @@ func TestMemoryUpdateNoticesUseMemoryMark(t *testing.T) {
 func TestAutoMemoryUpdateNoticeDoesNotDependOnCopy(t *testing.T) {
 	const text = "Saved an Auto Memory note"
 	p := RenderContext{Width: 80, Messages: []core.ChatMessage{{Role: core.ChatNotice, Content: text, AutoMemoryUpdated: true}}}
-	if got := stripANSI(RenderMessageRange(p, 0, 1, false)); !strings.Contains(got, "⟡ "+text) {
+	if got := stripANSI(RenderMessageRange(p, 0, 1, false)); !strings.Contains(got, "✢ "+text) {
 		t.Fatalf("memory update notice lost its styling: %q", got)
 	}
 }

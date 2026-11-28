@@ -80,7 +80,7 @@ details drop stale progress and routine cancellation errors, retaining meaningfu
 findings and genuine reasons. Explicit expansion retains original content and
 usage details; telemetry and persisted results are unchanged.
 Errors, exit codes, and test results remain actionable output, not metadata to
-suppress. Keep the upstream `Memory ⟡` and `Recap ※` identities and meaningful
+suppress. Keep distinct `✢ Memory` and `※ Recap` markers and meaningful
 recap facts; do not add repeated transcript-access hints.
 
 Asynchronous notices remain conversation content, ahead of a standalone waiting

@@ -8,7 +8,7 @@ import (
 )
 
 func TestMemoryUpdateStatusIsTransientAndManualOnly(t *testing.T) {
-	const label = "⟡ Updating memory…"
+	const label = "✢ Updating memory…"
 	m := fixedComposerModel(80, 12)
 	m.userInput.Textarea.SetValue("draft")
 	idle := m.View()
@@ -40,7 +40,7 @@ func TestMemoryUpdateStatusFitsNarrowFooter(t *testing.T) {
 	m.memoryUpdate = &memoryUpdate{manual: true}
 	footer, inputRow := m.renderNormalBottom(strings.Repeat("─", width-1), "", "")
 	row := strings.Split(ansi.Strip(footer), "\n")[inputRow-2]
-	if !strings.HasPrefix(row, "⟡ Updating") || ansi.StringWidth(row) >= width {
+	if !strings.HasPrefix(row, "✢ Updating") || ansi.StringWidth(row) >= width {
 		t.Fatalf("memory update status missing or too wide: %q", row)
 	}
 }
