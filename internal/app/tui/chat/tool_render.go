@@ -790,6 +790,9 @@ func renderAgentResponsePreview(response string, width int, mdRenderer *MDRender
 	if previewLines == 0 {
 		return renderAgentLocalBody("Finished", width)
 	}
+	if strings.TrimSpace(response) == "" {
+		return ""
+	}
 	if width <= 0 {
 		width = 80
 	}
@@ -797,10 +800,13 @@ func renderAgentResponsePreview(response string, width int, mdRenderer *MDRender
 		mdRenderer = NewMDRenderer(width)
 	}
 	response = strings.TrimSpace(xansi.Strip(renderMarkdownContent(mdRenderer, response)))
-	if response == "" {
-		response = "No output"
+	guide := lipgloss.NewStyle().Foreground(widgets.CurrentTheme.TextDisabled)
+	branch, end := "", ""
+	room := width
+	if width >= lipgloss.Width(nestedBodyPrefix)+2 {
+		branch, end = guide.Render(nestedBodyPrefix), guide.Render(nestedTrailerPrefix)
+		room -= lipgloss.Width(nestedBodyPrefix)
 	}
-	room := max(1, width-3)
 	lines := make([]string, 0, previewLines)
 	for line := range strings.SplitSeq(xansi.Wrap(response, room, " "), "\n") {
 		if strings.TrimSpace(line) == "" {
@@ -808,12 +814,20 @@ func renderAgentResponsePreview(response string, width int, mdRenderer *MDRender
 		}
 		lines = append(lines, strings.TrimRight(line, " "))
 	}
-	prefix := ""
+	var out strings.Builder
 	if omitted := len(lines) - previewLines; omitted > 0 {
-		prefix = toolResultStyle.Render(fmt.Sprintf("  … (%d)", omitted)) + "\n"
+		label := widgets.TruncateText(fmt.Sprintf("… (%d)", omitted), room)
+		out.WriteString(branch + toolResultStyle.Render(label) + "\n")
 		lines = lines[omitted:]
 	}
-	return prefix + renderAgentLocalLines(lines)
+	for i, line := range lines {
+		prefix := branch
+		if i == len(lines)-1 {
+			prefix = end
+		}
+		out.WriteString(prefix + toolResultStyle.Render(line) + "\n")
+	}
+	return out.String()
 }
 
 func splitByProcessCount(body string, processCount int) (process, response string) {

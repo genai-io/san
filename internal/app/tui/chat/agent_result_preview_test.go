@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/genai-io/san/internal/app/tui/widgets"
 	"github.com/genai-io/san/internal/core"
@@ -21,7 +22,7 @@ func TestAgentPreviewExcludesGeneratedTaskIDFromBudget(t *testing.T) {
 			data := ToolResultData{ToolName: "Agent", Content: content, Width: width, AgentPreviewLines: 3,
 				Details: toolresult.AgentDetails{Response: &response, Identity: toolresult.AgentIdentity{ID: "task-123"}}}
 			got := ansi.Strip(RenderToolResultInline(data, nil))
-			if got != "  … (1)\n  Second finding\n  Third finding\n  Fourth finding\n" {
+			if got != "  ┊ … (1)\n  ┊ Second finding\n  ┊ Third finding\n  └ Fourth finding\n" {
 				t.Fatalf("metadata consumed the preview budget: %q", got)
 			}
 			if data.Content != content {
@@ -67,7 +68,7 @@ func TestAgentPreviewPreservesTaskIDInProse(t *testing.T) {
 	empty := ""
 	data := ToolResultData{ToolName: "Agent", Content: "Task ID: task-123", Width: 80, AgentPreviewLines: 3,
 		Details: toolresult.AgentDetails{Response: &empty}}
-	if got := ansi.Strip(RenderToolResultInline(data, nil)); got != "  No output\n" {
+	if got := ansi.Strip(RenderToolResultInline(data, nil)); got != "" {
 		t.Fatalf("metadata-only result should not become prose: %q", got)
 	}
 }
@@ -93,7 +94,7 @@ func TestAgentResultPreviewBudget(t *testing.T) {
 						t.Fatalf("overflow at width %d: %q", width, row)
 					}
 				}
-				if strings.Join(rows, "\n") != "  … (3)\n  Third finding\n  Fourth finding\n  Fifth finding" {
+				if strings.Join(rows, "\n") != "  ┊ … (3)\n  ┊ Third finding\n  ┊ Fourth finding\n  └ Fifth finding" {
 					t.Fatalf("preview must preserve the last three lines: %q", got)
 				}
 				for _, absent := range []string{"HIDDEN_HEAD_SENTINEL", "First", "Second", "AgentID:", "Transcript:", "ToolUses:", "private-model", "private.go", "omitted", "Finished", "Done"} {
@@ -127,7 +128,8 @@ func TestAgentResultPreviewMarkdownAndColor(t *testing.T) {
 				call := core.ToolCall{ID: "a", Name: "Agent", Input: `{"name":"reviewer","description":"Security review"}`}
 				params := ToolCallsParams{AgentPreviewLines: 3, ToolCalls: []core.ToolCall{call}, Width: width, MDRenderer: NewMDRenderer(width), ResultMap: map[string]ToolResultData{"a": {ToolName: "Agent", Content: "Plain finding", Details: toolresult.AgentDetails{}}}}
 				raw := RenderToolCalls(params)
-				if !strings.Contains(raw, toolResultStyle.Render("  Plain finding")) || toolResultStyle.Render("  Plain finding") == toolCallStyle.Render("  Plain finding") {
+				guide := lipgloss.NewStyle().Foreground(widgets.CurrentTheme.TextDisabled).Render(nestedTrailerPrefix)
+				if !strings.Contains(raw, guide+toolResultStyle.Render("Plain finding")) || toolResultStyle.Render("Plain finding") == toolCallStyle.Render("Plain finding") {
 					t.Errorf("actual preview must use dim result color, not header color: %q", raw)
 				}
 				if !strings.Contains(raw, toolCallStyle.Render("Agent")) && !strings.Contains(raw, toolCallStyle.Render("reviewer")) {
@@ -163,7 +165,7 @@ func TestAgentResultPreviewIdentityExpansion(t *testing.T) {
 		params := ToolCallsParams{AgentPreviewLines: 3, ToolCalls: []core.ToolCall{call}, Width: width, ResultMap: map[string]ToolResultData{"a": {ToolName: "Agent", Content: "Useful result", Details: toolresult.AgentDetails{}}}}
 		got := ansi.Strip(RenderToolCalls(params))
 		header, body, _ := strings.Cut(got, "\n")
-		if !strings.HasPrefix(header, "● reviewer: Review") || ansi.StringWidth(header) > width || strings.TrimSpace(body) != "Useful result" {
+		if !strings.HasPrefix(header, "● reviewer: Review") || ansi.StringWidth(header) > width || strings.TrimSpace(body) != "└ Useful result" {
 			t.Fatalf("completed identity should occupy one bounded row: %q", got)
 		}
 		if width < 100 && !strings.HasSuffix(header, "… · Finished") {

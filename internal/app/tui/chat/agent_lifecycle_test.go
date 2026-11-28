@@ -31,13 +31,20 @@ func TestAgentLifecycleResponseWrapsWords(t *testing.T) {
 	const response = "Finding: permission boundaries hold. Validation passed. No changes required."
 	for _, width := range []int{32, 40, 100} {
 		got := ansi.Strip(renderAgentResultDetails(ToolResultData{AgentPreviewLines: 5, Content: response, Width: width}, toolresult.AgentDetails{}, nil))
-		if strings.Join(strings.Fields(got), " ") != response {
-			t.Fatalf("width %d split response words: %q", width, got)
-		}
-		for _, line := range strings.Split(strings.TrimSuffix(got, "\n"), "\n") {
-			if !strings.HasPrefix(line, "  ") || ansi.StringWidth(line) > width {
-				t.Fatalf("width %d lost response indentation or overflowed: %q", width, line)
+		lines := strings.Split(strings.TrimSuffix(got, "\n"), "\n")
+		var prose []string
+		for i, line := range lines {
+			prefix := nestedBodyPrefix
+			if i == len(lines)-1 {
+				prefix = nestedTrailerPrefix
 			}
+			if !strings.HasPrefix(line, prefix) || ansi.StringWidth(line) > width {
+				t.Fatalf("width %d lost response connector or overflowed: %q", width, line)
+			}
+			prose = append(prose, strings.TrimPrefix(line, prefix))
+		}
+		if strings.Join(prose, " ") != response {
+			t.Fatalf("width %d split response words: %q", width, got)
 		}
 	}
 }
@@ -191,7 +198,7 @@ func TestAgentLifecycleIdentityAndStateTransitions(t *testing.T) {
 				t.Fatalf("width %d: completed identity missing or overflowing: %q", width, completedHeader)
 			}
 			header = completedHeader + "\n"
-			check("No vulnerabilities found", "Thinking...", "12s", "Completed")
+			check("└ No vulnerabilities found", "Thinking...", "12s", "Completed")
 		}
 	}
 }
