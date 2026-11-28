@@ -3,6 +3,28 @@
 All notable changes to San are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [v1.25.6] - 2026-11-28
+
+### Added
+- Draft and run Flow workflows from skill invocations, with an English auto-dev workflow and standalone skills ([@yanmxa](https://github.com/yanmxa) in [#851](https://github.com/genai-io/san/pull/851), [#845](https://github.com/genai-io/san/pull/845))
+- Let callers limit delegated agents to selected tools ([@yanmxa](https://github.com/yanmxa) in [#828](https://github.com/genai-io/san/pull/828))
+
+### Changed
+- Compact tool results and Agent completion headings while keeping findings, diagnostics, and numbered diffs visible ([@yanmxa](https://github.com/yanmxa) in [#852](https://github.com/genai-io/san/pull/852))
+- Prefer the launch directory’s `.env` over inherited environment values ([@yanmxa](https://github.com/yanmxa) in [#835](https://github.com/genai-io/san/pull/835))
+- Reduce scrollback allocations and streamline session resume ([@yanmxa](https://github.com/yanmxa) in [#841](https://github.com/genai-io/san/pull/841), [#829](https://github.com/genai-io/san/pull/829))
+- Clarify package ownership across application entry points, the foreground runtime, result limiting, conversation rendering, session drafts, and Flow inspection ([@yanmxa](https://github.com/yanmxa) in [#846](https://github.com/genai-io/san/pull/846), [#848](https://github.com/genai-io/san/pull/848), [#849](https://github.com/genai-io/san/pull/849), [#850](https://github.com/genai-io/san/pull/850), [#833](https://github.com/genai-io/san/pull/833), [#822](https://github.com/genai-io/san/pull/822), [#832](https://github.com/genai-io/san/pull/832))
+
+### Fixed
+- Resume sessions from their creation directory, restore history faster, and hide unused or utility sessions from the picker ([@yanmxa](https://github.com/yanmxa) in [#847](https://github.com/genai-io/san/pull/847), [#820](https://github.com/genai-io/san/pull/820), [#821](https://github.com/genai-io/san/pull/821))
+- Align Flow blueprint execution, recovery, and run controls; reconcile deleted tasks without disabling remaining controls ([@yanmxa](https://github.com/yanmxa) in [#837](https://github.com/genai-io/san/pull/837), [#843](https://github.com/genai-io/san/pull/843))
+- Honor cron calendar rules and show clearer step boundaries ([@yanmxa](https://github.com/yanmxa) in [#838](https://github.com/genai-io/san/pull/838))
+- Preserve drafts, queued messages, and pasted content, and keep selector actions in sync with saved settings ([@yanmxa](https://github.com/yanmxa) in [#839](https://github.com/genai-io/san/pull/839), [#840](https://github.com/genai-io/san/pull/840))
+- Preserve source rows and diagnostics in tool receipts, and clarify SendMessage receipts and activity ([@yanmxa](https://github.com/yanmxa) in [#844](https://github.com/genai-io/san/pull/844), [#824](https://github.com/genai-io/san/pull/824))
+- Show task descriptions for unnamed agents and clarify task status, alignment, and the footer without duplicating model wait text ([@yanmxa](https://github.com/yanmxa) in [#834](https://github.com/genai-io/san/pull/834), [#823](https://github.com/genai-io/san/pull/823), [#827](https://github.com/genai-io/san/pull/827), [#831](https://github.com/genai-io/san/pull/831))
+- Wrap mixed-language text at Unicode boundaries and only offer file completion after a token-leading `@` ([@yanmxa](https://github.com/yanmxa) in [#826](https://github.com/genai-io/san/pull/826), [#825](https://github.com/genai-io/san/pull/825))
+- Expose quota information and resolve CLI command names consistently ([@yanmxa](https://github.com/yanmxa) in [#842](https://github.com/genai-io/san/pull/842))
+
 ## [v1.25.5] - 2026-11-23
 
 ### Added
