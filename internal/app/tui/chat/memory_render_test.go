@@ -82,7 +82,7 @@ func TestTurnMemory(t *testing.T) {
 		ToolCalls:       reads,
 		ResultMap:       map[string]ToolResultData{"r1": {ToolName: "Read"}, "r2": {ToolName: "Read"}},
 	}))
-	if !strings.Contains(out, "⟡ Memory · read: terse answers") || strings.Contains(out, "MEMORY.md") {
+	if !strings.Contains(out, "✢ Memory · read: terse answers") || strings.Contains(out, "MEMORY.md") {
 		t.Errorf("memory reads should show at their step while index reads stay quiet, got %q", out)
 	}
 	out = xansi.Strip(RenderToolCalls(ToolCallsParams{

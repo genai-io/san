@@ -67,7 +67,7 @@ func TestRecallNoticePinsToReceivingResultWhenWriterRunsAhead(t *testing.T) {
 	rows := store.ChatRows(history)
 	p := chat.RenderContext{Width: 80, Messages: rows, InlinedResults: chat.PrecomputeInlinedResults(rows, 0)}
 	out := ansi.Strip(chat.RenderMessageRange(p, 0, len(rows), false))
-	at, answer := strings.Index(out, "⟡ Memory · recalled: Release policy"), strings.Index(out, "Final answer")
+	at, answer := strings.Index(out, "✢ Memory · recalled: Release policy"), strings.Index(out, "Final answer")
 	if at < 0 || answer <= at || strings.Count(out, "Release policy") != 1 || strings.Contains(out, "Private release body") {
 		t.Fatalf("resumed recall moved to the footer or leaked its reminder: %q", out)
 	}
@@ -124,12 +124,12 @@ func TestMemoryReadsCommitBeforeAnswerWithoutTurnEndFooter(t *testing.T) {
 				t.Fatal("a read-only turn added a footer or empty notice at turn end")
 			}
 			printed := ansi.Strip(renderScrollbackLines(m.flush.visible))
-			readAt, answerAt := strings.Index(printed, "⟡ Memory · read: Sign off PR commits"), strings.Index(printed, "PR submitted")
+			readAt, answerAt := strings.Index(printed, "✢ Memory · read: Sign off PR commits"), strings.Index(printed, "PR submitted")
 			if readAt < 0 || answerAt <= readAt || strings.Count(printed, "Sign off PR commits") != 1 {
 				t.Fatalf("memory read moved behind the answer or was duplicated: %q", printed)
 			}
 			if withRecall {
-				recalledAt := strings.Index(printed, "⟡ Memory · recalled: Release policy")
+				recalledAt := strings.Index(printed, "✢ Memory · recalled: Release policy")
 				if recalledAt <= readAt || recalledAt >= answerAt || len(notices) != 1 {
 					t.Fatalf("automatic recall lost its contextual, persisted notice: %q / %+v", printed, notices)
 				}

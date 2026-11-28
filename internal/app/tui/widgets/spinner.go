@@ -45,7 +45,7 @@ func LiveTaskDot(frame int) string {
 }
 
 // MemoryMark identifies a memory being read or supplied as context.
-const MemoryMark = "⟡"
+const MemoryMark = "✢"
 
 // LiveMemory gives an in-flight memory read the same gentle breath as tools.
 func LiveMemory(frame int) string {
