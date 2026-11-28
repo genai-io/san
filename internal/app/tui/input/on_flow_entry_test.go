@@ -135,17 +135,16 @@ func TestFlowEntryReviewEnterProgression(t *testing.T) {
 			s := flowUIFixture()
 			var v FlowView
 			v.OpenDraft(s, "sample", flowUISource, "", 80, 32)
-			flowEntryPrimary(t, &v, "Enter", "Save blueprint")
-			v.HandleKeypress(flowKey("enter"))
+			flowEntryPrimary(t, &v, "Enter", "Run flow…")
+			v.HandleKeypress(flowKey("s"))
 			flowEntryPrimary(t, &v, "Enter", "Confirm save")
 			if v.confirm != "save" || s.saves != 0 {
 				t.Fatal("Enter must preview before saving")
 			}
 			v.HandleKeypress(flowKey(confirm))
 			if s.saves != 1 || s.launches != 0 || v.page != "review" || !v.saved {
-				t.Fatal("save must remain in review without executing")
+				t.Fatal("saving should return to review without executing")
 			}
-			flowEntryPrimary(t, &v, "Enter", "Prepare run")
 			v.HandleKeypress(flowKey("enter"))
 			flowEntryPrimary(t, &v, "Enter", "Continue")
 			v.HandlePaste("topic")

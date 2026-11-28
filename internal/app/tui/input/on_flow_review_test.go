@@ -19,7 +19,7 @@ func TestFlowReviewExecutorSelection(t *testing.T) {
 		var v FlowView
 		source := "```mermaid\nflowchart LR\n summary\n```\n\n## summary\n" + tc.config + "\nReturn a report.\n"
 		v.OpenDraft(flowUIFixture(), "executor", source, source, 100, 40)
-		got := ansi.Strip(v.renderReview())
+		got := ansi.Strip(v.renderLimits())
 		if !strings.Contains(got, tc.want) {
 			t.Fatalf("execution target not disclosed: %s", got)
 		}
@@ -38,8 +38,8 @@ func TestFlowReviewWrapsInstructions(t *testing.T) {
 	source := "```mermaid\nflowchart LR\n summary\n```\n\n## summary\n\n" + prompt + "\n"
 	var v FlowView
 	v.OpenDraft(flowUIFixture(), "summary", source, source, width, 40)
-	_, instructions, ok := strings.Cut(ansi.Strip(v.renderReview()), "\nInstructions\n")
-	if want := "  中文\n  SanRenderer，\n  继续\n  Use {{input}}."; !ok || instructions != want {
+	instructions := ansi.Strip(v.renderReview())
+	if want := "  中文\n  SanRenderer，\n  继续\n  Use {{input}}."; instructions != want {
 		t.Fatalf("instructions = %q, want %q", instructions, want)
 	}
 	for line := range strings.SplitSeq(instructions, "\n") {
@@ -49,7 +49,18 @@ func TestFlowReviewWrapsInstructions(t *testing.T) {
 	}
 }
 
-func TestFlowGeneratedDraftNeedsManualSaveAndRun(t *testing.T) {
+func TestFlowRunDraftWithoutSaving(t *testing.T) {
+	s := flowUIFixture()
+	var v FlowView
+	source := strings.ReplaceAll(flowUISource, "{{input.topic}}", "the parser")
+	v.OpenDraft(s, "sample", source, "", 80, 24)
+	cmd := v.HandleKeypress(flowKey("enter"))
+	if cmd == nil || s.launches != 1 || s.saves != 0 || s.from != source || v.active {
+		t.Fatal("Run flow should launch the reviewed draft once without saving")
+	}
+}
+
+func TestFlowGeneratedDraftCanEditBeforeRunning(t *testing.T) {
 	s := flowUIFixture()
 	var v FlowView
 	request := v.OpenGeneration(s, "Review the parser", 100, 40)().(FlowDraftRequestMsg)
@@ -60,9 +71,10 @@ func TestFlowGeneratedDraftNeedsManualSaveAndRun(t *testing.T) {
 		t.Fatal("completed generation accepted another result")
 	}
 	v.HandleKeypress(flowKey("r"))
-	if s.saves != 0 || s.launches != 0 || v.page != "review" {
-		t.Fatal("generated source became runnable without an explicit save")
+	if s.saves != 0 || s.launches != 0 || v.page != "inputs" {
+		t.Fatal("run setup should not save or execute")
 	}
+	v.HandleKeypress(flowKey("esc"))
 	v.HandleKeypress(flowKey("e"))
 	v.editor.SetValue(strings.Replace(flowUISource, "name: sample", "name: parser-review", 1))
 	v.HandleKeypress(flowKey("esc"))
@@ -107,7 +119,10 @@ func TestFlowNewStartsWithOneStep(t *testing.T) {
 		t.Fatal("starter should have one step and a simple input")
 	}
 	initial := ansi.Strip(v.Render())
-	for _, want := range []string{"○ work", "Step 1/1 · work", "Agent   default · explore", "{{input}} ← what you enter before running", "{{work}} = this step's final answer", "Final flow result"} {
+	if strings.Contains(initial, "○ work") || strings.Contains(initial, "Step 1/1") || strings.Count(initial, "\n") >= 16 {
+		t.Fatalf("single-step review should be compact:\n%s", initial)
+	}
+	for _, want := range []string{"Run flow", "{{input}}"} {
 		if !strings.Contains(initial, want) {
 			t.Fatalf("missing %q in review:\n%s", want, initial)
 		}
@@ -138,7 +153,7 @@ func TestFlowReviewGraphAndSelectedStep(t *testing.T) {
 	var v FlowView
 	v.OpenDraft(flowUIFixture(), "sample", source, source, 100, 40)
 	initial := ansi.Strip(v.Render())
-	for _, want := range []string{"○ a", "○ b", "○ c", "○ d", "▼", "Step 1/4 · a", "{{input.topic}} ← topic you enter", "Read by b, c"} {
+	for _, want := range []string{"○ a", "○ b", "○ c", "○ d", "▼", "Step 1/4 · a", "First step instructions"} {
 		if !strings.Contains(initial, want) {
 			t.Fatalf("missing %q in review:\n%s", want, initial)
 		}
@@ -152,7 +167,7 @@ func TestFlowReviewGraphAndSelectedStep(t *testing.T) {
 	}
 	v.HandleKeypress(flowKey("down"))
 	next := ansi.Strip(v.Render())
-	if v.nodeID() != "b" || v.body.YOffset() != 0 || !strings.Contains(next, "Step 2/4 · b") || !strings.Contains(next, "{{a}} ← final answer from step a") || strings.Contains(next, "First step instructions") {
+	if v.nodeID() != "b" || v.body.YOffset() != 0 || !strings.Contains(next, "Step 2/4 · b") || !strings.Contains(next, "Use {{a}}") || strings.Contains(next, "First step instructions") {
 		t.Fatal("selection did not replace the detail with the next step")
 	}
 	v.HandleKeypress(flowKey("up"))
@@ -188,12 +203,12 @@ func TestFlowReviewExplainsWorkerDataFlow(t *testing.T) {
 	source := flowDraft("sample", "plan --> work --> result", "## plan\nReturn a JSON object with a tasks array.\n\n## work\nfor_each: plan.tasks\nmax_workers: 2\n\nDo {{item.task}}\n\n## result\nCombine {{work}}\n")
 	var v FlowView
 	v.OpenDraft(flowUIFixture(), "sample", source, "", 96, 32)
-	if !strings.Contains(v.renderReview(), "Read by work") {
+	if !strings.Contains(v.renderLimits(), "Read by work") {
 		t.Fatal("plan does not identify the step reading its array")
 	}
 	v.HandleKeypress(flowKey("down"))
 	for _, want := range []string{"Items   JSON array from plan.tasks", "{{item.task}} ← value from the current plan item", "combined answers from completed workers", "Read by result"} {
-		if !strings.Contains(v.renderReview(), want) {
+		if !strings.Contains(v.renderLimits(), want) {
 			t.Fatalf("worker review does not explain %q", want)
 		}
 	}
@@ -208,13 +223,10 @@ func TestFlowReviewKeepsPrimaryActionsVisible(t *testing.T) {
 		}
 		v.OpenDraft(flowUIFixture(), "sample", flowUISource, baseline, 40, 24)
 		out := ansi.Strip(v.Render())
-		for _, action := range []string{"e edit", "s save", "Esc close"} {
+		for _, action := range []string{"Run flow…", "a refine", "e edit", "s save", "Esc close"} {
 			if !strings.Contains(out, action) {
 				t.Fatalf("saved=%v: narrow review hides %q:\n%s", saved, action, out)
 			}
-		}
-		if saved && !strings.Contains(out, "r run") {
-			t.Fatal("saved review hides run action")
 		}
 		for _, line := range strings.Split(out, "\n") {
 			if ansi.StringWidth(line) > 40 {
@@ -260,7 +272,7 @@ func TestFlowReviewSelectionAfterRemovingSteps(t *testing.T) {
 			if v.page != "review" || v.nodeID() != "a" {
 				t.Fatalf("edited review lost selection: page=%s node=%q", v.page, v.nodeID())
 			}
-			for _, want := range []string{"{{input.topic}}", "Output", "Instructions"} {
+			for _, want := range []string{"Run flow", "Use {{input.topic}}"} {
 				if !strings.Contains(ansi.Strip(v.Render()), want) {
 					t.Fatalf("edited review lost %s", want)
 				}

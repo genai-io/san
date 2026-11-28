@@ -19,6 +19,14 @@ func (v *FlowView) Render() string {
 	if !v.active {
 		return ""
 	}
+	if v.IsGenerating(v.generation) {
+		status := widgets.LiveDot(v.phase+2) + " Drafting flow"
+		hint := widgets.DimStyle().Render("Esc cancel")
+		if ansi.StringWidth(status)+3+ansi.StringWidth(hint) <= v.width {
+			return status + "   " + hint
+		}
+		return ansi.Truncate(status, v.width, "…") + "\n" + ansi.Truncate(hint, v.width, "…")
+	}
 	title, content, hint := v.renderPage()
 	if v.confirm != "" {
 		hint = "y confirm · n / Esc cancel"
@@ -53,6 +61,13 @@ func (v *FlowView) Render() string {
 	for i, line := range lines {
 		lines[i] = ansi.Truncate(line, max(1, v.width-2), "…")
 	}
+	if v.page == flowPageReview && v.confirm == "" {
+		// The viewport reserves room for scrolling, but a short plan shouldn't
+		// push its controls to the bottom of a mostly empty terminal.
+		for len(lines) > 1 && strings.TrimSpace(ansi.Strip(lines[len(lines)-1])) == "" {
+			lines = lines[:len(lines)-1]
+		}
+	}
 	separator := ansi.Truncate(widgets.Panel{Width: v.width}.SeparatorLine(), v.width, "")
 	return separator + "\n" + widgets.SelectorTitleStyle().Render(ansi.Truncate(title, v.width, "…")) + "\n" + v.renderPrimaryAction() + "\n" + strings.Join(lines, "\n") + "\n" + separator + "\n" + ansi.Truncate(widgets.HintLine(hint), v.width, "…")
 }
@@ -72,16 +87,13 @@ func (v *FlowView) renderPrimaryAction() string {
 	case flowPageGoal:
 		label = "Generate blueprint"
 	case flowPageGenerate:
-		key, label = "Esc", "Cancel generation"
-		if v.draftAt.IsZero() {
-			key, label = "Enter", "Try again"
-		}
+		key, label = "Enter", "Try again"
 	case flowPageReview:
-		label = "Save blueprint"
+		label = "Run flow"
 		if v.plan == nil {
 			label = "Edit blueprint"
-		} else if v.saved {
-			label = "Prepare run"
+		} else if len(v.plan.InputNames()) > 0 {
+			label = "Run flow…"
 		}
 	case flowPageInputs:
 		label = "Continue"
@@ -114,12 +126,6 @@ func (v *FlowView) renderPrimaryAction() string {
 		return widgets.DimStyle().Render(ansi.Truncate("No execution to inspect", v.width, "…"))
 	}
 	action := keycap(key) + " " + widgets.SelectorSelectedLabelStyle().Render(label)
-	if v.page == flowPageReview && v.plan != nil && v.confirm == "" {
-		edit := "   " + keycap("e") + " Edit"
-		if ansi.StringWidth(action+edit) <= v.width {
-			action += edit
-		}
-	}
 	return ansi.Truncate(action, v.width, "…")
 }
 
@@ -128,29 +134,31 @@ func (v *FlowView) renderPage() (title, content, hint string) {
 	switch v.page {
 	case flowPageGoal:
 		title, hint = "Create Flow", "Shift+Enter newline · Esc close"
+		if v.revising {
+			title, hint = "Revise Flow", "Shift+Enter newline · Esc review"
+		}
 		content = v.renderGoal()
 	case flowPageGenerate:
-		return v.renderGeneration()
+		if v.revising {
+			return "Revision failed", "Your current blueprint is unchanged.", "e edit change · Esc review"
+		}
+		return "Flow draft", "No draft was created.", "e edit goal · Esc close"
 	case flowPageHub:
 		title, content = "Flow", v.renderHub()
 	case flowPageReview:
-		title = "Review · " + flowTitle(v.name)
-		hint = "e edit · s save · Esc close"
-		if v.saved {
-			hint = "r run · " + hint
-		} else {
-			title += " · Unsaved"
+		title = flowTitle(v.name) + " · Saved plan"
+		hint = "a refine · e edit · s save · Esc close"
+		if v.width >= 64 && v.plan != nil && len(v.plan.Nodes) > 1 {
+			hint = "↑↓ steps · " + hint
 		}
-		if ansi.StringWidth("↑↓ · "+hint) <= v.width {
-			hint = "↑↓ · " + hint
+		if ansi.StringWidth(hint+" · d details") <= v.width {
+			hint += " · d details"
 		}
-		for _, extra := range []string{"d limits", "PgUp/Dn scroll"} {
-			if ansi.StringWidth(hint+" · "+extra) <= v.width {
-				hint += " · " + extra
-			}
+		if !v.saved {
+			title = flowTitle(v.name) + " · Proposed steps"
 		}
 		content = v.body.View()
-		if v.plan != nil {
+		if v.plan != nil && len(v.plan.Nodes) > 1 {
 			content = v.renderGraph() + "\n\n" + content
 		}
 	case flowPageDetails:
@@ -178,49 +186,11 @@ func (v *FlowView) renderGoal() string {
 	if budget <= lipgloss.Height(editor) {
 		return editor
 	}
-	return widgets.SelectorSelectedLabelStyle().Render("What should this flow do?") + "\n" + editor
-}
-
-func (v *FlowView) renderGeneration() (title, content, hint string) {
-	title, hint = "Create Flow", "Esc cancel"
-	status := "No draft was created."
-	var elapsed time.Duration
-	if v.IsGenerating(v.generation) {
-		elapsed = max(time.Duration(0), time.Since(v.draftAt)).Truncate(time.Second)
-		status = widgets.LiveDot(v.phase+2) + " Generating blueprint  " + widgets.DimStyle().Render(elapsed.String())
-	} else {
-		hint = "Enter retry · Esc close"
+	prompt := "What should this flow do?"
+	if v.revising {
+		prompt = "What should change?"
 	}
-	lines := []string{status}
-	budget := max(1, v.height-6)
-	if v.message != "" {
-		budget = max(1, budget-2-strings.Count(v.message, "\n"))
-	}
-	if budget >= 7 {
-		journey := widgets.SelectorSelectedLabelStyle().Render("Draft") + widgets.DimStyle().Render(" → Review → Save → Run")
-		lines = append(lines, "", journey)
-	}
-	if budget >= 4 {
-		lines = append(lines, "", widgets.DimStyle().Render("Goal"))
-	}
-	if remaining := budget - len(lines); remaining > 0 {
-		width := max(1, min(72, v.width-8))
-		goal := strings.Split(chat.WrapProse(v.goal, width), "\n")
-		count := min(len(goal), min(5, remaining))
-		if count < len(goal) {
-			goal[count-1] = ansi.Truncate(goal[count-1], max(1, width-1), "") + "…"
-		}
-		inset := lipgloss.NewStyle().Background(widgets.CurrentTheme.CommandBg).Padding(0, 1).MarginLeft(2)
-		lines = append(lines, inset.Render(strings.Join(goal[:count], "\n")))
-	}
-	if v.IsGenerating(v.generation) && budget-lipgloss.Height(strings.Join(lines, "\n")) >= 2 {
-		note := "No tools. Review before running."
-		if elapsed >= 20*time.Second {
-			note = "Waiting for model · Esc cancels"
-		}
-		lines = append(lines, "", widgets.DimStyle().Render(ansi.Truncate(note, max(1, v.width-2), "…")))
-	}
-	return title, strings.Join(lines, "\n"), hint
+	return widgets.SelectorSelectedLabelStyle().Render(prompt) + "\n" + editor
 }
 
 func flowInputLabel(key string) string {
@@ -421,7 +391,14 @@ func (v *FlowView) renderReview() string {
 	if !ok {
 		return chat.WrapProse("Select a step to review its inputs and output.", width)
 	}
-	lines := []string{fmt.Sprintf("Step %d/%d · %s", v.selected+1, len(v.plan.Nodes), node.ID), ""}
+	if len(v.plan.Nodes) == 1 {
+		return wrapFlowProse(node.Prompt, width)
+	}
+	return fmt.Sprintf("Step %d/%d · %s\n\n", v.selected+1, len(v.plan.Nodes), node.ID) + wrapFlowProse(node.Prompt, width)
+}
+
+func (v *FlowView) renderStepDetails(node *flow.Node) string {
+	lines := []string{node.ID, ""}
 	executor := "subagent (default)"
 	if node.Executor == "main" {
 		executor = "main · current conversation"
@@ -469,8 +446,7 @@ func (v *FlowView) renderReview() string {
 	} else if len(node.Downstream()) == 0 {
 		lines = append(lines, "          Final flow result")
 	}
-	lines = append(lines, "", "Instructions")
-	return ansi.Wrap(strings.Join(lines, "\n"), width, " ") + "\n" + wrapFlowProse(node.Prompt, width)
+	return strings.Join(lines, "\n")
 }
 
 func (v *FlowView) referenceUsers(ref string) []string {
@@ -545,6 +521,9 @@ func (v *FlowView) renderLimits() string {
 		"At most " + widgets.Plural(v.plan.MaxParallel, "step") + " running at once; dependencies still determine their order.",
 		"",
 		"Subagent steps start in fresh contexts; main steps use the current conversation. Run inputs and referenced step answers are inserted into their instructions.",
+	}
+	if node, ok := v.plan.Node(v.nodeID()); ok {
+		lines = append(lines, "", v.renderStepDetails(node))
 	}
 	if len(bounds) > 0 {
 		lines = append(lines, "", "Worker and retry limits")

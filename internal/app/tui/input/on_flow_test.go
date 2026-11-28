@@ -23,6 +23,10 @@ type flowWorkspaceStub struct {
 }
 
 func (s *flowWorkspaceStub) Preview(string, int) (string, error) { return "", s.err }
+func (s *flowWorkspaceStub) LaunchDraft(name, source string, in map[string]string, width int) (string, error) {
+	s.from = source
+	return s.Launch(name, in, width)
+}
 func (s *flowWorkspaceStub) Launch(_ string, in map[string]string, _ int) (string, error) {
 	s.launches++
 	s.values = in
@@ -151,10 +155,6 @@ func TestFlowDraftValidationSaveAndInputs(t *testing.T) {
 	s := flowUIFixture()
 	var v FlowView
 	v.OpenDraft(s, "sample", flowUISource, "", 90, 40)
-	v.HandleKeypress(flowKey("r"))
-	if v.page != "review" {
-		t.Fatal("unsaved draft runnable")
-	}
 	v.HandleKeypress(flowKey("s"))
 	if v.confirm != "save" || !strings.Contains(ansi.Strip(v.body.View()), "name: sample") {
 		t.Fatal("save diff missing")

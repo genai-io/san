@@ -98,7 +98,7 @@ func TestFlowDraftOneShotReviewAndRecording(t *testing.T) {
 				t.Fatal("draft lifecycle did not settle")
 			}
 			rendered := m.userInput.Flow.Render()
-			if !strings.Contains(rendered, "Review") && !strings.Contains(rendered, "review") {
+			if !strings.Contains(rendered, "Proposed steps") {
 				t.Fatalf("not in Review: %s", rendered)
 			}
 			if strings.HasPrefix(source, "broken") {
@@ -137,7 +137,7 @@ func TestFlowDraftUsesSharedAnimation(t *testing.T) {
 		t.Fatal("shared animation tick did not update the drafting overlay")
 	}
 	m.Update(draftResult(t, completion))
-	if m.flowDraft != nil || !strings.Contains(m.userInput.Flow.Render(), "Unsaved") {
+	if m.flowDraft != nil || !strings.Contains(m.userInput.Flow.Render(), "Proposed steps") {
 		t.Fatal("completion did not replace progress with unsaved Review")
 	}
 }
@@ -194,7 +194,7 @@ func TestFlowDraftRejectsAbnormalStops(t *testing.T) {
 				t.Fatal("failed request still spinning")
 			}
 			rendered := m.userInput.Flow.Render()
-			if !strings.Contains(rendered, string(reason)) || !strings.Contains(rendered, "No draft was created") || !strings.Contains(rendered, "Enter retry") {
+			if !strings.Contains(rendered, string(reason)) || !strings.Contains(rendered, "No draft was created") || !strings.Contains(rendered, "Try again") {
 				t.Fatalf("abnormal stop not visibly reported: %s", rendered)
 			}
 			p := m.features.Session.Snapshot()
@@ -218,7 +218,7 @@ func TestFlowDraftRejectsAbnormalStops(t *testing.T) {
 				t.Fatal(retried.err)
 			}
 			m.onFlowDrafted(retried)
-			if driver.Calls() != 2 || !strings.Contains(m.userInput.Flow.Render(), "Unsaved") {
+			if driver.Calls() != 2 || !strings.Contains(m.userInput.Flow.Render(), "Proposed steps") {
 				t.Fatal("explicit retry did not open unsaved Review")
 			}
 		})

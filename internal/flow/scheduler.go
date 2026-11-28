@@ -180,10 +180,26 @@ func (s *Scheduler) Launch(name string, inputs map[string]string, width int) (st
 	if err != nil {
 		return "", err
 	}
+	return s.launchBlueprint(b, inputs, "/flow run "+command.QuoteArgument(b.Name), width)
+}
+
+// LaunchDraft runs the reviewed source without reading or writing a saved definition.
+func (s *Scheduler) LaunchDraft(name, source string, inputs map[string]string, width int) (string, error) {
+	b, err := Parse(source)
+	if err != nil {
+		return "", fmt.Errorf("invalid flow:\n%w", err)
+	}
+	if b.Name == "" {
+		b.Name = strings.TrimSpace(name)
+	}
+	return s.launchBlueprint(b, inputs, "Flow draft: "+b.Name, width)
+}
+
+func (s *Scheduler) launchBlueprint(b *Blueprint, inputs map[string]string, description string, width int) (string, error) {
 	if err := validateInputs(b, inputs); err != nil {
 		return "", err
 	}
-	return s.start(b, inputs, "/flow run "+command.QuoteArgument(b.Name), width)
+	return s.start(b, inputs, description, width)
 }
 
 func validateInputs(b *Blueprint, inputs map[string]string) error {

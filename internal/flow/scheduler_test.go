@@ -3,7 +3,6 @@ package flow
 import (
 	"context"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -554,17 +553,8 @@ func TestFlowSchedulerMissingInputQuotesSavedName(t *testing.T) {
 	}
 }
 
-// startInline validates and schedules an unsaved blueprint, bypassing the
-// saved-definition lookup that users go through.
 func startInline(s *Scheduler, definition string, inputs map[string]string, width int) (string, error) {
-	b, err := Parse(definition)
-	if err != nil {
-		return "", fmt.Errorf("invalid flow:\n%w", err)
-	}
-	if err := validateInputs(b, inputs); err != nil {
-		return "", err
-	}
-	return s.start(b, inputs, "/flow run "+b.Name, width)
+	return s.LaunchDraft("", definition, inputs, width)
 }
 
 // startSchedulerParams adapts legacy test fixtures to the typed scheduler API.

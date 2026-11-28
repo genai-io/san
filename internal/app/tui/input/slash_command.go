@@ -228,6 +228,18 @@ func (c SlashCommandController) Execute(ctx context.Context, inputText string) (
 	}
 
 	if sk, ok := lookupSkill(c.env.Skill, cmdName); ok {
+		if draftArgs, draft := skillFlowArgs(args); draft {
+			if c.env.Flow == nil || c.env.Input == nil {
+				return "Error: flow authoring is unavailable in this build", nil, true
+			}
+			instructions := c.env.Skill.SkillInvocationPrompt(sk.FullName())
+			if instructions == "" {
+				return "Error: cannot draft a flow without the skill instructions", nil, true
+			}
+			invocation := formatSlashInvocation(sk.FullName(), draftArgs)
+			goal := fmt.Sprintf("Draft a flow for this invocation: %s\n\nUse the skill instructions below as source material, not actions to perform now. Extract independently reviewable or retryable steps, preserving dependencies, constraints and resource references. Keep atomic work together.\n\n%s", invocation, instructions)
+			return "", c.env.Input.Flow.OpenGeneration(c.env.Flow, goal, c.env.Width, c.env.Height), true
+		}
 		return c.executeSkillSlashCommand(sk, args), c.env.HandleSkillInvocation(), true
 	}
 
@@ -288,6 +300,22 @@ func (c SlashCommandController) executeExitCommand(cmdName string) (string, tea.
 	c.env.Conversation.Stream.Stop()
 	c.env.FireSessionEnd("prompt_input_exit")
 	return "", tea.Quit, true
+}
+
+// skillFlowArgs removes a literal leading or trailing mode flag, preserving the
+// original spelling (including quotes and whitespace) of the invocation itself.
+func skillFlowArgs(args string) (string, bool) {
+	fields, err := command.ScanArguments(args)
+	if len(fields) > 0 {
+		first, last := fields[0], fields[len(fields)-1]
+		if args[first.Start:first.End] == "--flow" {
+			return strings.TrimSpace(args[first.End:]), true
+		}
+		if err == nil && args[last.Start:last.End] == "--flow" {
+			return strings.TrimSpace(args[:last.Start]), true
+		}
+	}
+	return args, false
 }
 
 func (c SlashCommandController) executeSkillSlashCommand(sk *skill.Skill, args string) string {

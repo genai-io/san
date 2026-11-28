@@ -313,6 +313,42 @@ func TestFlowCommandOpensManagementWithoutAModelTurn(t *testing.T) {
 	}
 }
 
+func TestSkillFlowArgs(t *testing.T) {
+	for _, tc := range []struct {
+		raw, want string
+		draft     bool
+	}{
+		{`--flow "quarter one"`, `"quarter one"`, true},
+		{`"quarter one"  two --flow`, `"quarter one"  two`, true},
+		{`--flow`, ``, true},
+		{`one "--flow"`, `one "--flow"`, false},
+		{`one --flow two`, `one --flow two`, false},
+	} {
+		if got, draft := skillFlowArgs(tc.raw); got != tc.want || draft != tc.draft {
+			t.Errorf("skillFlowArgs(%q) = %q, %v", tc.raw, got, draft)
+		}
+	}
+}
+
+func TestSkillSlashFlowDraft(t *testing.T) {
+	c := flowController(t, nil)
+	c.env.Input = &Model{}
+	path := filepath.Join(t.TempDir(), "SKILL.md")
+	if err := os.WriteFile(path, []byte("---\nname: audit\n---\nCheck the report."), 0600); err != nil {
+		t.Fatal(err)
+	}
+	sk := &skill.Skill{Name: "audit", Namespace: "team", FilePath: path, State: skill.StateEnable}
+	c.env.Skill = skill.NewRegistryForTest(map[string]*skill.Skill{sk.FullName(): sk}, nil, nil)
+	notice, cmd, handled := c.Execute(context.Background(), `/team:audit --flow "quarter one"`)
+	if !handled || notice != "" || cmd == nil {
+		t.Fatalf("draft not started: %q", notice)
+	}
+	goal := cmd().(FlowDraftRequestMsg).Goal
+	if !strings.Contains(goal, `/team:audit "quarter one"`) || !strings.Contains(goal, "Check the report.") || c.env.Input.Skill.PendingFullName != "" {
+		t.Fatalf("unexpected draft request: %q", goal)
+	}
+}
+
 func TestFlowCommandFromSkillReferencesOriginalWithoutChangingIt(t *testing.T) {
 	c := flowController(t, nil)
 	c.env.Input = &Model{}
