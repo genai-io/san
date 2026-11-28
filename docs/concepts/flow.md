@@ -101,7 +101,8 @@ The main action appears directly below each page title; secondary shortcuts
 stay in the footer:
 
 ```text
-Describe → Review → Save → Run
+Describe → Review → Run
+             ↳ Refine, edit, or save for reuse
 ```
 
 Management is explicit and does not inject authoring instructions into ordinary
@@ -112,6 +113,7 @@ goal, so `/flow run the tests and fix failures` drafts a blueprint:
 | Command | Action |
 | --- | --- |
 | `/flow <goal>` | Generate a blueprint for Review from a natural-language goal. Never saves or runs automatically. |
+| `/<skill> [args…] --flow` | Draft a workflow from this Skill's instructions and invocation arguments for Review. Does not invoke the Skill, save, or run. An unquoted `--flow` may also come first. |
 | `/flow new [name]` | Open a one-step manual draft in Review; no review agent is added automatically. |
 | `/flow from-skill <skill> [name]` | Create a one-node draft referencing an enabled Skill; review before saving. The Skill remains unchanged and its live instructions/resources are loaded when the node runs. No automatic splitting is attempted. |
 | `/flow edit <name>` | Review or edit a saved definition. |
@@ -121,13 +123,14 @@ goal, so `/flow run the tests and fix failures` drafts a blueprint:
 | `/flow list` | Print the saved definitions. |
 | `/flow run <name> [key=value …]` | Run a saved blueprint; missing inputs open a guided form in the TUI. No model turn. |
 
-Review keeps the dependency graph above one selected step. `↑`/`↓` walks through
-steps; the detail shows the agent configuration, each inserted input's source,
-the output's consumers, and the instructions. Scrolling the instructions does not hide the graph.
-Enter follows the visible action: save the draft, confirm the save preview,
-then prepare the saved blueprint for running. Saving never launches a run.
-`e` edits source, `Ctrl+S` previews changes, and the existing `s`, `y`, and `r`
-shortcuts remain available.
+A single-step review shows just the instructions. For multiple steps, Review
+keeps the dependency graph above the selected step. `↑`/`↓` walks through
+steps and shows only the selected step's instructions. `d` opens execution limits,
+agent settings and input/output details. Scrolling instructions does not hide the graph.
+Enter runs the reviewed plan. If it needs inputs, fill them in and confirm
+**Run flow** first. A draft runs from the reviewed source without saving a reusable
+definition. `a` refines the draft with a change request, `e` edits the source,
+and `s` previews an optional save for later reuse. Saving never launches a run.
 
 For example, `/flow Check this package's security and performance, then combine
 the findings` starts one drafting request from the current conversation. The
@@ -135,8 +138,8 @@ blueprint guide and enabled agent/Skill discovery metadata are loaded only for
 that request. It advertises no tools, executes no commands, and adds neither its
 guide nor its reply to the main Agent's ordinary conversation context. The call
 is recorded under the session's `flow` inference purpose. While waiting, the
-Create Flow page shows a breathing dot and elapsed time; it switches to Review
-when the response completes.
+TUI shows only a breathing dot, “Drafting flow” and an Escape hint; it switches
+to Review when the response completes.
 
 The model proposes the smallest useful topology: real dependencies form chains,
 independent work can run in parallel, and dynamic workers or evaluator loops

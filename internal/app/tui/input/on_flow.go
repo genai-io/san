@@ -16,6 +16,7 @@ import (
 
 // FlowWorkspace is the UI's project-scoped flow boundary.
 type FlowWorkspace interface {
+	LaunchDraft(name, source string, inputs map[string]string, width int) (taskID string, err error)
 	Launch(name string, inputs map[string]string, width int) (taskID string, err error)
 	Runs() ([]flow.RunRecord, error)
 	GetRun(id string) (*flow.RunRecord, error)
@@ -74,7 +75,9 @@ type FlowView struct {
 	cursor           int
 	name             string
 	source, baseline string
-	goal             string
+	goal             string // Original generation context; may contain private skill instructions.
+	change           string
+	revising         bool
 	draftAt          time.Time
 	saved            bool
 	keys             []string
@@ -243,12 +246,27 @@ func (v *FlowView) Open(s FlowWorkspace, w, h int) tea.Cmd {
 	return nil
 }
 
+// editableFlowGoal separates the user-facing invocation from the skill material
+// appended by SlashCommandController. Keep that material on edits and retries.
+func editableFlowGoal(goal string) (string, string) {
+	if i := strings.Index(goal, "\n\nUse the skill instructions below as source material"); i >= 0 {
+		return goal[:i], goal[i:]
+	}
+	return goal, ""
+}
+
 func (v *FlowView) openGoal() tea.Cmd {
 	v.page = flowPageGoal
 	v.draftAt = time.Time{}
 	v.Resize(v.width, v.height)
 	v.editor.Placeholder = "Describe the work and the result you want"
-	v.editor.SetValue(v.goal)
+	if v.revising {
+		v.editor.Placeholder = "Describe the change you want"
+		v.editor.SetValue(v.change)
+	} else {
+		goal, _ := editableFlowGoal(v.goal)
+		v.editor.SetValue(goal)
+	}
 	return v.editor.Focus()
 }
 
@@ -266,7 +284,11 @@ func (v *FlowView) SetDraftFrame(frame int) {
 }
 
 func (v *FlowView) draftRequest() tea.Cmd {
-	msg := FlowDraftRequestMsg{Generation: v.generation, Goal: v.goal}
+	goal := v.goal
+	if v.revising {
+		goal = fmt.Sprintf("Revise the current flow blueprint. Preserve unaffected steps and constraints.\n\nOriginal context:\n%s\n\nCurrent source:\n%s\n\nRequested change:\n%s", v.goal, v.source, v.change)
+	}
+	msg := FlowDraftRequestMsg{Generation: v.generation, Goal: goal}
 	return func() tea.Msg { return msg }
 }
 
@@ -279,6 +301,20 @@ func (v *FlowView) DraftReady(generation uint64, source string, err error) bool 
 		return false
 	}
 	v.draftAt = time.Time{}
+	if v.revising {
+		if err == nil {
+			_, err = flow.Parse(source)
+		}
+		if err != nil {
+			v.setError(err)
+			return true
+		}
+		v.change, v.revising = "", false
+		v.source, v.saved = source, source == v.baseline
+		v.validate()
+		v.showReview()
+		return true
+	}
 	if err != nil {
 		v.setError(err)
 		return true
@@ -287,7 +323,9 @@ func (v *FlowView) DraftReady(generation uint64, source string, err error) bool 
 	if plan, parseErr := flow.Parse(source); parseErr == nil && plan.Name != "" {
 		name = plan.Name
 	}
+	goal := v.goal
 	v.OpenDraft(v.workspace, name, source, "", v.width, v.height)
+	v.goal = goal
 	return true
 }
 
@@ -337,7 +375,7 @@ func (v *FlowView) Resize(w, h int) {
 func (v *FlowView) showReview() {
 	v.page = flowPageReview
 	v.body.SetHeight(max(1, v.height-6))
-	if v.plan != nil {
+	if v.plan != nil && len(v.plan.Nodes) > 1 {
 		v.body.SetHeight(max(1, v.height-8-strings.Count(v.renderGraph(), "\n")))
 	}
 	v.body.SetContent(v.renderReview())
@@ -396,9 +434,19 @@ func (v *FlowView) HandleKeypress(msg tea.KeyMsg) tea.Cmd {
 			goal := strings.TrimSpace(v.editor.Value())
 			if goal == "" {
 				v.message = "Describe a goal to continue"
+				if v.revising {
+					v.message = "Describe a change to continue"
+				}
 				return nil
 			}
-			return v.OpenGeneration(v.workspace, goal, v.width, v.height)
+			if v.revising {
+				v.change = goal
+				v.generation++
+				v.page, v.draftAt, v.phase = flowPageGenerate, time.Now(), 0
+				return v.draftRequest()
+			}
+			_, context := editableFlowGoal(v.goal)
+			return v.OpenGeneration(v.workspace, goal+context, v.width, v.height)
 		case "shift+enter", "alt+enter", "ctrl+j":
 			v.editor.InsertString("\n")
 			return nil
@@ -497,11 +545,9 @@ func (v *FlowView) handleHub(key string) tea.Cmd {
 
 func (v *FlowView) handleReview(key string) tea.Cmd {
 	if key == "enter" {
-		key = "s"
+		key = "r"
 		if v.plan == nil {
 			key = "e"
-		} else if v.saved {
-			key = "r"
 		}
 	}
 	switch key {
@@ -515,6 +561,9 @@ func (v *FlowView) handleReview(key string) tea.Cmd {
 			v.showReview()
 			v.body.GotoTop()
 		}
+	case "a":
+		v.revising, v.change = true, ""
+		return v.openGoal()
 	case "d":
 		if v.plan != nil {
 			v.page = flowPageDetails
@@ -532,7 +581,10 @@ func (v *FlowView) handleReview(key string) tea.Cmd {
 		v.editor.SetValue(v.source)
 		return v.editor.Focus()
 	case "r":
-		if v.saved && v.validate() {
+		if v.validate() {
+			if len(v.plan.InputNames()) == 0 {
+				return v.submitInput()
+			}
 			return v.openInputs()
 		}
 	case "s":
@@ -596,15 +648,20 @@ func (v *FlowView) keepInput() {
 }
 
 func (v *FlowView) submitInput() tea.Cmd {
-	current, err := v.workspace.Definition(v.name)
-	if err != nil || current != v.source {
-		v.saved = false
-		v.showReview()
-		v.message = "Definition changed since review; reopen it before running"
-		v.setError(err)
-		return nil
+	var err error
+	if v.baseline != "" && v.baseline == v.source {
+		current, readErr := v.workspace.Definition(v.name)
+		if readErr != nil || current != v.source {
+			v.saved = false
+			v.showReview()
+			v.message = "Definition changed since review; reopen it before running"
+			v.setError(readErr)
+			return nil
+		}
+		_, err = v.workspace.Launch(v.name, v.inputs, v.width)
+	} else {
+		_, err = v.workspace.LaunchDraft(v.name, v.source, v.inputs, v.width)
 	}
-	_, err = v.workspace.Launch(v.name, v.inputs, v.width)
 	v.setError(err)
 	if err != nil {
 		return nil
@@ -709,6 +766,13 @@ func (v *FlowView) handleConfirm(key string) tea.Cmd {
 }
 
 func (v *FlowView) back() {
+	if v.revising {
+		v.generation++
+		v.revising, v.change, v.draftAt = false, "", time.Time{}
+		v.editor.Blur()
+		v.showReview()
+		return
+	}
 	switch v.page {
 	case flowPageEdit:
 		v.source = v.editor.Value()

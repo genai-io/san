@@ -16,10 +16,8 @@ func TestFlowGenerationShowsLiveProgress(t *testing.T) {
 	v.draftAt = time.Now().Add(-25 * time.Second)
 	v.SetDraftFrame(3)
 	view := ansi.Strip(v.Render())
-	for _, want := range []string{"● Generating blueprint", "25s", "Draft → Review → Save → Run", "Review the parser", "Waiting for model", "Esc cancel"} {
-		if !strings.Contains(view, want) {
-			t.Fatalf("missing %q in generation view:\n%s", want, view)
-		}
+	if view != "● Drafting flow   Esc cancel" {
+		t.Fatalf("unexpected generation view: %q", view)
 	}
 	if v.phase != 3 || s.launches != 0 || s.saves != 0 {
 		t.Fatal("animation must not start or save work")
@@ -31,7 +29,7 @@ func TestFlowGenerationKeepsStatusVisible(t *testing.T) {
 		var v FlowView
 		v.OpenGeneration(flowUIFixture(), strings.Repeat("检查安全和性能。", 100), size[0], size[1])
 		view := ansi.Strip(v.Render())
-		for _, want := range []string{"Generating", "Esc cancel", "…"} {
+		for _, want := range []string{"Drafting flow", "Esc cancel"} {
 			if !strings.Contains(view, want) {
 				t.Fatalf("size %v: missing %q in %q", size, want, view)
 			}

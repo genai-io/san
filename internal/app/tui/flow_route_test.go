@@ -172,7 +172,7 @@ func TestFlowDraftSlashUpdateRoute(t *testing.T) {
 				}
 			}
 			settled := next()
-			if _, ok := settled.msg.(flowDraftedMsg); !ok || settled.pending || !settled.active || !strings.Contains(strings.ToLower(settled.rendered), "review") {
+			if _, ok := settled.msg.(flowDraftedMsg); !ok || settled.pending || !settled.active || !strings.Contains(settled.rendered, "Proposed steps") {
 				t.Fatalf("completion did not reach unsaved Review: %+v", settled)
 			}
 			wantCalls := int32(1)
