@@ -17,7 +17,7 @@ func TestManagedTaskNoticePreview(t *testing.T) {
 	for _, budget := range []int{0, 1, 3} {
 		p := RenderContext{Width: 60, AgentPreviewLines: budget, MDRenderer: NewMDRenderer(60), Messages: []core.ChatMessage{{Role: core.ChatNotice, AgentNotice: true, Content: content}}}
 		got := RenderMessageAt(p, 0, false)
-		want := renderAgentHeading("Agent: Check boundaries", p.Width, "●", backgroundIdentityColor("managed-child")) + "\n"
+		want := renderAgentHeading("Agent: Check boundaries", p.Width, "●", backgroundIdentityColor("managed-child")) + toolResultStyle.Render(" · ") + toolResultStyle.Render("Finished") + "\n"
 		if budget > 0 {
 			want += renderAgentResponsePreview(parseAgentEnvelope(content).text(), p.Width, p.MDRenderer, budget)
 		}
@@ -62,7 +62,7 @@ func TestManagedTaskNoticeIdentity(t *testing.T) {
 		p := RenderContext{Width: 80, AgentPreviewLines: 1, AgentIdentities: map[string]AgentDisplay{key: identity}}
 		e := parseAgentEnvelope(`<task-notification task-id="managed-child" agent-id="native-session" status="completed" description="Check">Useful finding</task-notification>`)
 		got := e.renderDisplayNotice(p)
-		want := renderAgentHeading(AgentDisplayName(identity, p.AgentIdentities)+": Check", p.Width, "●", agentIdentityColor(identity, p.AgentColors)) + "\n"
+		want := renderAgentHeading(AgentDisplayName(identity, p.AgentIdentities)+": Check", p.Width, "●", agentIdentityColor(identity, p.AgentColors)) + toolResultStyle.Render(" · ") + toolResultStyle.Render("Finished") + "\n"
 		if !strings.HasPrefix(got, want) {
 			t.Fatalf("%s identity/color mismatch: %q != %q", key, got, want)
 		}

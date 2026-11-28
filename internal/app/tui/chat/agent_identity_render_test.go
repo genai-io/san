@@ -49,7 +49,7 @@ func TestAgentIdentityColorAcrossLifecycle(t *testing.T) {
 				}
 				params.ResultMap = map[string]ToolResultData{call.ID: {ToolName: "Agent", Content: "Useful finding", Details: toolresult.AgentDetails{}}}
 				finished := RenderToolCalls(params)
-				if !strings.HasPrefix(finished, header+"\n") || !strings.Contains(finished, toolResultStyle.Render("  Useful finding")) {
+				if !strings.HasPrefix(finished, header+toolResultStyle.Render(" · ")+toolResultStyle.Render("Finished")+"\n") || !strings.Contains(finished, toolResultStyle.Render("Useful finding")) {
 					t.Fatalf("%s width %d: completion changed color or brightened body: %q", theme, width, finished)
 				}
 				input := `{"to":"worker-route","subject":"Check limits","message":"Verify limits"}`

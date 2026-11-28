@@ -1300,8 +1300,8 @@ func TestRenderToolCallsNestsEditResultUnderPath(t *testing.T) {
 	if !strings.Contains(rendered, "1 - old") || !strings.Contains(rendered, "1 + new") {
 		t.Fatalf("Edit result should retain its rendered diff, got %q", rendered)
 	}
-	if !strings.Contains(rendered, "  └ +1 -1\n") || strings.Index(rendered, "  └ +1 -1") < strings.Index(rendered, "1 + new") {
-		t.Fatalf("Edit summary should follow the actual diff, got %q", rendered)
+	if !strings.HasPrefix(rendered, "● Edit internal/app/view.go · +1 -1\n") || strings.Contains(rendered, "└") {
+		t.Fatalf("Edit summary should share the call heading, got %q", rendered)
 	}
 	if strings.Contains(rendered, "Edited internal/app/view.go") {
 		t.Fatalf("Edit result should not duplicate its call path, got %q", rendered)
@@ -1333,8 +1333,8 @@ func TestRenderToolCallsNestsWriteResultUnderPath(t *testing.T) {
 	if !strings.Contains(rendered, "+ package app") {
 		t.Fatalf("Write result should retain its rendered diff, got %q", rendered)
 	}
-	if !strings.Contains(rendered, "  └ new file · +1 line\n") || strings.Index(rendered, "  └ new file · +1 line") < strings.Index(rendered, "+ package app") {
-		t.Fatalf("Write summary should follow its diff, got %q", rendered)
+	if !strings.HasPrefix(rendered, "● Write internal/app/new.go · new file · +1 line\n") || strings.Contains(rendered, "└") {
+		t.Fatalf("Write summary should share the call heading, got %q", rendered)
 	}
 }
 
@@ -1409,14 +1409,8 @@ func TestRenderToolCallsCollapsesReadResultByDefault(t *testing.T) {
 		Width: 100,
 	}))
 
-	if !strings.Contains(rendered, "Read(internal/app/tui/chat/message.go)") || strings.Contains(rendered, "· lines") {
-		t.Fatalf("Read call should show only its path, got %q", rendered)
-	}
-	if strings.Contains(rendered, "type ToolResultData") {
-		t.Fatalf("collapsed Read should not render file content, got %q", rendered)
-	}
-	if !strings.Contains(rendered, "  └ 2 lines\n") {
-		t.Fatalf("collapsed Read should show a compact line summary, got %q", rendered)
+	if rendered != "● Read internal/app/tui/chat/message.go · 2 lines\n" {
+		t.Fatalf("compact Read should show only its path and line count, got %q", rendered)
 	}
 }
 
@@ -1497,8 +1491,8 @@ func TestRenderToolCallsNestsReadFailure(t *testing.T) {
 		ResultMap: map[string]ToolResultData{call.ID: {ToolName: "Read", Content: "Error: file not found: missing", IsError: true}},
 		Width:     100,
 	}))
-	if !strings.Contains(rendered, "  ┊ file not found: missing\n  └ failed\n") {
-		t.Fatalf("Read failure should end in nested failed state, got %q", rendered)
+	if rendered != "● Read missing · Failed: file not found: missing\n" {
+		t.Fatalf("Read failure should fit on its heading, got %q", rendered)
 	}
 }
 
@@ -1813,7 +1807,7 @@ func TestRenderToolCallsShellOutputPreview(t *testing.T) {
 		ToolCalls: []core.ToolCall{call}, Width: 80, BashPreviewLines: 3,
 		ResultMap: map[string]ToolResultData{"cmd": {ToolName: "Bash", Content: output, Details: toolresult.BashDetails{LineCount: 4}}},
 	}
-	if got, out := preview(succeeded), stripANSI(RenderToolCalls(succeeded)); strings.Join(got, ",") != "two,three,four" || !strings.Contains(out, "  │ … (1)\n") || strings.Contains(out, "last 3 of") {
+	if got, out := preview(succeeded), stripANSI(RenderToolCalls(succeeded)); strings.Join(got, ",") != "two,three,four" || !strings.Contains(out, "  │ … 1 earlier line\n") || strings.Contains(out, "last 3 of") {
 		t.Errorf("a successful command should show its bounded tail and real count:\n%s", out)
 	}
 	succeeded.BashPreviewLines = 4

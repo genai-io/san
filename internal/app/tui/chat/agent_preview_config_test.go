@@ -30,7 +30,7 @@ func TestAgentConfiguredResultBudget(t *testing.T) {
 		data := ToolResultData{ToolName: "Agent", Content: "one\n\ntwo\n\nthree\n\nfour\n\nfive\n\nsix", Width: 60, AgentPreviewLines: budget, Details: toolresult.AgentDetails{}}
 		got := ansi.Strip(renderTaskResultInline(data, nil))
 		want := budget + 1 // Omission row does not consume the content budget.
-		if budget > 0 && !strings.HasSuffix(got, "  six\n") {
+		if budget > 0 && !strings.HasSuffix(got, "  └ six\n") {
 			t.Fatalf("preview lost final output: %q", got)
 		}
 		if budget == 0 {
@@ -51,7 +51,7 @@ func TestAgentConfiguredResultBudget(t *testing.T) {
 
 func TestAgentResultTailAfterWrapping(t *testing.T) {
 	got := ansi.Strip(renderCompactAgentResponse("alpha bravo charlie delta echo foxtrot", 16, nil, 2))
-	if !strings.HasSuffix(got, "  echo foxtrot\n") || strings.Contains(got, "alpha") || !strings.Contains(got, "  … (") {
+	if !strings.HasSuffix(got, "  ┊ delta echo\n  └ foxtrot\n") || strings.Contains(got, "alpha") || !strings.Contains(got, "  ┊ … (") {
 		t.Fatalf("wrapped preview must retain the end, not the beginning: %q", got)
 	}
 	if strings.Count(got, "\n") != 3 {

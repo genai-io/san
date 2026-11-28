@@ -169,14 +169,18 @@ func renderNestedFailure(data ToolResultData) string {
 }
 
 func compactFailureReason(content string, width int) string {
+	if width <= 0 {
+		width = 80
+	}
+	return widgets.TruncateText(firstFailureLine(content), max(1, width-8))
+}
+
+func firstFailureLine(content string) string {
 	if _, reason, ok := splitBashFailureContent(content); ok {
 		content = reason
 	}
 	line, _, _ := strings.Cut(strings.TrimSpace(content), "\n")
-	if width <= 0 {
-		width = 80
-	}
-	return widgets.TruncateText(visibleLine(line), max(1, width-8))
+	return visibleLine(line)
 }
 
 func renderNestedGenericToolResultInline(data ToolResultData) string {
@@ -265,7 +269,9 @@ func renderNestedFileChangeResultInline(data ToolResultData) string {
 				sb.WriteString(truncatedStyle.Render(fmt.Sprintf("  … diff truncated (%d more lines)", details.TruncatedDiffLines)) + "\n")
 			}
 		}
-		sb.WriteString(renderNestedToolTrailer(fileChangeSummary(details), toolResultStyle))
+		if !data.statusInHeading {
+			sb.WriteString(renderNestedToolTrailer(fileChangeSummary(details), toolResultStyle))
+		}
 		return sb.String()
 	}
 
@@ -680,19 +686,18 @@ func renderAgentResultDetails(data ToolResultData, details toolresult.AgentDetai
 		return renderAgentBackgroundStart(details.TaskID, data.Width)
 	}
 	if !data.Expanded {
+		status, reason, style := compactAgentStatus(data, details)
 		if details.Stopped || data.IsError {
-			status, style := "Failed", errorStyle
-			if details.Stopped {
-				status, style = "Stopped", toolResultStyle
+			if data.statusInHeading {
+				return ""
 			}
-			reason := details.Error
-			if reason == "" {
-				reason = data.Content
-			}
-			if reason != "" && !(details.Stopped && widgets.IsRoutineStopReason(reason)) {
+			if reason != "" {
 				status += " · " + reason
 			}
 			return style.Render("  "+compactFailureReason(status, data.Width)) + "\n"
+		}
+		if data.statusInHeading && data.AgentPreviewLines <= 0 {
+			return ""
 		}
 		if details.Response != nil {
 			return renderAgentResponsePreview(*details.Response, data.Width, mdRenderer, data.AgentPreviewLines)
@@ -785,6 +790,9 @@ func renderAgentResponsePreview(response string, width int, mdRenderer *MDRender
 	if previewLines == 0 {
 		return renderAgentLocalBody("Finished", width)
 	}
+	if strings.TrimSpace(response) == "" {
+		return ""
+	}
 	if width <= 0 {
 		width = 80
 	}
@@ -792,10 +800,13 @@ func renderAgentResponsePreview(response string, width int, mdRenderer *MDRender
 		mdRenderer = NewMDRenderer(width)
 	}
 	response = strings.TrimSpace(xansi.Strip(renderMarkdownContent(mdRenderer, response)))
-	if response == "" {
-		response = "No output"
+	guide := lipgloss.NewStyle().Foreground(widgets.CurrentTheme.TextDisabled)
+	branch, end := "", ""
+	room := width
+	if width >= lipgloss.Width(nestedBodyPrefix)+2 {
+		branch, end = guide.Render(nestedBodyPrefix), guide.Render(nestedTrailerPrefix)
+		room -= lipgloss.Width(nestedBodyPrefix)
 	}
-	room := max(1, width-3)
 	lines := make([]string, 0, previewLines)
 	for line := range strings.SplitSeq(xansi.Wrap(response, room, " "), "\n") {
 		if strings.TrimSpace(line) == "" {
@@ -803,12 +814,20 @@ func renderAgentResponsePreview(response string, width int, mdRenderer *MDRender
 		}
 		lines = append(lines, strings.TrimRight(line, " "))
 	}
-	prefix := ""
+	var out strings.Builder
 	if omitted := len(lines) - previewLines; omitted > 0 {
-		prefix = toolResultStyle.Render(fmt.Sprintf("  … (%d)", omitted)) + "\n"
+		label := widgets.TruncateText(fmt.Sprintf("… (%d)", omitted), room)
+		out.WriteString(branch + toolResultStyle.Render(label) + "\n")
 		lines = lines[omitted:]
 	}
-	return prefix + renderAgentLocalLines(lines)
+	for i, line := range lines {
+		prefix := branch
+		if i == len(lines)-1 {
+			prefix = end
+		}
+		out.WriteString(prefix + toolResultStyle.Render(line) + "\n")
+	}
+	return out.String()
 }
 
 func splitByProcessCount(body string, processCount int) (process, response string) {
